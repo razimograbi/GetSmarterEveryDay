@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   sodipodi:docname="Israel_road_sign 217.svg"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   id="svg1009"
+   version="1.1"
+   viewBox="0 0 115 189.48068"
+   height="189.48068mm"
+   width="115mm">
+  <defs
+     id="defs1003">
+    <pattern
+       id="EMFhbasepattern"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+    <pattern
+       id="EMFhbasepattern-5"
+       patternUnits="userSpaceOnUse"
+       width="6"
+       height="6"
+       x="0"
+       y="0" />
+  </defs>
+  <sodipodi:namedview
+     inkscape:window-maximized="1"
+     inkscape:window-y="-9"
+     inkscape:window-x="-9"
+     inkscape:window-height="1001"
+     inkscape:window-width="1920"
+     showgrid="false"
+     inkscape:document-rotation="0"
+     inkscape:current-layer="layer1"
+     inkscape:document-units="mm"
+     inkscape:cy="309.02997"
+     inkscape:cx="763.49002"
+     inkscape:zoom="0.40433045"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0.0"
+     borderopacity="1.0"
+     bordercolor="#666666"
+     pagecolor="#ffffff"
+     id="base" />
+  <metadata
+     id="metadata1006">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     transform="translate(80.997605,72.844001)"
+     id="layer1"
+     inkscape:groupmode="layer"
+     inkscape:label="Layer 1">
+    <path
+       sodipodi:nodetypes="ccccc"
+       d="M -80.997605,-72.844001 H 34.002396 V 116.63653 l -115.000001,1.5e-4 z"
+       style="fill:#0100fd;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:2.64585;stroke-linecap:square;paint-order:markers stroke fill"
+       id="rect1585" />
+    <path
+       sodipodi:nodetypes="cccccsssssssssccccccccccccccccccccccccccccccccc"
+       d="M -77.633269,-69.501361 V 113.2454 l 108.256577,-1.1e-4 V -69.501361 Z m 9.460051,2.547717 h 89.266323 c 3.825589,0 6.90537,3.079785 6.90537,6.905375 V 103.80745 c 0,3.82558 -3.079781,6.90536 -6.90537,6.90536 h -89.266323 c -3.825591,0 -6.905374,-3.07978 -6.905374,-6.90536 V -60.048269 c 0,-3.82559 3.079783,-6.905375 6.905374,-6.905375 z m 22.782037,7.482352 -7.808336,55.969462 h 26.79823 l -1.22e-4,-55.969462 z m 23.922163,0 1.22e-4,55.969462 H 5.2489864 L -2.7258788,-59.471292 Z M -66.35407,-0.65198948 V 3.6638995 h 3.095653 v 7.2751655 h 4.17975 l 3.749339,-7.2751655 H 7.7004822 L 11.449644,10.939065 H 15.62946 V 3.6638995 h 2.607605 V -0.65198948 Z M -54.732323,7.4845895 -68.34059,105.02529 h 41.939128 l 1.22e-4,-97.5407005 z m 33.263481,0 -1.22e-4,97.5407005 H 20.71187 L 6.8142712,7.4845895 Z"
+       style="fill:#ffffff;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:2.64583;stroke-linecap:square;paint-order:markers stroke fill"
+       id="rect1598" />
+    <path
+       sodipodi:nodetypes="ccccccc"
+       d="M 28.33042,-72.844001 -80.997602,103.93045 v 12.70623 h 5.62123 L 34.002396,-59.719254 v -13.124747 z"
+       style="fill:#000000;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:2.64583;stroke-linecap:square;paint-order:markers stroke fill"
+       id="rect1661" />
+  </g>
+</svg>

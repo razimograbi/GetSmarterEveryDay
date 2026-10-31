@@ -1,0 +1,19 @@
+{
+  "name": "smarts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A mobile-first picture quiz with Google sign-in and progress tracking.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --no-warnings server/index.js",
+    "dev": "node --no-warnings --watch-path=server --watch-path=shared server/index.js",
+    "validate": "node scripts/validate.js",
+    "check-images": "node scripts/check-images.js",
+    "fetch-images": "node scripts/fetch-images.js",
+    "backup": "node --no-warnings scripts/backup.js",
+    "fetch-signs": "node --no-warnings scripts/fetch-signs.js"
+  }
+}
