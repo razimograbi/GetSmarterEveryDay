@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { AUTO_DELAY } from '../shared/config.js';
+import { AUTO_DELAY, LANGUAGES } from '../shared/config.js';
 
 export function openDb(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -81,6 +81,9 @@ export function openDb(file) {
   // Migration: rounds quit halfway keep their answers but don't count as finished rounds.
   const cols = db.prepare('PRAGMA table_info(rounds)').all().map((c) => c.name);
   if (!cols.includes('complete')) db.exec('ALTER TABLE rounds ADD COLUMN complete INTEGER NOT NULL DEFAULT 1');
+  // Migration: the player's chosen language (null until they pick one).
+  const settingCols = db.prepare('PRAGMA table_info(settings)').all().map((c) => c.name);
+  if (!settingCols.includes('language')) db.exec('ALTER TABLE settings ADD COLUMN language TEXT');
   return db;
 }
 
@@ -143,13 +146,17 @@ export function purgeExpiredSessions(db) {
 
 /** The player's saved settings, or null if they have never saved any. */
 export function getSettings(db, userId) {
-  const row = db.prepare('SELECT auto_next, auto_next_delay FROM settings WHERE user_id = ?').get(userId);
-  return row ? { autoNext: row.auto_next === 1, autoNextDelay: row.auto_next_delay } : null;
+  const row = db.prepare('SELECT auto_next, auto_next_delay, language FROM settings WHERE user_id = ?').get(userId);
+  return row ? { autoNext: row.auto_next === 1, autoNextDelay: row.auto_next_delay, language: row.language ?? null } : null;
 }
 
 /** Merges `changes` into the saved settings. Throws a 400 error for invalid values. */
 export function saveSettings(db, userId, changes) {
-  const next = { autoNext: true, autoNextDelay: AUTO_DELAY.fallback, ...getSettings(db, userId) };
+  const next = { autoNext: true, autoNextDelay: AUTO_DELAY.fallback, language: null, ...getSettings(db, userId) };
+  if ('language' in changes) {
+    if (changes.language !== null && !LANGUAGES.includes(changes.language)) throw badRequest(`language must be one of: ${LANGUAGES.join(', ')}.`);
+    next.language = changes.language;
+  }
   if ('autoNext' in changes) {
     if (typeof changes.autoNext !== 'boolean') throw badRequest('autoNext must be true or false.');
     next.autoNext = changes.autoNext;
@@ -162,10 +169,11 @@ export function saveSettings(db, userId, changes) {
     next.autoNextDelay = n;
   }
   db.prepare(`
-    INSERT INTO settings (user_id, auto_next, auto_next_delay, updated_at) VALUES (?, ?, ?, ?)
+    INSERT INTO settings (user_id, auto_next, auto_next_delay, language, updated_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
-      auto_next = excluded.auto_next, auto_next_delay = excluded.auto_next_delay, updated_at = excluded.updated_at
-  `).run(userId, next.autoNext ? 1 : 0, next.autoNextDelay, Date.now());
+      auto_next = excluded.auto_next, auto_next_delay = excluded.auto_next_delay,
+      language = excluded.language, updated_at = excluded.updated_at
+  `).run(userId, next.autoNext ? 1 : 0, next.autoNextDelay, next.language, Date.now());
   return next;
 }
 

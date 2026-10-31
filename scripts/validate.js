@@ -81,6 +81,81 @@ for (const [cat, b] of Object.entries(lengthBias)) {
   }
 }
 
+// Translations: every shown string has a Hebrew and Arabic version, and the translated
+// options still follow the rules above (distinct, similar length when long, no length bias).
+// Car models and code languages stay in English; strings without letters (years, numbers) need none.
+const EN_UI = (await import('../public/lang/en.js')).default;
+const keepsEnglish = (q, s, option) => (option && (q.cat === 'cars' || q.cat === 'code')) || !/\p{L}/u.test(s);
+const placeholders = (s, skip) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((p) => p !== skip).sort().join(',');
+const translationSummary = [];
+
+for (const lang of ['he', 'ar']) {
+  const pack = (await import(`../public/lang/${lang}/index.js`)).default;
+  const d = pack.questions;
+  const used = new Set();
+  const missing = new Set();
+  const look = (q, s, option = true) => {
+    if (keepsEnglish(q, s, option)) return s;
+    const key = d[`${q.cat}|${s}`] != null ? `${q.cat}|${s}` : s;
+    used.add(key);
+    if (!d[key]?.trim()) missing.add(`${q.cat}: ${s}`);
+    return d[key] ?? s;
+  };
+  const bias = {};
+  for (const q of QUESTIONS) {
+    const where = `${lang} ${q.id}`;
+    look(q, q.prompt, false);
+    const options = [q.answer, ...q.wrong].map((o) => look(q, o));
+    if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) {
+      errors.push(`${where}: translated options are not distinct (${options.join(' | ')})`);
+    }
+    if (q.cat === 'cars' || q.cat === 'code' || !options.some((o) => words(o) > MAX_WORDS_BEFORE_RULE)) continue;
+    const lens = options.map((o) => o.length);
+    const ws = options.map(words);
+    if (Math.min(...lens) < Math.max(...lens) * (1 - MAX_CHAR_SPREAD)) {
+      errors.push(`${where}: long options must be similar length (chars ${lens.join('/')})`);
+    }
+    if (Math.max(...ws) - Math.min(...ws) > MAX_WORD_SPREAD) {
+      errors.push(`${where}: long options must have similar word counts (${ws.join('/')})`);
+    }
+    const b = (bias[q.cat] ||= { n: 0, longest: [], shortest: [] });
+    b.n++;
+    const unique = (v) => lens.filter((x) => x === v).length === 1;
+    if (lens[0] === Math.max(...lens) && unique(lens[0])) b.longest.push(q.id);
+    if (lens[0] === Math.min(...lens) && unique(lens[0])) b.shortest.push(q.id);
+  }
+  for (const [cat, b] of Object.entries(bias)) {
+    if (b.n < 5) continue;
+    for (const kind of ['longest', 'shortest']) {
+      if (b[kind].length / b.n > MAX_LONGEST_SHARE) {
+        errors.push(`${lang} ${cat}: the right answer is the ${kind} option in ${b[kind].length} of ${b.n} questions: ${b[kind].join(', ')}`);
+      }
+    }
+  }
+  for (const m of missing) errors.push(`${lang}: no translation for "${m}"`);
+  const unused = Object.keys(d).filter((k) => !used.has(k));
+  if (unused.length) console.warn(`${lang}: ${unused.length} unused question string(s): ${unused.join(' · ')}`);
+
+  // Interface text: every English key with the same {placeholders}, and plurals in this language's forms.
+  for (const key of Object.keys(EN_UI)) {
+    const plural = key.match(/^(.*)_(one|other)$/);
+    if (plural?.[2] === 'one') continue;
+    if (plural) {
+      const base = plural[1];
+      if (pack.ui[`${base}_other`] == null) errors.push(`${lang}: interface text "${base}_other" is missing`);
+      for (const f of new Intl.PluralRules(lang).resolvedOptions().pluralCategories) {
+        const v = pack.ui[`${base}_${f}`];
+        if (v != null && placeholders(v, 'n') !== placeholders(EN_UI[key], 'n')) errors.push(`${lang}: "${base}_${f}" has different {placeholders} than English`);
+      }
+      continue;
+    }
+    if (pack.ui[key] == null) errors.push(`${lang}: interface text "${key}" is missing`);
+    else if (placeholders(pack.ui[key]) !== placeholders(EN_UI[key])) errors.push(`${lang}: "${key}" has different {placeholders} than English`);
+  }
+  for (const c of CATEGORIES) if (!pack.cats[c.id]?.name || !pack.cats[c.id]?.blurb) errors.push(`${lang}: topic "${c.id}" has no name or blurb`);
+  translationSummary.push(`${lang} ${used.size} strings`);
+}
+
 console.log(`Questions: ${QUESTIONS.length}`);
 for (const c of CATEGORIES) console.log(`  ${c.name.padEnd(16)} ${perCat[c.id] || 0}`);
 
@@ -89,4 +164,5 @@ if (errors.length) {
   for (const e of errors) console.error('  - ' + e);
   process.exit(1);
 }
+console.log(`Translations: ${translationSummary.join(', ')}`);
 console.log('\nAll questions pass.');

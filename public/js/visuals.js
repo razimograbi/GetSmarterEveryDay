@@ -4,6 +4,7 @@
 
 import { signSvg } from './signs.js';
 import { esc } from './util.js';
+import { t } from './i18n.js';
 import { countrySvg, WORLD_ATLAS_URLS } from '/shared/geo.js';
 
 // ── Local copies (made by `npm run fetch-images`) ──────────────
@@ -162,7 +163,7 @@ export function render(q) {
       const { src, srcset } = flagSrc(v.code);
       const html = `
         <div class="vis vis-flag">
-          <img class="flag-img" alt="A national flag" src="${best(src)}"${srcset && !workingSrc.has(src) ? ` srcset="${srcset}"` : ''}>
+          <img class="flag-img" alt="${esc(t('vis.flagAlt'))}" src="${best(src)}"${srcset && !workingSrc.has(src) ? ` srcset="${srcset}"` : ''}>
         </div>`;
       return { html, ready: (el) => imgReady(el.querySelector('img')) };
     }
@@ -171,13 +172,13 @@ export function render(q) {
       return { html: `<div class="vis vis-sign">${signSvg(v.id)}</div>`, ready: () => Promise.resolve(true) };
 
     case 'image': {
-      const html = `<div class="vis vis-sign"><img class="sign-img" alt="${esc(v.alt || 'Picture for this question')}" src="${best(v.src)}"></div>`;
+      const html = `<div class="vis vis-sign"><img class="sign-img" alt="${esc(t('vis.signAlt'))}" src="${best(v.src)}"></div>`;
       return { html, ready: (el) => imgReady(el.querySelector('.sign-img')) };
     }
 
     case 'country': {
       if (local.countries.has(v.iso)) {
-        const html = `<div class="vis vis-country"><img class="country-img" alt="A country's outline" src="${best(`/img/countries/${v.iso}.svg`)}"></div>`;
+        const html = `<div class="vis vis-country"><img class="country-img" alt="${esc(t('vis.countryAlt'))}" src="${best(`/img/countries/${v.iso}.svg`)}"></div>`;
         return { html, ready: (el) => imgReady(el.querySelector('img')) };
       }
       return {
@@ -191,7 +192,7 @@ export function render(q) {
             box.classList.remove('is-loading');
             return true;
           } catch {
-            box.innerHTML = MISSING_HTML;
+            box.innerHTML = missingHtml();
             return false;
           }
         },
@@ -215,7 +216,7 @@ export function render(q) {
         .map((t) => `<img alt="" src="${best(t.src)}" data-left="${t.left.toFixed(1)}" data-top="${t.top.toFixed(1)}" style="left:${t.left.toFixed(1)}px;top:${t.top.toFixed(1)}px">`)
         .join('');
       const html = `
-        <div class="vis vis-map" role="img" aria-label="Satellite map with a marker">
+        <div class="vis vis-map" role="img" aria-label="${esc(t('vis.mapAria'))}">
           <div class="map-tiles">${tiles}</div>
           ${ringPx
             ? `<div class="map-ring" aria-hidden="true" style="--ring:${ringPx.toFixed(0)}px"></div>`
@@ -263,11 +264,11 @@ export function render(q) {
             }
             box.innerHTML = `
               <div class="photo-backdrop" style="background-image:url('${img.src.replace(/'/g, '%27')}')"></div>
-              <img class="photo-img" alt="Photo for this question" src="${esc(img.src)}">
+              <img class="photo-img" alt="${esc(t('vis.photoAlt'))}" src="${esc(img.src)}">
               <small class="photo-credit">Wikipedia</small>`;
           } catch {
             forgetWikiImage(v.title); // try a fresh lookup next time
-            box.innerHTML = MISSING_HTML;
+            box.innerHTML = missingHtml();
             box.dataset.failed = '1';
           }
           box.classList.remove('is-loading');
@@ -279,7 +280,7 @@ export function render(q) {
   return { html: '<div class="vis"></div>', ready: () => Promise.resolve(true) };
 }
 
-export const MISSING_HTML = `<div class="photo-missing"><strong>The picture didn't load.</strong><span>Check your connection. Skipped questions don't count.</span></div>`;
+export const missingHtml = () => `<div class="photo-missing"><strong>${esc(t('vis.missingTitle'))}</strong><span>${esc(t('vis.missingText'))}</span></div>`;
 
 // Element families, coloured as on most periodic tables. Colour is a mild hint, never the answer.
 const FAMILY = {
@@ -298,7 +299,7 @@ function elementTile({ symbol, number, mass, family }) {
   const fill = FAMILY[family] || '#495057';
   const size = symbol.length > 1 ? 92 : 104;
   return `
-    <svg viewBox="0 0 200 200" role="img" aria-label="Periodic table tile for ${esc(symbol)}" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 200 200" role="img" aria-label="${esc(t('vis.elementAria', { symbol }))}" xmlns="http://www.w3.org/2000/svg">
       <rect x="6" y="6" width="188" height="188" rx="18" fill="${fill}"/>
       <rect x="6" y="6" width="188" height="188" rx="18" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="2"/>
       <text x="22" y="46" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="26" fill="#fff">${number}</text>

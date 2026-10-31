@@ -119,10 +119,13 @@ const publicUser = (u) => u && {
   id: u.id, name: u.name, email: u.email, picture: u.picture, provider: u.provider, since: u.created_at, admin: isAdmin(u),
 };
 
-/** Starts a new session for `user` and replies with the user and their settings. */
-function signIn(res, user) {
+/**
+ * Starts a new session for `user` and replies with the user and their settings. `locale` is
+ * the language of their Google account when Google shares it, used only as a hint.
+ */
+function signIn(res, user, locale = null) {
   const token = createSession(db, user.id, SESSION_TTL_MS);
-  json(res, 200, { user: publicUser(user), settings: getSettings(db, user.id) }, {
+  json(res, 200, { user: publicUser(user), settings: getSettings(db, user.id), locale }, {
     'Set-Cookie': sessionCookie(token, { secure: SECURE_COOKIES }),
   });
 }
@@ -160,7 +163,7 @@ const routes = {
       picture: claims.picture,
       provider: 'google',
     });
-    signIn(res, user);
+    signIn(res, user, typeof claims.locale === 'string' ? claims.locale.slice(0, 20) : null);
   },
 
   'POST /api/auth/dev': async (req, res) => {
@@ -305,7 +308,11 @@ const FULL_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>Smarts is full</title></head>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#2A3BD1;color:#fff;font:18px/1.5 system-ui,sans-serif;text-align:center;padding:24px">
 <div><h1 style="margin:0 0 8px;font-size:32px">Smarts is full right now</h1>
-<p style="margin:0">${MAX_PLAYERS} people are already playing. This page tries again every minute.</p></div></body></html>`;
+<p style="margin:0 0 28px">${MAX_PLAYERS} people are already playing. This page tries again every minute.</p>
+<h2 dir="rtl" lang="he" style="margin:0 0 6px;font-size:24px">המשחק מלא כרגע</h2>
+<p dir="rtl" lang="he" style="margin:0 0 28px">${MAX_PLAYERS} אנשים כבר משחקים. הדף ינסה שוב בכל דקה.</p>
+<h2 dir="rtl" lang="ar" style="margin:0 0 6px;font-size:24px">اللعبة ممتلئة الآن</h2>
+<p dir="rtl" lang="ar" style="margin:0">${MAX_PLAYERS} شخصًا يلعبون الآن. ستحاول هذه الصفحة مرة أخرى كل دقيقة.</p></div></body></html>`;
 
 const ROUTE_LIMITS = {
   'POST /api/auth/google': 'signIn',

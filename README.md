@@ -209,6 +209,47 @@ history('slug', 'The question?', 'The right answer', ['Wrong 1', 'Wrong 2', 'Wro
 trivia('slug', 'A text-only question?', 'The right answer', ['Wrong 1', 'Wrong 2', 'Wrong 3', 'Wrong 4']),
 ```
 
+A new question also needs its Hebrew and Arabic text (see below); the validator lists
+every string that is missing a translation.
+
+## Languages
+
+Smarts speaks English, Hebrew and Arabic. Hebrew and Arabic switch the whole layout to
+right-to-left.
+
+- **Which language shows:** the language saved on the player's account, else the one
+  picked earlier on this device, else the phone or browser language, else the Google
+  account's language, else English.
+- **Changing it:** the language row on the sign-in screen, or the globe button on the home
+  screen. There is no switch during a round.
+- **Where it's saved:** in the browser (`localStorage`) and, once signed in, on the account
+  (`settings.language`), so it follows the player to other devices. A language picked on
+  the sign-in screen just before signing in replaces the account's saved one.
+
+Questions are stored and graded in English. The browser shows each prompt and option
+through a translation, so scores, reports and the admin page don't depend on the
+language. Car models and programming-language names stay in English, and anything
+without letters (years, numbers) needs no translation.
+
+| File | What's in it |
+| --- | --- |
+| `public/lang/en.js` | English interface text, and the fallback for any missing key |
+| `public/lang/<id>/ui.js` | Interface text (`ui`) and topic names and blurbs (`cats`) |
+| `public/lang/<id>/q-*.js` | Question strings, keyed by their exact English text |
+| `public/js/i18n.js` | `t()`, plurals (`tn()`), `qt()` for questions, and dates |
+
+When one English word needs a different translation in one topic, prefix the key with the
+topic id: `'trivia|Mercury'` (the planet) beats a plain `'Mercury'`. Plural keys end in
+the language's plural forms (`_one`, `_two`, `_few`, `_many`, `_other`); `_other` is the
+fallback.
+
+`npm run validate` checks every language the same way it checks English: no missing
+strings or interface keys, the same `{placeholders}`, five distinct options, and the
+answer-length fairness rules applied to the translated options. To add a language, add
+its id to `LANGUAGES` in `shared/config.js` and to the list in `public/js/i18n.js`,
+create `public/lang/<id>/`, add its Google Fonts link to `FONTS` in `i18n.js` and a
+`:root:lang(<id>)` font rule in `app.css`, and add it to the validator's language list.
+
 ## Data
 
 Everything is stored in one SQLite file, `data/smarts.db` (or `$DATA_DIR/smarts.db`):

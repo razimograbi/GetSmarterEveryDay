@@ -30,6 +30,7 @@ export const ICONS = {
   mixed: i('<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="4"/><rect x="3" y="13" width="8" height="8" rx="4"/><path d="m17 13 4 7h-8z"/>'),
   play: i('<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>'),
   chart: i('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
+  globe: i('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>'),
   report: i('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
   close: i('<path d="M6 6l12 12M18 6 6 18"/>'),
   check: i('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'stroke-width="2.6"'),

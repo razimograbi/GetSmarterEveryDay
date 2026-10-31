@@ -10,6 +10,10 @@ export const MODES = {
 
 export const DEFAULT_MODE = 'classic';
 
+// Languages the app can be shown in. English is the default; questions and answers are
+// stored and graded in English, and translated only for display.
+export const LANGUAGES = ['en', 'he', 'ar'];
+
 // How long the result stays on screen before auto next moves on (whole seconds).
 export const AUTO_DELAY = { min: 1, max: 7, fallback: 4 };
 
