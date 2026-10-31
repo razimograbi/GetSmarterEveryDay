@@ -359,9 +359,26 @@ function tabbar(active) {
 
 // ── Home ───────────────────────────────────────────────────────
 
+// New players get an animated "Tap to play!" hint on the Quick round card for their first
+// few visits to the home screen. Counted on this device, per player.
+const QUICK_HINT_VISITS = 5;
+
+function takeQuickHint(userId) {
+  const key = `smarts:${userId}:quickHintsShown`;
+  try {
+    const shown = Number(localStorage.getItem(key)) || 0;
+    if (shown >= QUICK_HINT_VISITS) return false;
+    localStorage.setItem(key, String(shown + 1));
+    return true;
+  } catch {
+    return false; // storage blocked: skip the hint rather than show it forever
+  }
+}
+
 async function showHome() {
   const user = state.user;
   const firstName = esc(user.name.split(' ')[0]);
+  const hint = takeQuickHint(user.id); // once per visit, though the screen is drawn twice
   const draw = (stats) => {
     const mastered = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.mastered]));
     const totalMastered = stats ? stats.masteredIds.length : 0;
@@ -375,12 +392,13 @@ async function showHome() {
         <h1 class="greeting">Hi ${firstName}</h1>
         <p class="sub">${stats ? `${totalMastered} of ${QUESTIONS.length} questions answered right so far.` : '&nbsp;'}</p>
 
-        <a class="quick" href="#/play/mixed">
+        <a class="quick ${hint ? 'is-hinting' : ''}" href="#/play/mixed">
+          ${hint ? '<span class="quick-hint" aria-hidden="true">Tap to play!</span>' : ''}
           <span class="quick-text">
             <strong>Quick round</strong>
             <span>${MODES[DEFAULT_MODE].questionsPerRound} questions, mixed topics</span>
           </span>
-          <span class="quick-go" aria-hidden="true">${ICONS.play}</span>
+          <span class="quick-go" aria-hidden="true"><span>Play</span>${ICONS.play}</span>
         </a>
 
         <h2 class="section-title">Topics</h2>
