@@ -412,6 +412,11 @@ async function serveStatic(req, res, pathname) {
     } catch { /* fall through */ }
     if (prefix === '/shared/') return send(res, 404, 'Not found');
   }
+  // Standalone pages with a clean address (the privacy policy is linked from Google's sign-in screen).
+  if (pathname === '/privacy' || pathname === '/privacy/') {
+    await sendFile(req, res, join(ROOT, 'public', 'privacy.html'), '/privacy.html');
+    return;
+  }
   // Single-page app: unknown non-file paths get the app shell.
   if (!extname(pathname)) {
     await sendFile(req, res, join(ROOT, 'public', 'index.html'), '/index.html');

@@ -151,6 +151,7 @@ function showSignIn() {
             </div>
           </form>` : ''}
         <p class="error-text" id="signin-error" hidden></p>
+        <p class="signin-legal"><a href="/privacy">Privacy policy</a></p>
       </div>
     </section>`;
 
@@ -1352,6 +1353,7 @@ async function showProgress() {
           <button class="link-btn" data-signout-all>Sign out on all devices</button>
           <a class="link-btn" href="/api/account/export" download>Download my data</a>
           <button class="link-btn link-danger" data-delete-account>Delete my account</button>
+          <a class="link-btn" href="/privacy">Privacy policy</a>
         </div>
       </div>
     </section>

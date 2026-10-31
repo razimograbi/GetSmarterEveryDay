@@ -1133,3 +1133,5 @@ button, a, .answer { touch-action: manipulation; }
 .admin-notes li { font-size: 15px; }
 .admin-notes span { display: block; font-size: 13px; color: var(--ink-2); }
 .admin-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.signin-legal { margin: 4px 0 0; font-size: 14px; }
+.signin-legal a { color: var(--on-cobalt-2); text-underline-offset: 3px; }
