@@ -52,7 +52,7 @@ export const ui = {
   'home.hi': 'مرحبًا {name}',
   'home.sub': 'أجبت عن {n} من أصل {total} سؤالًا بشكل صحيح حتى الآن.',
   'home.yourProgress': 'تقدّمك',
-  'home.topics': 'المواضيع',
+  'home.topics': 'جميع المواضيع',
   'home.topicMeter': '{m} من أصل {total} إجابة صحيحة',
   'quick.title': 'جولة سريعة',
   'quick.desc': '{n} أسئلة من مواضيع متنوعة',

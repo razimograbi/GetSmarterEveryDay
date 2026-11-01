@@ -55,7 +55,7 @@ export default {
   'home.hi': 'Hi {name}',
   'home.sub': '{n} of {total} questions answered right so far.',
   'home.yourProgress': 'Your progress',
-  'home.topics': 'Topics',
+  'home.topics': 'All topics',
   'home.topicMeter': '{m} of {total} answered right',
   'quick.title': 'Quick round',
   'quick.desc': '{n} questions, mixed topics',

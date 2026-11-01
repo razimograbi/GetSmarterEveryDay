@@ -477,6 +477,10 @@ function tabbar(active) {
 const QUICK_HINT_VISITS = 5;
 let lastQuickHint = false;
 
+// The topic list starts folded so the Quick round card is the obvious thing to tap.
+// Remembered while the app is open, so the screen's redraws don't fold it again.
+let topicsOpen = false;
+
 function takeQuickHint(userId) {
   const key = `smarts:${userId}:quickHintsShown`;
   try {
@@ -520,7 +524,8 @@ async function showHome() {
           <span class="quick-go" aria-hidden="true"><span>${esc(t('quick.play'))}</span>${ICONS.play}</span>
         </a>
 
-        <h2 class="section-title">${esc(t('home.topics'))}</h2>
+        <details class="all-topics" ${topicsOpen ? 'open' : ''}>
+        <summary class="section-title"><span class="all-topics-arrow" aria-hidden="true"></span>${esc(t('home.topics'))}</summary>
         <ul class="topics">
           ${CATEGORIES.map((c) => {
             const m = mastered[c.id] || 0;
@@ -541,9 +546,11 @@ async function showHome() {
               </li>`;
           }).join('')}
         </ul>
+        </details>
       </section>
       ${tabbar('home')}`;
     app.querySelector('[data-lang-open]').addEventListener('click', (e) => openLangSheet(e.currentTarget));
+    app.querySelector('.all-topics').addEventListener('toggle', (e) => { topicsOpen = e.currentTarget.open; });
   };
   const nav = navId;
   draw(state.stats);

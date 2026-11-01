@@ -52,7 +52,7 @@ export const ui = {
   'home.hi': 'היי {name}',
   'home.sub': '{n} מתוך {total} שאלות נענו נכון עד עכשיו.',
   'home.yourProgress': 'ההתקדמות שלך',
-  'home.topics': 'נושאים',
+  'home.topics': 'כל הנושאים',
   'home.topicMeter': '{m} מתוך {total} נענו נכון',
   'quick.title': 'סבב מהיר',
   'quick.desc': '{n} שאלות, נושאים מעורבים',

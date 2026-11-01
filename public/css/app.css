@@ -376,6 +376,28 @@ code { font-family: var(--font-code); font-size: 0.9em; }
   .quick.is-hinting .quick-go::before, .quick.is-hinting .quick-go::after { display: none; }
 }
 
+.all-topics > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.all-topics > summary::-webkit-details-marker { display: none; }
+/* A chevron pointing to the reading end; turns down when the list is open. */
+.all-topics-arrow {
+  width: 9px;
+  height: 9px;
+  border: solid currentColor;
+  border-width: 0 3px 3px 0;
+  transform: scaleX(var(--flip, 1)) rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+.all-topics[open] .all-topics-arrow { transform: scaleX(var(--flip, 1)) rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .all-topics-arrow { transition: none; } }
+
 .topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .topic {
   display: flex;
