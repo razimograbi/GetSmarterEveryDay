@@ -623,6 +623,9 @@ code { font-family: var(--font-code); font-size: 0.9em; }
   filter: blur(18px) saturate(1.1) brightness(0.9);
 }
 .photo-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.vis-logo { background: #fff; }
+.vis-logo .photo-img { inset: 16%; width: 68%; height: 68%; }
+.vis-logo .photo-credit { color: var(--ink-2); text-shadow: none; }
 .photo-shimmer {
   position: absolute;
   inset: 0;

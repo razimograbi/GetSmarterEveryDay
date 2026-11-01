@@ -3,14 +3,15 @@
 A picture quiz built for phones (it works on laptops too). Sign in with Google, play
 10-question rounds against a 15-second clock, and track what you've mastered.
 
-**715 questions in 24 topics:** flags (40), capitals (30), seas & oceans (25),
+**775 questions in 26 topics:** flags (40), capitals (30), seas & oceans (25),
 road signs (70: 20 European, 50 Israeli), animals (25), cars (15), programming languages (20), landmarks (25),
 dog breeds (40), world food (40), countries (40), chemical elements (40),
 musical instruments (40), paintings (30), famous books (15: bestsellers published after
 2000 with over 1.5 million Goodreads ratings, named from a plot description),
-human body (20), famous people (20), beauty products (10),
-professions (10), history (40) and interesting questions (30), which mix
-photo and text-only questions, and three book topics with text-only questions:
+human body (20), famous people (20), beauty products (40), professions (10),
+company logos (20, symbol-only logos that don't spell the name), history (40),
+interesting questions (30) and not what you think (10, where the obvious answer is
+wrong), which mix photo and text-only questions, and three book topics with text-only questions:
 *Sapiens* by Yuval Noah Harari (30), *Atomic Habits* by James Clear (30) and
 *The Art of Saying No* by Damon Zahariades (30).
 
@@ -149,7 +150,8 @@ Satellite map tiles are always loaded live from Esri.
   already know. Questions from the round you just played come last, so they don't
   come straight back. Quick rounds take at most 2 questions per topic, bring back 3–5
   questions you got wrong in your last 10 rounds (never from the round just played),
-  and leave out the three book topics, which are only played from their own tiles.
+  and leave out the three book topics and programming (`book: true` or `quick: false`
+  in `shared/config.js`), which are only played from their own tiles.
 - On a laptop, press **1–5** to answer, **Enter** for next and **Esc** to quit.
 
 ### Statistics

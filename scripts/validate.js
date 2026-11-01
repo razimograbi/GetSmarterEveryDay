@@ -83,9 +83,10 @@ for (const [cat, b] of Object.entries(lengthBias)) {
 
 // Translations: every shown string has a Hebrew and Arabic version, and the translated
 // options still follow the rules above (distinct, similar length when long, no length bias).
-// Car models and code languages stay in English; strings without letters (years, numbers) need none.
+// Car models, code languages and brand names stay in English; strings without letters (years, numbers) need none.
 const EN_UI = (await import('../public/lang/en.js')).default;
-const keepsEnglish = (q, s, option) => (option && (q.cat === 'cars' || q.cat === 'code')) || !/\p{L}/u.test(s);
+const LATIN_OPTIONS = new Set(['cars', 'code', 'logos']);
+const keepsEnglish = (q, s, option) => (option && LATIN_OPTIONS.has(q.cat)) || !/\p{L}/u.test(s);
 const placeholders = (s, skip) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).filter((p) => p !== skip).sort().join(',');
 const translationSummary = [];
 
@@ -109,7 +110,7 @@ for (const lang of ['he', 'ar']) {
     if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) {
       errors.push(`${where}: translated options are not distinct (${options.join(' | ')})`);
     }
-    if (q.cat === 'cars' || q.cat === 'code' || !options.some((o) => words(o) > MAX_WORDS_BEFORE_RULE)) continue;
+    if (LATIN_OPTIONS.has(q.cat) || !options.some((o) => words(o) > MAX_WORDS_BEFORE_RULE)) continue;
     const lens = options.map((o) => o.length);
     const ws = options.map(words);
     if (Math.min(...lens) < Math.max(...lens) * (1 - MAX_CHAR_SPREAD)) {

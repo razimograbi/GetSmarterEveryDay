@@ -249,7 +249,7 @@ export function render(q) {
     }
 
     case 'wiki': {
-      const html = `<div class="vis vis-photo is-loading"><div class="photo-shimmer"></div></div>`;
+      const html = `<div class="vis vis-photo${v.logo ? ' vis-logo' : ''} is-loading"><div class="photo-shimmer"></div></div>`;
       return {
         html,
         ready: async (el) => {
@@ -263,8 +263,8 @@ export function render(q) {
               try { img = await loadImg(best(src)); } catch { img = await loadImg(fallback); }
             }
             box.innerHTML = `
-              <div class="photo-backdrop" style="background-image:url('${img.src.replace(/'/g, '%27')}')"></div>
-              <img class="photo-img" alt="${esc(t('vis.photoAlt'))}" src="${esc(img.src)}">
+              ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${img.src.replace(/'/g, '%27')}')"></div>`}
+              <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(img.src)}">
               <small class="photo-credit">Wikipedia</small>`;
           } catch {
             forgetWikiImage(v.title); // try a fresh lookup next time

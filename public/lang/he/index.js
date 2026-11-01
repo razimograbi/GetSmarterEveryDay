@@ -9,5 +9,6 @@ import history from './q-history.js';
 import sapiens from './q-sapiens.js';
 import habits from './q-habits.js';
 import sayno from './q-sayno.js';
+import more from './q-more.js';
 
-export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno } };
+export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno, ...more } };

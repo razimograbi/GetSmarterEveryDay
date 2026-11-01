@@ -591,8 +591,9 @@ function pickQuestions(cat, n, stats) {
     const ids = (stats?.missed || []).map((m) => m.id).filter((id) => QUESTION_BY_ID.has(id));
     return shuffle(ids.slice(0, n).map((id) => QUESTION_BY_ID.get(id)));
   }
-  // Book topics are only played from their own tile, never in a Quick round.
-  const pool = (cat === 'mixed' ? QUESTIONS.filter((q) => !CATEGORY_BY_ID[q.cat]?.book) : QUESTIONS.filter((q) => q.cat === cat))
+  // Book topics and Programming are only played from their own tile, never in a Quick round.
+  const inQuick = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_ID[q.cat]?.quick !== false;
+  const pool = (cat === 'mixed' ? QUESTIONS.filter(inQuick) : QUESTIONS.filter((q) => q.cat === cat))
     .filter((q) => !failedPictures.has(q.id));
   const inPool = new Set(pool.map((q) => q.id));
 

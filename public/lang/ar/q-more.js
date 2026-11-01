@@ -1,0 +1,45 @@
+// Arabic: more beauty products, company logos (brand names stay in English) and "Not what you think".
+export default {
+  // Beauty products
+  'Artificial nails': 'أظافر صناعية', 'Bath bomb': 'كرة استحمام فوّارة', 'Bath bombs': 'كرات استحمام فوّارة', 'Bobby pins': 'دبابيس شعر',
+  'Body glitter': 'جليتر للجسم', 'Body oil': 'زيت الجسم', 'Clothes brush': 'فرشاة ملابس', Comb: 'مشط',
+  'Cotton pad': 'قرص قطن', 'Cotton pads': 'أقراص قطن', 'Cotton swab': 'عود قطن', 'Cotton swabs': 'أعواد قطن',
+  'Cuticle nippers': 'قصّافة الجلد الميت', 'Cuticle pusher': 'دافع الجلد الميت', 'Electric shaver': 'ماكينة حلاقة كهربائية',
+  Epilator: 'جهاز إزالة الشعر', 'Eyebrow threading': 'تحديد الحواجب بالخيط', 'Eyebrow tinting': 'صبغ الحواجب',
+  'Eyelash extensions': 'وصلات الرموش', 'Face roller': 'رولر الوجه', 'Face serum': 'سيروم الوجه', 'Face toner': 'تونر الوجه',
+  'Facial cleansing brush': 'فرشاة تنظيف الوجه', 'Hair claw clip': 'مشبك شعر', 'Hair claw clips': 'مشابك شعر',
+  'Hair clip': 'بنسة شعر', 'Hair clips': 'بنسات شعر', 'Hair clipper': 'ماكينة قص الشعر', 'Hair net': 'شبكة شعر',
+  'Hair oil': 'زيت الشعر', 'Hair pick': 'مشط أفرو', 'Hair rollers': 'بكرات الشعر', Hairbrush: 'فرشاة شعر',
+  Headband: 'طوق شعر', Headbands: 'أطواق شعر', 'Hot brush': 'فرشاة حرارية', 'Kohl stick': 'قلم كحل',
+  'Lip balm tins': 'علب مرطب شفاه', Loofah: 'ليفة', 'Makeup brush': 'فرشاة مكياج', 'Makeup sponge': 'إسفنجة مكياج',
+  'Makeup sponges': 'إسفنجات مكياج', 'Mascara wand': 'فرشاة ماسكارا', Mouthwash: 'غسول الفم', 'Nail brush': 'فرشاة أظافر',
+  'Nail buffer': 'ملمّع أظافر', 'Nail clippers': 'قلّامة أظافر', Perfume: 'عطر', 'Powder puff': 'بافة بودرة',
+  'Powder puffs': 'بافات بودرة', 'Pumice stone': 'حجر الخفاف', 'Safety razor': 'ماكينة حلاقة يدوية', Scrunchie: 'ربطة شعر قماشية',
+  Scrunchies: 'ربطات شعر قماشية', 'Sea sponge': 'إسفنج بحري', 'Self-tanner': 'كريم تسمير ذاتي', 'Shaving brush': 'فرشاة حلاقة',
+  'Sheet masks': 'أقنعة ورقية للوجه', 'Soap bar': 'قالب صابون', 'Soap bars': 'قوالب صابون', 'Straight razor': 'موس حلاقة',
+  Tattoos: 'وشوم', 'Toe separator': 'فاصل أصابع القدم', 'Toe separators': 'فواصل أصابع القدم',
+
+  // Company logos
+  "Which brand's logo is this?": 'لأي علامة تجارية هذا الشعار؟',
+
+  // Not what you think
+  "What colour is a polar bear's skin under its white fur?": 'ما لون جلد الدب القطبي تحت فروه الأبيض؟',
+  Black: 'أسود', White: 'أبيض', Pink: 'وردي', Grey: 'رمادي', Brown: 'بني',
+  'On average, which planet is closest to Earth?': 'في المتوسط، أي كوكب هو الأقرب إلى الأرض؟',
+  'unexpected|Mercury': 'عطارد',
+  'Which country has the most ancient pyramids?': 'أي دولة فيها أكبر عدد من الأهرامات القديمة؟',
+  'Panama hats are traditionally made in which country?': 'في أي دولة تُصنع قبعات بنما تقليديًا؟',
+  Panama: 'بنما',
+  'Where do guinea pigs originally come from?': 'من أين جاءت خنازير غينيا في الأصل؟',
+  'South America': 'أمريكا الجنوبية', Guinea: 'غينيا', 'West Africa': 'غرب أفريقيا', 'New Guinea': 'غينيا الجديدة',
+  "How long did the Hundred Years' War last?": 'كم دامت حرب المئة عام؟',
+  '116 years': '116 عامًا', '100 years': '100 عام', '99 years': '99 عامًا', '50 years': '50 عامًا', '150 years': '150 عامًا',
+  "By today's calendar, in which month did Russia's October Revolution happen?": 'بحسب التقويم الحالي، في أي شهر وقعت ثورة أكتوبر في روسيا؟',
+  November: 'نوفمبر', October: 'أكتوبر', September: 'سبتمبر', December: 'ديسمبر', March: 'مارس',
+  'Which animal kills the most people every year?': 'أي حيوان يقتل أكبر عدد من البشر كل عام؟',
+  Mosquito: 'البعوضة', Shark: 'القرش', Snake: 'الأفعى', Lion: 'الأسد', Crocodile: 'التمساح',
+  'What kind of animal is a koala bear?': 'إلى أي نوع من الحيوانات ينتمي دب الكوالا؟',
+  'A marsupial': 'حيوان جرابي', 'A bear': 'دب', 'A rodent': 'قارض', 'A primate': 'من الرئيسيات', 'A raccoon': 'راكون',
+  'What kind of plant food are peanuts?': 'إلى أي نوع من الأغذية النباتية ينتمي الفول السوداني؟',
+  Legumes: 'بقوليات', Nuts: 'مكسرات', Tubers: 'درنات', Grains: 'حبوب', Berries: 'توت',
+};

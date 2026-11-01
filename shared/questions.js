@@ -81,6 +81,8 @@ const anatomy = wiki('body', 'What is this part of the body called?');
 const famous = wiki('people', 'Who is this?');
 const beauty = wiki('beauty', 'What is this beauty product called?');
 const job = wiki('jobs', 'What job does this picture show?');
+// Logos without the brand's name in them, shown on white instead of as a photo.
+const logo = (slug, title, answer, wrong) => ({ ...wiki('logos', "Which brand's logo is this?")(slug, title, answer, wrong), visual: { type: 'wiki', title, logo: true } });
 
 const dog = wiki('dogs', 'Which dog breed is this?');
 const food = wiki('food', 'What dish is this?');
@@ -135,6 +137,8 @@ const ask = (cat) => (slug, prompt, answer, wrong, photo) => ({
 const novel = ask('novels');
 const history = ask('history');
 const trivia = ask('trivia');
+// "Not what you think": questions whose obvious answer is wrong.
+const unexpected = ask('unexpected');
 
 const code = (slug, text, answer, wrong) => ({
   id: `code-${slug}`,
@@ -346,7 +350,7 @@ export const QUESTIONS = [
   animal('mandrill', 'Mandrill', 'Mandrill', ['Baboon', 'Gelada', 'Drill', 'Macaque']),
   animal('proboscis', 'Proboscis monkey', 'Proboscis monkey', ['Golden snub-nosed monkey', 'Howler monkey', 'Langur', 'Gelada']),
   animal('manatee', 'West Indian manatee', 'Manatee', ['Dugong', 'Walrus', 'Elephant seal', 'Sea lion']),
-  animal('blobfish', 'Blobfish', 'Blobfish', ['Anglerfish', 'Fangtooth', 'Goblin shark', 'Hagfish']),
+  animal('blobfish', 'File:Psychrolutes phrictus.jpg', 'Blobfish', ['Anglerfish', 'Fangtooth', 'Goblin shark', 'Hagfish']),
   animal('toucan', 'Toco toucan', 'Toucan', ['Hornbill', 'Puffin', 'Kingfisher', 'Macaw']),
   animal('mantis-shrimp', 'Mantis shrimp', 'Mantis shrimp', ['Lobster', 'Crayfish', 'Cuttlefish', 'Pistol shrimp']),
   animal('sloth', 'Brown-throated sloth', 'Sloth', ['Koala', 'Anteater', 'Lemur', 'Orangutan']),
@@ -593,7 +597,7 @@ export const QUESTIONS = [
   instrument('double-bass', 'Double bass', 'Double bass', ['Cello', 'Bass guitar', 'Viola da gamba', 'Guitarrón']),
   instrument('harp', 'Harp', 'Harp', ['Lyre', 'Zither', 'Kora', 'Psaltery']),
   instrument('ukulele', 'Ukulele', 'Ukulele', ['Guitar', 'Mandolin', 'Banjo', 'Charango']),
-  instrument('banjo', 'Banjo', 'Banjo', ['Mandolin', 'Ukulele', 'Sitar', 'Resonator guitar']),
+  instrument('banjo', 'File:Banjo.jpg', 'Banjo', ['Mandolin', 'Ukulele', 'Sitar', 'Resonator guitar']),
   instrument('mandolin', 'Mandolin', 'Mandolin', ['Lute', 'Bouzouki', 'Ukulele', 'Balalaika']),
   instrument('sitar', 'Sitar', 'Sitar', ['Veena', 'Sarod', 'Shamisen', 'Oud']),
   instrument('oud', 'Oud', 'Oud', ['Mandolin', 'Bouzouki', 'Sitar', 'Balalaika']),
@@ -829,6 +833,36 @@ export const QUESTIONS = [
   beauty('makeup-brushes', 'File:Makeup-brushes.tif', 'Makeup brushes', ['Paint brushes', 'Hairbrushes', 'Nail brushes', 'Shaving brushes']),
   beauty('hair-dryer', 'File:Hairdryer 20101109.jpg', 'Hair dryer', ['Hair straightener', 'Curling iron', 'Diffuser', 'Hair steamer']),
   beauty('bobby-pin', 'File:Bobby pin.jpg', 'Bobby pin', ['Paper clip', 'Safety pin', 'Hair claw', 'Hair tie']),
+  beauty('lip-gloss', 'File:Lip Gloss.JPG', 'Lip gloss', ['Lipstick', 'Lip liner', 'Lip balm', 'Concealer']),
+  beauty('eyebrow-pencil', 'File:Augenbrauenstift V1.png', 'Eyebrow pencil', ['Eyeliner', 'Lip liner', 'Mascara wand', 'Kohl stick']),
+  beauty('eyelash-extensions', 'File:Namee Park - eyelash extensions 1 (cropped).png', 'Eyelash extensions', ['Eyebrow threading', 'Mascara', 'Eyeliner', 'Eyebrow tinting']),
+  beauty('makeup-sponge', 'File:Beauty sponge.jpg', 'Makeup sponge', ['Powder puff', 'Bath bomb', 'Nail buffer', 'Face roller']),
+  beauty('tweezers', 'File:Tweezers-variety.jpg', 'Tweezers', ['Eyelash curler', 'Cuticle pusher', 'Nail clippers', 'Hair clips']),
+  beauty('nail-file', 'File:Glass nail file green.jpg', 'Nail file', ['Nail buffer', 'Cuticle pusher', 'Toe separator', 'Eyebrow pencil']),
+  beauty('nail-clippers', 'File:Nail cutter pic.jpg', 'Nail clippers', ['Cuticle nippers', 'Tweezers', 'Eyelash curler', 'Nail file']),
+  beauty('hair-straightener', 'File:Hair straightener TTH2510 by Tescom (2015-09-19).JPG', 'Hair straightener', ['Curling iron', 'Hair dryer', 'Hot brush', 'Hair clipper']),
+  beauty('curling-iron', 'File:Curling iron unbranded.jpg', 'Curling iron', ['Hair straightener', 'Hot brush', 'Hair dryer', 'Hair rollers']),
+  beauty('hair-rollers', 'File:Bigoudis 03.jpg', 'Hair rollers', ['Hair claw clips', 'Scrunchies', 'Bobby pins', 'Hairbrushes']),
+  beauty('claw-clips', 'File:3 big claw clips for thick long hair.png', 'Hair claw clips', ['Hair rollers', 'Bobby pins', 'Scrunchies', 'Headbands']),
+  beauty('perfume', "File:Bottle of L'Aimant perfume - Coty -1927-1.jpg", 'Perfume', ['Face toner', 'Body oil', 'Hair oil', 'Mouthwash']),
+  beauty('cotton-swab', 'File:White menbo.jpg', 'Cotton swab', ['Cotton pad', 'Mascara wand', 'Eyebrow pencil', 'Cuticle pusher']),
+  beauty('safety-razor', 'File:Chrome-Safety-Razor.jpg', 'Safety razor', ['Electric shaver', 'Epilator', 'Straight razor', 'Hair clipper']),
+  beauty('shaving-brush', 'File:Shaving-Brush.jpg', 'Shaving brush', ['Makeup brush', 'Powder puff', 'Hairbrush', 'Nail brush']),
+  beauty('loofah', 'File:Luffa sponges spelled loofah.jpg', 'Loofah', ['Pumice stone', 'Sea sponge', 'Bath bomb', 'Makeup sponge']),
+  beauty('bath-bombs', 'File:Bath Bombs - Lush Cosmetics (51333340003).jpg', 'Bath bombs', ['Soap bars', 'Lip balm tins', 'Makeup sponges', 'Hair clips']),
+  beauty('epilator', 'File:Epileertoestel.JPG', 'Epilator', ['Electric shaver', 'Hair clipper', 'Hair dryer', 'Facial cleansing brush']),
+  beauty('scrunchies', 'File:Vaga-scrunchie-render.webp', 'Scrunchies', ['Headbands', 'Hair claw clips', 'Hair rollers', 'Bobby pins']),
+  beauty('comb', 'File:Plastic comb, 2015-06-07.jpg', 'Comb', ['Hairbrush', 'Nail file', 'Hair pick', 'Eyelash comb']),
+  beauty('foundation', 'File:시그너처 파운데이션.jpg', 'Foundation', ['Nail polish', 'Perfume', 'Face serum', 'Hand cream']),
+  beauty('henna', 'File:HENNA-189.jpg', 'Henna', ['Tattoos', 'Body glitter', 'Self-tanner', 'Bronzer']),
+  beauty('artificial-nails', 'File:2015 Tipsy (02).jpg', 'Artificial nails', ['Nail polish', 'Nail buffer', 'Toe separators', 'Cuticle oil']),
+  beauty('hairbrush', 'File:Hairbrush flat.JPG', 'Hairbrush', ['Comb', 'Shaving brush', 'Makeup brush', 'Clothes brush']),
+  beauty('cotton-pads', 'File:Cotton pads - Δίσκοι ντεμακιγιάζ.JPG', 'Cotton pads', ['Cotton swabs', 'Powder puffs', 'Sheet masks', 'Makeup sponges']),
+  beauty('pumice-stone', 'File:Pumice Stone.jpg', 'Pumice stone', ['Loofah', 'Nail buffer', 'Soap bar', 'Bath bomb']),
+  beauty('headband', 'File:Headband.jpg', 'Headband', ['Hair claw clip', 'Scrunchie', 'Bobby pin', 'Hair net']),
+  beauty('electric-shaver', 'File:Philips Series 7000 shaver head.jpg', 'Electric shaver', ['Epilator', 'Hair clipper', 'Facial cleansing brush', 'Safety razor']),
+  beauty('hair-clipper', 'File:2023 Trymer.jpg', 'Hair clipper', ['Electric shaver', 'Epilator', 'Hair straightener', 'Curling iron']),
+  beauty('cuticle-nippers', 'File:Cuticle nipper stainless steel.JPG', 'Cuticle nippers', ['Nail clippers', 'Tweezers', 'Eyelash curler', 'Hair clip']),
 
   // ── Professions ──
   job('firefighter', 'File:FiremenFightBurningBarn.jpg', 'Firefighter', ['Police officer', 'Paramedic', 'Soldier', 'Miner']),
@@ -841,6 +875,28 @@ export const QUESTIONS = [
   job('welder', 'File:AlfredPalmerwelder1.jpg', 'Welder', ['Blacksmith', 'Firefighter', 'Electrician', 'Miner']),
   job('baker', 'File:USS John C. Stennis baker.jpg', 'Baker', ['Butcher', 'Chef', 'Waiter', 'Farmer']),
   job('jockey', 'File:Tony dobbin.jpg', 'Jockey', ['Cowboy', 'Horse trainer', 'Polo player', 'Vet']),
+
+  // ── Company logos (symbol-only versions from Wikimedia Commons) ──
+  logo('apple', 'File:Apple logo black.svg', 'Apple', ['Samsung', 'Huawei', 'Xiaomi', 'Sony']),
+  logo('nike', 'File:Logo NIKE.svg', 'Nike', ['Adidas', 'Puma', 'Reebok', 'Under Armour']),
+  logo('mcdonalds', "File:McDonald's Golden Arches.svg", "McDonald's", ['Burger King', 'KFC', "Wendy's", 'Subway']),
+  logo('mercedes', 'File:Mercedes-Logo.svg', 'Mercedes-Benz', ['BMW', 'Audi', 'Lexus', 'Volvo']),
+  logo('audi', 'File:Audi-Logo 2016.svg', 'Audi', ['BMW', 'Mercedes-Benz', 'Volkswagen', 'Opel']),
+  logo('mitsubishi', 'File:Mitsubishi logo.svg', 'Mitsubishi', ['Mazda', 'Subaru', 'Nissan', 'Suzuki']),
+  logo('twitter', 'File:Logo of Twitter.svg', 'Twitter', ['Facebook', 'Snapchat', 'Telegram', 'Pinterest']),
+  logo('instagram', 'File:Instagram logo 2016.svg', 'Instagram', ['TikTok', 'Snapchat', 'Pinterest', 'Flickr']),
+  logo('whatsapp', 'File:WhatsApp.svg', 'WhatsApp', ['Telegram', 'Signal', 'Viber', 'WeChat']),
+  logo('spotify', 'File:Spotify icon.svg', 'Spotify', ['Apple Music', 'SoundCloud', 'Deezer', 'Tidal']),
+  logo('target', 'File:Target Corporation logo (vector).svg', 'Target', ['Walmart', 'Costco', 'Kmart', 'Tesco']),
+  logo('youtube', 'File:YouTube full-color icon (2017).svg', 'YouTube', ['Netflix', 'Vimeo', 'Twitch', 'Dailymotion']),
+  logo('volkswagen', 'File:Volkswagen logo 2019.svg', 'Volkswagen', ['Volvo', 'Vauxhall', 'Škoda', 'SEAT']),
+  logo('microsoft', 'File:Windows logo - 2012.svg', 'Microsoft', ['Apple', 'IBM', 'Intel', 'Dell']),
+  logo('playstation', 'File:PlayStation logo.svg', 'PlayStation', ['Xbox', 'Nintendo', 'Sega', 'Atari']),
+  logo('firefox', 'File:Firefox logo, 2019.svg', 'Firefox', ['Google Chrome', 'Opera', 'Safari', 'Microsoft Edge']),
+  logo('chrome', 'File:Google Chrome icon (February 2022).svg', 'Google Chrome', ['Firefox', 'Opera', 'Safari', 'Microsoft Edge']),
+  logo('telegram', 'File:Telegram logo.svg', 'Telegram', ['WhatsApp', 'Signal', 'Viber', 'Messenger']),
+  logo('facebook', 'File:Facebook f logo (2019).svg', 'Facebook', ['Twitter', 'LinkedIn', 'Tumblr', 'Flickr']),
+  logo('dropbox', 'File:Dropbox Icon.svg', 'Dropbox', ['Google Drive', 'OneDrive', 'Box', 'iCloud']),
 
   // ── History ──
   // Israel and Palestine
@@ -921,6 +977,18 @@ export const QUESTIONS = [
   trivia('phelps', 'Who has won the most Olympic medals ever?', 'Michael Phelps', ['Larisa Latynina', 'Usain Bolt', 'Simone Biles', 'Carl Lewis']),
   trivia('saturn', 'Which planet is less dense than water, so it would float in a big enough bath?', 'Saturn', ['Jupiter', 'Neptune', 'Uranus', 'Mars'], 'Saturn'),
   trivia('lowest-land', 'Where is the lowest point on dry land on Earth?', 'The shore of the Dead Sea', ['Death Valley in California', 'The shore of the Caspian Sea', 'Lake Assal in Djibouti', 'The Qattara Depression']),
+
+  // ── Not what you think ──
+  unexpected('polar-bear-skin', "What colour is a polar bear's skin under its white fur?", 'Black', ['White', 'Pink', 'Grey', 'Brown'], 'Polar bear'),
+  unexpected('closest-planet', 'On average, which planet is closest to Earth?', 'Mercury', ['Venus', 'Mars', 'Jupiter', 'Saturn']),
+  unexpected('most-pyramids', 'Which country has the most ancient pyramids?', 'Sudan', ['Egypt', 'Mexico', 'Peru', 'Guatemala']),
+  unexpected('panama-hat', 'Panama hats are traditionally made in which country?', 'Ecuador', ['Panama', 'Colombia', 'Mexico', 'Cuba']),
+  unexpected('guinea-pig', 'Where do guinea pigs originally come from?', 'South America', ['Guinea', 'West Africa', 'New Guinea', 'India']),
+  unexpected('hundred-years-war', "How long did the Hundred Years' War last?", '116 years', ['100 years', '99 years', '50 years', '150 years']),
+  unexpected('october-revolution', "By today's calendar, in which month did Russia's October Revolution happen?", 'November', ['October', 'September', 'December', 'March']),
+  unexpected('deadliest-animal', 'Which animal kills the most people every year?', 'Mosquito', ['Shark', 'Snake', 'Lion', 'Crocodile']),
+  unexpected('koala', 'What kind of animal is a koala bear?', 'A marsupial', ['A bear', 'A rodent', 'A primate', 'A raccoon']),
+  unexpected('peanuts', 'What kind of plant food are peanuts?', 'Legumes', ['Nuts', 'Tubers', 'Grains', 'Berries']),
 ];
 
 export const QUESTION_BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));

@@ -220,6 +220,7 @@ export default {
   'vis.missingText': "Check your connection. Skipped questions don't count.",
   'vis.flagAlt': 'A national flag',
   'vis.photoAlt': 'Photo for this question',
+  'vis.logoAlt': 'A logo',
   'vis.countryAlt': "A country's outline",
   'vis.signAlt': 'A road sign',
   'vis.mapAria': 'Satellite map with a marker',
