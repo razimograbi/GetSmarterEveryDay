@@ -477,9 +477,19 @@ function tabbar(active) {
 const QUICK_HINT_VISITS = 5;
 let lastQuickHint = false;
 
-// The topic list starts folded so the Quick round card is the obvious thing to tap.
-// Remembered while the app is open, so the screen's redraws don't fold it again.
+// The home screen previews a few topics under the Quick round card, with a button to
+// show the rest. Opened stays opened while the app is open, so redraws don't fold it again.
+const TOPIC_PREVIEW = 3;
 let topicsOpen = false;
+// Topics the player has answered most come first, so the preview shows their own topics.
+// Kept between draws: stats are briefly missing after a round, and the list shouldn't jump.
+let topicOrder = CATEGORIES;
+
+function orderTopics(stats) {
+  if (!stats) return topicOrder;
+  const answered = Object.fromEntries(stats.byCategory.map((c) => [c.category, c.answered]));
+  return (topicOrder = [...CATEGORIES].sort((a, b) => (answered[b.id] || 0) - (answered[a.id] || 0)));
+}
 
 function takeQuickHint(userId) {
   const key = `smarts:${userId}:quickHintsShown`;
@@ -524,10 +534,9 @@ async function showHome() {
           <span class="quick-go" aria-hidden="true"><span>${esc(t('quick.play'))}</span>${ICONS.play}</span>
         </a>
 
-        <details class="all-topics" ${topicsOpen ? 'open' : ''}>
-        <summary class="section-title"><span class="all-topics-arrow" aria-hidden="true"></span>${esc(t('home.topics'))}</summary>
-        <ul class="topics">
-          ${CATEGORIES.map((c) => {
+        <h2 class="section-title">${esc(t('home.topics'))}</h2>
+        <ul class="topics ${topicsOpen ? '' : 'is-folded'}" id="topic-list">
+          ${orderTopics(stats).map((c) => {
             const m = mastered[c.id] || 0;
             const total = CAT_COUNT[c.id];
             return `
@@ -546,11 +555,25 @@ async function showHome() {
               </li>`;
           }).join('')}
         </ul>
-        </details>
+        <button type="button" class="see-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
+          <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
+          <span class="see-all-arrow" aria-hidden="true"></span>
+        </button>
       </section>
       ${tabbar('home')}`;
     app.querySelector('[data-lang-open]').addEventListener('click', (e) => openLangSheet(e.currentTarget));
-    app.querySelector('.all-topics').addEventListener('toggle', (e) => { topicsOpen = e.currentTarget.open; });
+    app.querySelector('.see-all').addEventListener('click', (e) => {
+      topicsOpen = !topicsOpen;
+      const btn = e.currentTarget;
+      app.querySelector('#topic-list').classList.toggle('is-folded', !topicsOpen);
+      btn.setAttribute('aria-expanded', String(topicsOpen));
+      btn.firstElementChild.textContent = topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length });
+      // Bring the rows that just appeared into view, above the floating tab bar, so it's
+      // clear something happened even on a short phone.
+      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const target = topicsOpen ? app.querySelector(`#topic-list > li:nth-child(${TOPIC_PREVIEW + 1})`) : app.querySelector('.section-title');
+      target?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: topicsOpen ? 'center' : 'start' });
+    });
   };
   const nav = navId;
   draw(state.stats);

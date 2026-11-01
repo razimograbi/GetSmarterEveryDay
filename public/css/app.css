@@ -376,29 +376,45 @@ code { font-family: var(--font-code); font-size: 0.9em; }
   .quick.is-hinting .quick-go::before, .quick.is-hinting .quick-go::after { display: none; }
 }
 
-.all-topics > summary {
+.topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+/* Folded: only the first three topics (TOPIC_PREVIEW in app.js) show. */
+.topics.is-folded > li:nth-child(n + 4) { display: none; }
+
+/* "See all 26 topics": an outlined pill under the preview, plainly a button. */
+.see-all {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  width: fit-content;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 14px;
+  padding: 12px 18px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
-  list-style: none;
-  user-select: none;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
-.all-topics > summary::-webkit-details-marker { display: none; }
-/* A chevron pointing to the reading end; turns down when the list is open. */
-.all-topics-arrow {
+.see-all:hover { background: rgba(255, 255, 255, 0.16); }
+.see-all:active { transform: scale(0.98); }
+.see-all:focus-visible { outline: 3px solid var(--marigold); outline-offset: 3px; }
+/* A chevron pointing down; turns up once the list is open. */
+.see-all-arrow {
   width: 9px;
   height: 9px;
+  margin-top: -4px;
   border: solid currentColor;
   border-width: 0 3px 3px 0;
-  transform: scaleX(var(--flip, 1)) rotate(-45deg);
+  transform: rotate(45deg);
   transition: transform 0.2s ease;
 }
-.all-topics[open] .all-topics-arrow { transform: scaleX(var(--flip, 1)) rotate(45deg); }
-@media (prefers-reduced-motion: reduce) { .all-topics-arrow { transition: none; } }
-
-.topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.see-all[aria-expanded="true"] .see-all-arrow { transform: rotate(-135deg); margin-top: 4px; }
+@media (prefers-reduced-motion: reduce) { .see-all, .see-all-arrow { transition: none; } }
 .topic {
   display: flex;
   align-items: center;
