@@ -10,5 +10,6 @@ import sapiens from './q-sapiens.js';
 import habits from './q-habits.js';
 import sayno from './q-sayno.js';
 import more from './q-more.js';
+import sport from './q-sport.js';
 
-export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno, ...more } };
+export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno, ...more, ...sport } };

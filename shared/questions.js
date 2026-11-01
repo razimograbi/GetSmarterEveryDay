@@ -4,7 +4,8 @@
 //
 // visual types:
 //   flag  { code }            ISO 3166-1 alpha-2, rendered from flagcdn.com
-//   wiki  { title }           lead image of an English Wikipedia article
+//   wiki  { title, logo?, hide? }  lead image of an English Wikipedia article (or a "File:…"); logo: shown on white;
+//                             hide: parts to blur, see hideParts in public/js/visuals.js
 //   map   { lat, lon, zoom }  satellite map with a marker in the centre
 //   country { iso }          country silhouette (ISO 3166-1 numeric), from world-atlas
 //   element { symbol, number, mass, family }  periodic-table tile
@@ -83,6 +84,10 @@ const beauty = wiki('beauty', 'What is this beauty product called?');
 const job = wiki('jobs', 'What job does this picture show?');
 // Logos without the brand's name in them, shown on white instead of as a photo.
 const logo = (slug, title, answer, wrong) => ({ ...wiki('logos', "Which brand's logo is this?")(slug, title, answer, wrong), visual: { type: 'wiki', title, logo: true } });
+// `hide` blurs the parts of the picture with the name written on it (see hideParts in public/js/visuals.js).
+const crest = (slug, title, answer, wrong, hide) => ({ ...wiki('clubs', "Which football club's crest is this?")(slug, title, answer, wrong), visual: { type: 'wiki', title, logo: true, ...(hide && { hide }) } });
+const footballer = wiki('footballers', 'Which football player is this?');
+const currency = (slug, title, answer, wrong, hide) => ({ ...wiki('currencies', 'Which currency is this?')(slug, title, answer, wrong), visual: { type: 'wiki', title, ...(hide && { hide }) } });
 
 const dog = wiki('dogs', 'Which dog breed is this?');
 const food = wiki('food', 'What dish is this?');
@@ -940,6 +945,112 @@ export const QUESTIONS = [
   logo('slack', 'File:Slack icon 2019.svg', 'Slack', ['Microsoft Teams', 'Trello', 'Asana', 'Google Photos']),
   logo('twitch', 'File:Twitch Glitch Logo Purple.svg', 'Twitch', ['Discord', 'Kick', 'Viber', 'Yahoo']),
   logo('opera', 'File:Opera 2015 icon.svg', 'Opera', ['Firefox', 'Brave', 'Vivaldi', 'Google Chrome']),
+
+  // ── Football clubs (40) ──
+  crest('real-madrid', 'File:Real Madrid CF.svg', 'Real Madrid', ['Atlético Madrid', 'FC Barcelona', 'Valencia', 'Sevilla']),
+  crest('barcelona', 'File:FC Barcelona (crest).svg', 'FC Barcelona', ['Real Madrid', 'Bayern Munich', 'Valencia', 'Atlético Madrid']),
+  crest('atletico', 'File:Atletico Madrid Logo 2024.svg', 'Atlético Madrid', ['Real Madrid', 'Sevilla', 'Athletic Bilbao', 'Valencia']),
+  crest('sevilla', 'File:Sevilla FC logo.svg', 'Sevilla', ['Valencia', 'Atlético Madrid', 'Athletic Bilbao', 'Real Betis']),
+  crest('juventus', 'File:Juventus FC - logo black (Italy, 2020).svg', 'Juventus', ['Inter Milan', 'AC Milan', 'Napoli', 'Lazio']),
+  crest('inter', 'File:FC Internazionale Milano 2021.svg', 'Inter Milan', ['Juventus', 'AC Milan', 'Atalanta', 'Napoli']),
+  crest('napoli', 'File:SSC Napoli 2025 (white and azure).svg', 'Napoli', ['Lazio', 'AS Roma', 'Inter Milan', 'Fiorentina']),
+  crest('marseille', 'File:Olympique de Marseille 2026 logo.svg', 'Marseille', ['Paris Saint-Germain', 'Lyon', 'Monaco', 'Lille']),
+  crest('ajax', 'File:Logo AFC Ajax (1928-1991, 2025-).png', 'Ajax', ['PSV Eindhoven', 'Feyenoord', 'AZ Alkmaar', 'Anderlecht']),
+  crest('galatasaray', 'File:Galatasaray S.K. Logo 2026 5-stars.svg', 'Galatasaray', ['Fenerbahçe', 'Beşiktaş', 'Trabzonspor', 'AS Roma']),
+  crest('boca', 'File:Boca Juniors logo18.svg', 'Boca Juniors', ['River Plate', 'Racing Club', 'Independiente', 'Santos']),
+  crest('river-plate', 'File:Club Atlético River Plate logo.svg', 'River Plate', ['Boca Juniors', 'Independiente', 'Racing Club', 'Flamengo']),
+  crest('flamengo', 'File:Clube de Regatas do Flamengo logo.svg', 'Flamengo', ['Santos', 'Corinthians', 'Palmeiras', 'River Plate']),
+  crest('santos', 'File:Santos Futebol Clube logo (with two stars and a golden crown).svg', 'Santos', ['Corinthians', 'Flamengo', 'Palmeiras', 'São Paulo']),
+  crest('al-hilal', 'File:Al Hilal SFC Logo.svg', 'Al Hilal', ['Al Nassr', 'Al Ittihad', 'Al Ahly', 'Zamalek']),
+  crest('porto', 'File:FC Porto.svg', 'Porto', ['Benfica', 'Sporting CP', 'Braga', 'Boavista']),
+  crest('benfica', 'File:SL Benfica logo.svg', 'Benfica', ['Porto', 'Sporting CP', 'Braga', 'Galatasaray']),
+  crest('milan', 'File:Logo of AC Milan.svg', 'AC Milan', ['Inter Milan', 'Juventus', 'AS Roma', 'Flamengo']),
+  crest('dortmund', 'File:Borussia Dortmund logo.svg', 'Borussia Dortmund', ['Bayern Munich', 'Bayer Leverkusen', 'RB Leipzig', 'Schalke 04']),
+  crest('sporting', 'File:Sporting Clube de Portugal logo (2026).svg', 'Sporting CP', ['Benfica', 'Porto', 'Celtic', 'Braga']),
+  crest('man-utd', 'File:Manchester United FC crest.svg', 'Manchester United', ['Manchester City', 'Liverpool', 'Arsenal', 'Nottingham Forest'], [{ ring: [0.5, 0.5, 0.5, 0.36] }]),
+  crest('man-city', 'File:Manchester City FC badge.svg', 'Manchester City', ['Manchester United', 'Chelsea', 'Everton', 'Tottenham Hotspur'], [{ ring: [0.5, 0.5, 0.5, 0.37] }]),
+  crest('liverpool', 'File:Liverpool FC.svg', 'Liverpool', ['Manchester United', 'Arsenal', 'Everton', 'Nottingham Forest'], [[0.1, 0.2, 0.8, 0.07], [0.22, 0.36, 0.56, 0.18]]),
+  crest('chelsea', 'File:Chelsea FC.svg', 'Chelsea', ['Everton', 'Manchester City', 'Tottenham Hotspur', 'Rangers'], [{ ring: [0.5, 0.5, 0.5, 0.36] }]),
+  crest('arsenal', 'File:Arsenal FC.svg', 'Arsenal', ['Manchester United', 'Liverpool', 'West Ham United', 'Nottingham Forest'], [[0.1, 0.05, 0.8, 0.3]]),
+  crest('newcastle', 'File:Newcastle United FC 2026 crest.svg', 'Newcastle United', ['Juventus', 'Tottenham Hotspur', 'Everton', 'Sunderland'], [[0, 0.78, 1, 0.2]]),
+  crest('aston-villa', 'File:Aston Villa FC new crest.svg', 'Aston Villa', ['West Ham United', 'Burnley', 'Rangers', 'Everton'], [[0.1, 0.78, 0.8, 0.12]]),
+  crest('west-ham', 'File:West Ham United FC logo.svg', 'West Ham United', ['Aston Villa', 'Burnley', 'Arsenal', 'Crystal Palace'], [[0.1, 0.05, 0.8, 0.28], [0.25, 0.82, 0.5, 0.1]]),
+  crest('tottenham', 'File:Tottenham Hotspur.svg', 'Tottenham Hotspur', ['Chelsea', 'Arsenal', 'Everton', 'Fulham'], [[0, 0.78, 1, 0.22]]),
+  crest('bayern', 'File:FC Bayern München logo (2024).svg', 'Bayern Munich', ['Borussia Dortmund', 'Bayer Leverkusen', 'RB Leipzig', 'Paris Saint-Germain'], [{ ring: [0.5, 0.5, 0.5, 0.33] }]),
+  crest('roma', 'File:AS Roma logo (2017).svg', 'AS Roma', ['Lazio', 'Napoli', 'Juventus', 'Fiorentina'], [[0.15, 0.55, 0.7, 0.15]]),
+  crest('psg', 'File:Paris Saint-Germain F.C..svg', 'Paris Saint-Germain', ['Marseille', 'Lyon', 'Monaco', 'Chelsea'], [[0.22, 0.12, 0.56, 0.18], [0.08, 0.66, 0.84, 0.2]]),
+  crest('celtic', 'File:Celtic FC crest.svg', 'Celtic', ['Rangers', 'Sporting CP', 'Hibernian', 'Aberdeen'], [{ ring: [0.5, 0.5, 0.5, 0.36] }]),
+  crest('rangers', 'File:Rangers FC.svg', 'Rangers', ['Celtic', 'Chelsea', 'Aberdeen', 'Everton'], [{ ring: [0.5, 0.5, 0.5, 0.34] }]),
+  crest('maccabi-tel-aviv', 'File:Maccabi Tel Aviv F.C. logo.svg', 'Maccabi Tel Aviv', ['Maccabi Haifa', 'Beitar Jerusalem', 'Hapoel Tel Aviv', 'Maccabi Netanya'], [{ ring: [0.5, 0.585, 0.49, 0.36] }]),
+  crest('maccabi-haifa', 'File:Maccabi Haifa F.C. logo.svg', 'Maccabi Haifa', ['Maccabi Tel Aviv', 'Hapoel Haifa', 'Beitar Jerusalem', 'Maccabi Netanya'], [{ ring: [0.5, 0.585, 0.5, 0.34] }]),
+  crest('beitar', 'File:Beitar Jerusalem F.C. logo.svg', 'Beitar Jerusalem', ['Maccabi Tel Aviv', 'Maccabi Haifa', 'Hapoel Jerusalem', 'Borussia Dortmund'], [[0.1, 0.15, 0.8, 0.3]]),
+  crest('inter-miami', 'File:Inter Miami CF logo.svg', 'Inter Miami', ['LA Galaxy', 'New York City FC', 'Orlando City', 'Atlanta United'], [{ ring: [0.5, 0.5, 0.5, 0.37] }, [0.33, 0.28, 0.34, 0.1]]),
+  crest('zamalek', 'File:Zamalek SC logo.svg', 'Zamalek', ['Al Ahly', 'Wydad', 'Al Hilal', 'Espérance de Tunis'], [[0.25, 0.6, 0.5, 0.35]]),
+  crest('al-ahly', 'File:Al Ahly SC logo.svg', 'Al Ahly', ['Zamalek', 'Wydad', 'Al Ittihad', 'Raja Casablanca'], [[0.25, 0.12, 0.5, 0.27]]),
+
+  // ── Football players (40) ──
+  footballer('mbappe', 'File:Kylian Mbappe France v Senegal 16 June 2026-391 (cropped).jpg', 'Kylian Mbappé', ['Vinícius Júnior', 'Ousmane Dembélé', 'Neymar', 'Achraf Hakimi']),
+  footballer('haaland', 'File:Erling Haaland Morocco v Norway 7 June 2026-51.jpg', 'Erling Haaland', ['Kevin De Bruyne', 'Harry Kane', 'Robert Lewandowski', 'Zlatan Ibrahimović']),
+  footballer('neymar', 'File:Neymar Junior Brazil V Morocco 13 June 2026-40.jpg', 'Neymar', ['Vinícius Júnior', 'Ronaldinho', 'Kaká', 'Lamine Yamal']),
+  footballer('salah', 'File:Mohamed Salah Argentina v Egypt 7 July 2026-163 (cropped).jpg', 'Mohamed Salah', ['Riyad Mahrez', 'Sadio Mané', 'Achraf Hakimi', 'Neymar']),
+  footballer('modric', 'File:Luka Modric Croatia v Portugal 2 July 2026-055.jpg', 'Luka Modrić', ['Andrés Iniesta', 'Kevin De Bruyne', 'Andrea Pirlo', 'Antoine Griezmann']),
+  footballer('lewandowski', 'File:Robert Lewandowski NYCFC v Chicago 25 July 2026-383.jpg', 'Robert Lewandowski', ['Erling Haaland', 'Harry Kane', 'Zlatan Ibrahimović', 'Manuel Neuer']),
+  footballer('de-bruyne', 'File:Kevin De Bruyne USMNT v Belgium Mar 28 2026-64 (cropped).jpg', 'Kevin De Bruyne', ['Erling Haaland', 'Manuel Neuer', 'Harry Kane', 'Arjen Robben']),
+  footballer('kane', 'File:Harry Kane England v Ghana 23 June 2026-024 (cropped).jpg', 'Harry Kane', ['Jude Bellingham', 'Wayne Rooney', 'David Beckham', 'Kevin De Bruyne']),
+  footballer('vinicius', 'File:Vinícius Júnior Brazil V Morocco 13 June 2026-207 (cropped).jpg', 'Vinícius Júnior', ['Neymar', 'Kylian Mbappé', 'Lamine Yamal', 'Ronaldinho']),
+  footballer('bellingham', 'File:Jude Bellingham England v Ghana 23 June 2026-061 (cropped).jpg', 'Jude Bellingham', ['Harry Kane', 'Vinícius Júnior', 'Paul Pogba', 'Kylian Mbappé']),
+  footballer('zlatan', 'File:Zlatan Ibrahimović nyc.jpg', 'Zlatan Ibrahimović', ['Robert Lewandowski', 'Paolo Maldini', 'Erling Haaland', 'Didier Drogba']),
+  footballer('pele', 'File:Pele con brasil (cropped).jpg', 'Pelé', ['Diego Maradona', 'Ronaldinho', 'Johan Cruyff', 'Ronaldo Nazário']),
+  footballer('maradona', 'File:Argentina celebrando copa (cropped).jpg', 'Diego Maradona', ['Pelé', 'Johan Cruyff', 'Lionel Messi', 'Franz Beckenbauer']),
+  footballer('zidane', 'File:Zinedine Zidane by Tasnim 03.jpg', 'Zinedine Zidane', ['Thierry Henry', 'Andrea Pirlo', 'Paolo Maldini', 'Didier Drogba']),
+  footballer('ronaldinho', 'File:Ronaldinho in 2019.jpg', 'Ronaldinho', ['Neymar', 'Ronaldo Nazário', 'Kaká', 'Pelé']),
+  footballer('beckham', 'File:David Beckham UNICEF (cropped2).jpg', 'David Beckham', ['Wayne Rooney', 'Harry Kane', 'Paolo Maldini', 'Thierry Henry']),
+  footballer('henry', 'File:Thierry Henry (51649035951) (cropped).jpg', 'Thierry Henry', ['Didier Drogba', 'Zinedine Zidane', 'Paul Pogba', 'Sadio Mané']),
+  footballer('kaka', 'File:Kaká visited Stadium St. Petersburg.jpg', 'Kaká', ['Ronaldinho', 'Neymar', 'Sergio Ramos', 'Andrés Iniesta']),
+  footballer('iniesta', 'File:Andrés Iniesta Argentina v Spain 19 July 2026-034 (cropped).jpg', 'Andrés Iniesta', ['Luka Modrić', 'Andrea Pirlo', 'Zinedine Zidane', 'Pedri']),
+  footballer('buffon', 'File:Norway Italy - June 2025 A 44 (Gianluigi Buffon).jpg', 'Gianluigi Buffon', ['Paolo Maldini', 'Andrea Pirlo', 'Manuel Neuer', 'Sergio Ramos']),
+  footballer('ramos', 'File:Sergio Ramos Interview 2021 (cropped).jpg', 'Sergio Ramos', ['Andrea Pirlo', 'Andrés Iniesta', 'Zlatan Ibrahimović', 'Paolo Maldini']),
+  footballer('pirlo', 'File:20150616 - Portugal - Italie - Genève - Andrea Pirlo (cropped).jpg', 'Andrea Pirlo', ['Paolo Maldini', 'Gianluigi Buffon', 'Sergio Ramos', 'Andrés Iniesta']),
+  footballer('rooney', 'File:Wayne Rooney (50121495731) (cropped).jpg', 'Wayne Rooney', ['David Beckham', 'Harry Kane', 'Steven Gerrard', 'Arjen Robben']),
+  footballer('griezmann', 'File:FRA-ARG (10) (cropped).jpg', 'Antoine Griezmann', ['Kylian Mbappé', 'Luka Modrić', 'Lamine Yamal', 'Pedri']),
+  footballer('pogba', 'File:Paul Pogba Cannes 2025.jpg', 'Paul Pogba', ['Thierry Henry', 'Didier Drogba', 'Kylian Mbappé', 'Sadio Mané']),
+  footballer('van-dijk', 'File:20160604 AUT NED 8876 (cropped).jpg', 'Virgil van Dijk', ['Arjen Robben', 'Thierry Henry', 'Paul Pogba', 'Achraf Hakimi']),
+  footballer('son', 'File:BFA 2023 -2 Heung-Min Son (cropped).jpg', 'Son Heung-min', ['Park Ji-sung', 'Kim Min-jae', 'Takefusa Kubo', 'Kaoru Mitoma']),
+  footballer('yamal', 'File:Lamine Yamal France v Spain 7.24.26-142.jpg', 'Lamine Yamal', ['Pedri', 'Vinícius Júnior', 'Achraf Hakimi', 'Kylian Mbappé']),
+  footballer('cruyff', 'File:Johan Cruijff (1974).jpg', 'Johan Cruyff', ['Franz Beckenbauer', 'Pelé', 'Diego Maradona', 'Paolo Maldini']),
+  footballer('beckenbauer', 'File:Franz Beckenbauer (1975).jpg', 'Franz Beckenbauer', ['Johan Cruyff', 'Pelé', 'Diego Maradona', 'Zinedine Zidane']),
+  footballer('ronaldo-nazario', 'File:12.12.2025 – Cerimônia de lançamento do SBT News - 54980664160 (cropped2).jpg', 'Ronaldo Nazário', ['Ronaldinho', 'Pelé', 'Neymar', 'Kaká']),
+  footballer('maldini', 'File:Paolo Maldini AC Milan Technical director 2018.jpg', 'Paolo Maldini', ['Gianluigi Buffon', 'Andrea Pirlo', 'Zlatan Ibrahimović', 'Sergio Ramos']),
+  footballer('robben', 'File:2019147183036 2019-05-27 Fussball 1.FC Kaiserslautern vs FC Bayern München - Sven - 1D X MK II - 0196 - B70I8495 (cropped).jpg', 'Arjen Robben', ['Kevin De Bruyne', 'Manuel Neuer', 'Virgil van Dijk', 'Wayne Rooney']),
+  footballer('drogba', 'File:Didier Drogba (2019) (cropped2).jpg', 'Didier Drogba', ['Thierry Henry', 'Paul Pogba', 'Sadio Mané', 'Mohamed Salah']),
+  footballer('neuer', 'File:Manuel Neuer Ecuador v Germany 25 June 2026-148.jpg', 'Manuel Neuer', ['Kevin De Bruyne', 'Erling Haaland', 'Gianluigi Buffon', 'Arjen Robben']),
+  footballer('mahrez', 'File:Mahrez 2021.jpg', 'Riyad Mahrez', ['Mohamed Salah', 'Achraf Hakimi', 'Sadio Mané', 'Karim Benzema']),
+  footballer('hakimi', 'File:Achraf Hakimi Morocco v Norway 7 June 2026-32.jpg', 'Achraf Hakimi', ['Riyad Mahrez', 'Mohamed Salah', 'Lamine Yamal', 'Vinícius Júnior']),
+  footballer('mane', 'File:Sadio Mane France v Senegal 16 June 2026-450.jpg', 'Sadio Mané', ['Didier Drogba', 'Mohamed Salah', 'Paul Pogba', 'Thierry Henry']),
+  footballer('bale', 'File:2022 FIFA World Cup United States 1–1 Wales - (32) (cropped).jpg', 'Gareth Bale', ['Harry Kane', 'Wayne Rooney', 'David Beckham', 'Kevin De Bruyne']),
+  footballer('pedri', 'File:Pedri France v Spain 7.24.26-245.jpg', 'Pedri', ['Lamine Yamal', 'Andrés Iniesta', 'Antoine Griezmann', 'Luka Modrić']),
+
+  // ── Currencies (20): one banknote each, with the currency's name, symbol and the bank's name blurred ──
+  currency('usd', 'File:Series 2025 USD 100.jpg', 'US dollar', ['Canadian dollar', 'Australian dollar', 'Euro', 'Pound sterling'], [[0.44, 0, 0.37, 0.3], [0.04, 0.13, 0.33, 0.1], [0.27, 0.88, 0.24, 0.12]]),
+  currency('eur', 'File:The Europa series 50 € obverse side.png', 'Euro', ['Swiss franc', 'Pound sterling', 'Swedish krona', 'Polish złoty'], [[0.33, 0.66, 0.21, 0.32], [0.025, 0.03, 0.055, 0.95]]),
+  currency('gbp', 'File:Bank of England £20 Series G II obverse.jpg', 'Pound sterling', ['Euro', 'Australian dollar', 'Canadian dollar', 'Swiss franc'], [[0.39, 0.08, 0.33, 0.2], [0.36, 0.64, 0.36, 0.33], [0.19, 0.85, 0.13, 0.1], [0.01, 0.03, 0.06, 0.18]]),
+  currency('jpy', 'File:Series F 10000 yen front.jpg', 'Japanese yen', ['Chinese yuan', 'South Korean won', 'Thai baht', 'Indian rupee'], [[0.08, 0, 0.46, 0.15], [0.17, 0.5, 0.22, 0.15]]),
+  currency('chf', 'File:CHF 100 9 front.jpg', 'Swiss franc', ['Euro', 'Swedish krona', 'Pound sterling', 'Danish krone'], [[0.55, 0, 0.45, 0.12], [0.55, 0.6, 0.45, 0.4]]),
+  currency('inr', 'File:India new 500 INR, MG series, 2016, obverse.jpg', 'Indian rupee', ['Pakistani rupee', 'Thai baht', 'Egyptian pound', 'Indonesian rupiah'], [[0.07, 0.03, 0.85, 0.22], [0.715, 0.62, 0.06, 0.22], [0.07, 0.6, 0.08, 0.15]]),
+  currency('rub', 'File:5000 rubles obverse 2023.jpg', 'Russian ruble', ['Polish złoty', 'Turkish lira', 'Ukrainian hryvnia', 'Czech koruna'], [[0.1, 0.04, 0.43, 0.14], [0.39, 0.74, 0.53, 0.24]]),
+  currency('ils', 'File:200 Israeli new shekel in 2015 Obverse.jpg', 'Israeli shekel', ['Jordanian dinar', 'Egyptian pound', 'Turkish lira', 'Euro'], [[0.09, 0.75, 0.13, 0.21], [0.46, 0.55, 0.08, 0.4]]),
+  currency('try', 'File:200 Türk Lirası front.jpg', 'Turkish lira', ['Russian ruble', 'Egyptian pound', 'Israeli shekel', 'Polish złoty'], [[0.02, 0, 0.55, 0.13], [0.33, 0.43, 0.24, 0.32]]),
+  currency('cad', 'File:Canadian $50 note specimen - face.png', 'Canadian dollar', ['US dollar', 'Australian dollar', 'Pound sterling', 'New Zealand dollar'], [[0.06, 0.03, 0.25, 0.15], [0.01, 0.2, 0.07, 0.6], [0.6, 0.05, 0.12, 0.62], [0.82, 0.33, 0.1, 0.6]]),
+  currency('aud', 'File:2018 Australian fifty dollar note obverse.jpg', 'Australian dollar', ['New Zealand dollar', 'Canadian dollar', 'US dollar', 'South African rand'], [[0.01, 0.55, 0.25, 0.45], [0.91, 0.33, 0.07, 0.35]]),
+  currency('brl', 'File:100 Brazil real First Obverse.jpg', 'Brazilian real', ['Mexican peso', 'Argentine peso', 'Euro', 'Chilean peso'], [[0.01, 0.02, 0.52, 0.14], [0.17, 0.74, 0.31, 0.23]]),
+  currency('mxn', 'File:Banco de México G $500 obverse.png', 'Mexican peso', ['Brazilian real', 'Argentine peso', 'Chilean peso', 'US dollar'], [[0.3, 0.02, 0.27, 0.23], [0.74, 0.86, 0.21, 0.13]]),
+  currency('egp', 'File:EGP 100 Pounds 2015 (Front).jpg', 'Egyptian pound', ['Jordanian dinar', 'Saudi riyal', 'Moroccan dirham', 'UAE dirham'], [[0.43, 0.16, 0.4, 0.42]]),
+  currency('krw', 'File:50000 KRW 2009 ob.jpg', 'South Korean won', ['Japanese yen', 'Chinese yuan', 'Thai baht', 'Indonesian rupiah'], [[0.4, 0.04, 0.2, 0.34], [0.42, 0.64, 0.2, 0.14]]),
+  currency('mad', 'File:Front 200 Dirham.jpg', 'Moroccan dirham', ['UAE dirham', 'Egyptian pound', 'Jordanian dinar', 'Tunisian dinar'], [[0.3, 0.3, 0.27, 0.14], [0.26, 0.55, 0.38, 0.22]]),
+  currency('jod', 'File:20 Twenty Dinars Front (2022).png', 'Jordanian dinar', ['Saudi riyal', 'Egyptian pound', 'UAE dirham', 'Kuwaiti dinar'], [[0.23, 0, 0.4, 0.2], [0.27, 0.3, 0.36, 0.24]]),
+  currency('thb', 'File:1000bahtseries15.jpg', 'Thai baht', ['Indian rupee', 'Japanese yen', 'Indonesian rupiah', 'South Korean won'], [[0.1, 0.2, 0.2, 0.42]]),
+  currency('sar', 'File:500 Saudi Riyal banknote.jpg', 'Saudi riyal', ['UAE dirham', 'Jordanian dinar', 'Egyptian pound', 'Qatari riyal'], [[0.24, 0, 0.43, 0.11], [0.3, 0.2, 0.38, 0.14], [0.13, 0.48, 0.42, 0.14], [0.72, 0.87, 0.28, 0.13]]),
+  currency('cny', 'File:Banknotes YuanRPC.png', 'Chinese yuan', ['Japanese yen', 'South Korean won', 'Hong Kong dollar', 'Thai baht']), // six small notes; their writing is too small to read
 
   // ── History ──
   // Israel and Palestine

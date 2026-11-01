@@ -105,14 +105,65 @@ export function wikiImage(title) {
   return p;
 }
 
-function loadImg(src) {
+function loadImg(src, cors = false) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    if (cors) img.crossOrigin = 'anonymous';
     img.decoding = 'async';
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
   });
+}
+
+// ── Hidden parts ───────────────────────────────────────────────
+// Blurs the parts of a picture that would give the answer away, like a name written on a
+// banknote or around a crest. Shapes are fractions of the picture: [x, y, w, h] boxes, or
+// { ring: [cx, cy, outer, inner] } for lettering around a round badge (radii as fractions of the width).
+// Returns a new image address, or a canvas when the picture's server doesn't allow reading it back.
+
+async function hideParts(src, shapes, transparent) {
+  const img = await loadImg(src, true).catch(() => loadImg(src));
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!transparent) {
+    ctx.fillStyle = '#fff'; // a see-through photo would otherwise turn black as a JPEG
+    ctx.fillRect(0, 0, w, h);
+  }
+  ctx.drawImage(img, 0, 0);
+  // Shrinking the picture to a few dozen pixels and stretching it back blurs it the same way in every browser.
+  const tiny = document.createElement('canvas');
+  tiny.width = Math.max(4, Math.round(w / 64));
+  tiny.height = Math.max(4, Math.round(h / 64));
+  tiny.getContext('2d').drawImage(img, 0, 0, tiny.width, tiny.height);
+  ctx.save();
+  ctx.beginPath();
+  for (const s of shapes) {
+    if (Array.isArray(s)) {
+      ctx.rect(s[0] * w, s[1] * h, s[2] * w, s[3] * h);
+    } else {
+      const [cx, cy, outer, inner] = s.ring;
+      ctx.moveTo((cx + outer) * w, cy * h);
+      ctx.arc(cx * w, cy * h, outer * w, 0, 2 * Math.PI);
+      ctx.moveTo((cx + inner) * w, cy * h);
+      ctx.arc(cx * w, cy * h, inner * w, 0, 2 * Math.PI, true); // drawn the other way, so the middle stays sharp
+    }
+  }
+  ctx.clip();
+  if (transparent) ctx.clearRect(0, 0, w, h);
+  ctx.imageSmoothingQuality = 'high';
+  if ('filter' in ctx) ctx.filter = `blur(${Math.round(w / 60)}px)`;
+  ctx.drawImage(tiny, 0, 0, w, h);
+  ctx.restore();
+  try {
+    return { src: canvas.toDataURL(transparent ? 'image/png' : 'image/jpeg', 0.9) };
+  } catch {
+    return { src, canvas };
+  }
 }
 
 // ── Satellite map ──────────────────────────────────────────────
@@ -262,10 +313,12 @@ export function render(q) {
               const { src, fallback } = await wikiImage(v.title);
               try { img = await loadImg(best(src)); } catch { img = await loadImg(fallback); }
             }
+            const { src: shown, canvas } = v.hide ? await hideParts(img.src, v.hide, v.logo) : { src: img.src };
             box.innerHTML = `
-              ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${img.src.replace(/'/g, '%27')}')"></div>`}
-              <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(img.src)}">
+              ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${shown.replace(/'/g, '%27')}')"></div>`}
+              <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(shown)}">
               <small class="photo-credit">Wikipedia</small>`;
+            if (canvas) box.querySelector('.photo-img').replaceWith(Object.assign(canvas, { className: 'photo-img' }));
           } catch {
             forgetWikiImage(v.title); // try a fresh lookup next time
             box.innerHTML = missingHtml();
