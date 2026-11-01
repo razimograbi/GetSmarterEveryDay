@@ -356,7 +356,7 @@ export const QUESTIONS = [
   animal('sloth', 'Brown-throated sloth', 'Sloth', ['Koala', 'Anteater', 'Lemur', 'Orangutan']),
   animal('meerkat', 'Meerkat', 'Meerkat', ['Mongoose', 'Prairie dog', 'Ground squirrel', 'Weasel']),
 
-  // ── Cars (15) ────────────────────────────────────────────────
+  // ── Cars (25) ────────────────────────────────────────────────
   car('beetle', 'Volkswagen Beetle', 'Volkswagen Beetle', ['Fiat 500', 'Porsche 356', 'Renault 4CV', 'Citroën 2CV']),
   car('2cv', 'Citroën 2CV', 'Citroën 2CV', ['Renault 4', 'Fiat 500', 'Volkswagen Beetle', 'Trabant 601']),
   car('mini', 'Mini', 'Mini', ['Fiat 500', 'Hillman Imp', 'Fiat 126', 'Austin Metro']),
@@ -372,6 +372,16 @@ export const QUESTIONS = [
   car('g-class', 'Mercedes-Benz G-Class', 'Mercedes-Benz G-Class', ['Land Rover Defender', 'Jeep Wrangler', 'Toyota Land Cruiser', 'Lada Niva']),
   car('veyron', 'Bugatti Veyron', 'Bugatti Veyron', ['Bugatti Chiron', 'Pagani Zonda', 'Koenigsegg Agera', 'McLaren P1']),
   car('type-2', 'Volkswagen Type 2', 'Volkswagen Type 2', ['Fiat Multipla', 'Ford Transit', 'Citroën H Van', 'Renault Estafette']),
+  car('golf', 'Volkswagen Golf', 'Volkswagen Golf', ['Volkswagen Polo', 'Ford Focus', 'Opel Astra', 'SEAT León']),
+  car('model-t', 'Ford Model T', 'Ford Model T', ['Ford Model A', 'Austin 7', 'Buick Model 10', 'Oldsmobile Curved Dash']),
+  car('mx-5', 'Mazda MX-5', 'Mazda MX-5', ['Fiat 124 Spider', 'Toyota MR2', 'Honda S2000', 'BMW Z4']),
+  car('f40', 'Ferrari F40', 'Ferrari F40', ['Ferrari Testarossa', 'Lamborghini Countach', 'Porsche 959', 'Jaguar XJ220']),
+  car('e-type', 'Jaguar E-Type', 'Jaguar E-Type', ['Aston Martin DB5', 'Austin-Healey 3000', 'Triumph TR6', 'Mercedes-Benz 300 SL']),
+  car('fortwo', 'Smart Fortwo', 'Smart Fortwo', ['Fiat 500', 'Toyota iQ', 'Mini', 'Renault Twingo']),
+  car('gt-r', 'Nissan GT-R', 'Nissan GT-R', ['Toyota Supra', 'Honda NSX', 'Mazda RX-7', 'Mitsubishi Lancer Evolution']),
+  car('range-rover', 'Range Rover', 'Range Rover', ['Land Rover Discovery', 'Mercedes-Benz GLS', 'Volvo XC90', 'BMW X7']),
+  car('corvette', 'Chevrolet Corvette', 'Chevrolet Corvette', ['Ford GT', 'Dodge Viper', 'Chevrolet Camaro', 'Porsche 911']),
+  car('aventador', 'Lamborghini Aventador', 'Lamborghini Aventador', ['Lamborghini Huracán', 'Ferrari 812', 'McLaren 720S', 'Bugatti Chiron']),
 
   // ── Programming languages (20) ───────────────────────────────
   code('python', 'def greet(name):\n    print(f"Hello, {name}!")\n\ngreet("Ana")', 'Python', ['Ruby', 'Julia', 'Nim', 'CoffeeScript']),
@@ -863,6 +873,17 @@ export const QUESTIONS = [
   beauty('electric-shaver', 'File:Philips Series 7000 shaver head.jpg', 'Electric shaver', ['Epilator', 'Hair clipper', 'Facial cleansing brush', 'Safety razor']),
   beauty('hair-clipper', 'File:2023 Trymer.jpg', 'Hair clipper', ['Electric shaver', 'Epilator', 'Hair straightener', 'Curling iron']),
   beauty('cuticle-nippers', 'File:Cuticle nipper stainless steel.JPG', 'Cuticle nippers', ['Nail clippers', 'Tweezers', 'Eyelash curler', 'Hair clip']),
+  // Makeup
+  beauty('blush', 'File:Cream Blusher - Κρεμώδες ρουζ.jpg', 'Blush', ['Bronzer', 'Lipstick', 'Concealer', 'Eye shadow']),
+  beauty('bronzer', 'File:Bronzer & Bronzing Brushes - 50888164882.jpg', 'Bronzer', ['Concealer', 'Foundation', 'Setting spray', 'Lip gloss']),
+  beauty('concealer', 'File:Concealer.jpg', 'Concealer', ['Mascara', 'Nail polish', 'Eyebrow gel', 'Liquid eyeliner']),
+  beauty('lip-liner', 'File:Applying lip liner in a beauty setting during a makeup session.jpg', 'Lip liner', ['Eyeliner', 'Eyebrow pencil', 'Lip balm', 'Kohl stick']),
+  beauty('powder-puff', 'File:Makeup Powder Puffs - Πομ πον μακιγιαζ.JPG', 'Powder puff', ['Cotton pads', 'Sheet masks', 'Nail buffer', 'Bath bomb']),
+  beauty('powder-compact', 'File:Stratton powder compact 02.JPG', 'Powder compact', ['Pocket watch', 'Lip balm tin', 'Pill box', 'Eye shadow']),
+  beauty('kabuki-brush', 'File:Lg-kabuki-brush.jpg', 'Kabuki brush', ['Paintbrush', 'Nail brush', 'Mascara wand', 'Hairbrush']),
+  beauty('makeup-bag', 'File:016Aa. Cosmetic bag.jpg', 'Makeup bag', ['Pencil case', 'Wallet', 'Lunch bag', 'Clutch purse']),
+  beauty('liquid-eyeliner', 'File:Liquid eye liner.jpg', 'Liquid eyeliner', ['Nail polish', 'Mascara', 'Lip gloss', 'Eyebrow gel']),
+  beauty('vanity-mirror', 'File:Mirror (Unsplash).jpg', 'Vanity mirror', ['Ring light', 'Lightbox', 'Medicine cabinet', 'Photo booth']),
 
   // ── Professions ──
   job('firefighter', 'File:FiremenFightBurningBarn.jpg', 'Firefighter', ['Police officer', 'Paramedic', 'Soldier', 'Miner']),
@@ -875,6 +896,17 @@ export const QUESTIONS = [
   job('welder', 'File:AlfredPalmerwelder1.jpg', 'Welder', ['Blacksmith', 'Firefighter', 'Electrician', 'Miner']),
   job('baker', 'File:USS John C. Stennis baker.jpg', 'Baker', ['Butcher', 'Chef', 'Waiter', 'Farmer']),
   job('jockey', 'File:Tony dobbin.jpg', 'Jockey', ['Cowboy', 'Horse trainer', 'Polo player', 'Vet']),
+  // Harder: crafts and rarer trades
+  job('farrier', 'File:Farrier putting new shoes on a horse.jpg', 'Farrier', ['Vet', 'Horse trainer', 'Saddler', 'Groom']),
+  job('glassblower', 'File:Glassblower in Florida.jpg', 'Glassblower', ['Blacksmith', 'Welder', 'Potter', 'Jeweller']),
+  job('sommelier', 'File:Sommelier decanting and serving wine at a restaurant.jpg', 'Sommelier', ['Butler', 'Bartender', 'Barista', 'Chef']),
+  job('luthier', 'File:In the workshop of a luthier 03.jpg', 'Luthier', ['Carpenter', 'Cabinetmaker', 'Piano tuner', 'Woodcarver']),
+  job('chimney-sweep', 'File:Chimney sweep modern.jpg', 'Chimney sweep', ['Roofer', 'Window cleaner', 'Electrician', 'Antenna installer']),
+  job('stonemason', 'File:Carving 11-edited.jpg', 'Stonemason', ['Bricklayer', 'Miner', 'Plasterer', 'Jeweller']),
+  job('watchmaker', 'File:Watchmaker uk.jpg', 'Watchmaker', ['Optician', 'Dentist', 'Lab technician', 'Electrician']),
+  job('falconer', "File:Falconer with Harris's Hawk in San Gimignano, Italy (2).jpg", 'Falconer', ['Zookeeper', 'Beekeeper', 'Hunter', 'Shepherd']),
+  job('cobbler', 'File:Cobbler repairing shoes in old workshop (Bazaar in Bitola, Macedonia, 2025).jpg', 'Cobbler', ['Tailor', 'Saddler', 'Bookbinder', 'Upholsterer']),
+  job('air-traffic-controller', 'File:Air traffic controller Skyguide at Airport Zurich.jpg', 'Air traffic controller', ['Pilot', 'Radio presenter', 'Security guard', 'Train dispatcher']),
 
   // ── Company logos (symbol-only versions from Wikimedia Commons) ──
   logo('apple', 'File:Apple logo black.svg', 'Apple', ['Samsung', 'Huawei', 'Xiaomi', 'Sony']),
@@ -897,6 +929,17 @@ export const QUESTIONS = [
   logo('telegram', 'File:Telegram logo.svg', 'Telegram', ['WhatsApp', 'Signal', 'Viber', 'Messenger']),
   logo('facebook', 'File:Facebook f logo (2019).svg', 'Facebook', ['Twitter', 'LinkedIn', 'Tumblr', 'Flickr']),
   logo('dropbox', 'File:Dropbox Icon.svg', 'Dropbox', ['Google Drive', 'OneDrive', 'Box', 'iCloud']),
+  // Harder: emblems you've seen but may not place
+  logo('subaru', 'File:Subaru Logo Abstraktion.svg', 'Subaru', ['Mazda', 'Suzuki', 'Isuzu', 'Daihatsu']),
+  logo('citroen', 'File:Citroen 2021 (alternate).svg', 'Citroën', ['Peugeot', 'Renault', 'Opel', 'Chevrolet']),
+  logo('hyundai', 'File:Hyundai symbol.svg', 'Hyundai', ['Honda', 'Kia', 'Genesis', 'Haval']),
+  logo('renault', 'File:Renault 2021.svg', 'Renault', ['Citroën', 'Peugeot', 'Dacia', 'Mitsubishi']),
+  logo('chevrolet', 'File:Chevrolet bowtie 2023.svg', 'Chevrolet', ['Ford', 'Buick', 'Dodge', 'Cadillac']),
+  logo('shell', 'File:Shell logo.svg', 'Shell', ['BP', 'TotalEnergies', 'Chevron', 'ExxonMobil']),
+  logo('jordan', 'File:Jumpman logo.svg', 'Air Jordan', ['Spalding', 'Converse', 'Reebok', 'And1']),
+  logo('slack', 'File:Slack icon 2019.svg', 'Slack', ['Microsoft Teams', 'Trello', 'Asana', 'Google Photos']),
+  logo('twitch', 'File:Twitch Glitch Logo Purple.svg', 'Twitch', ['Discord', 'Kick', 'Viber', 'Yahoo']),
+  logo('opera', 'File:Opera 2015 icon.svg', 'Opera', ['Firefox', 'Brave', 'Vivaldi', 'Google Chrome']),
 
   // ── History ──
   // Israel and Palestine

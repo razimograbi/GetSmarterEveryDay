@@ -18,6 +18,22 @@ export default {
   Scrunchies: 'ربطات شعر قماشية', 'Sea sponge': 'إسفنج بحري', 'Self-tanner': 'كريم تسمير ذاتي', 'Shaving brush': 'فرشاة حلاقة',
   'Sheet masks': 'أقنعة ورقية للوجه', 'Soap bar': 'قالب صابون', 'Soap bars': 'قوالب صابون', 'Straight razor': 'موس حلاقة',
   Tattoos: 'وشوم', 'Toe separator': 'فاصل أصابع القدم', 'Toe separators': 'فواصل أصابع القدم',
+  // Makeup
+  'Liquid eyeliner': 'آيلاينر سائل', 'Powder compact': 'علبة بودرة', 'Pocket watch': 'ساعة جيب', 'Lip balm tin': 'علبة مرطب شفاه',
+  'Pill box': 'علبة أقراص', 'Kabuki brush': 'فرشاة كابوكي', Paintbrush: 'فرشاة رسم', 'Makeup bag': 'حقيبة مكياج',
+  'Pencil case': 'مقلمة', Wallet: 'محفظة', 'Lunch bag': 'حقيبة طعام', 'Clutch purse': 'حقيبة يد صغيرة',
+  'Vanity mirror': 'مرآة تجميل', 'Ring light': 'إضاءة حلقية', Lightbox: 'صندوق إضاءة', 'Medicine cabinet': 'خزانة أدوية',
+  'Photo booth': 'كشك تصوير',
+
+  // Professions (harder)
+  Farrier: 'بيطار', Saddler: 'سرّاج', Groom: 'سائس خيل', Glassblower: 'نافخ زجاج', Potter: 'فخّاري', Jeweller: 'صائغ',
+  Sommelier: 'خبير نبيذ', Butler: 'كبير الخدم', Bartender: 'نادل بار', Barista: 'باريستا', Luthier: 'صانع آلات وترية',
+  Carpenter: 'نجّار', Cabinetmaker: 'نجّار أثاث', 'Piano tuner': 'مدوزن بيانو', Woodcarver: 'نحّات خشب',
+  'Chimney sweep': 'منظّف مداخن', Roofer: 'عامل أسقف', 'Window cleaner': 'منظّف نوافذ', 'Antenna installer': 'مركّب هوائيات',
+  Stonemason: 'حجّار', Bricklayer: 'بنّاء', Plasterer: 'عامل لياسة', Watchmaker: 'ساعاتي', Falconer: 'صقّار',
+  Zookeeper: 'حارس حديقة حيوان', Hunter: 'صيّاد', Shepherd: 'راعي غنم', Cobbler: 'إسكافي', Bookbinder: 'مجلّد كتب',
+  Upholsterer: 'منجّد', 'Air traffic controller': 'مراقب جوي', 'Radio presenter': 'مذيع راديو', 'Security guard': 'حارس أمن',
+  'Train dispatcher': 'منسّق حركة القطارات',
 
   // Company logos
   "Which brand's logo is this?": 'لأي علامة تجارية هذا الشعار؟',

@@ -18,6 +18,22 @@ export default {
   Scrunchies: 'גומיות בד', 'Sea sponge': 'ספוג ים', 'Self-tanner': 'קרם שיזוף עצמי', 'Shaving brush': 'מברשת גילוח',
   'Sheet masks': 'מסכות בד לפנים', 'Soap bar': 'סבון מוצק', 'Soap bars': 'סבונים מוצקים', 'Straight razor': 'תער',
   Tattoos: 'קעקועים', 'Toe separator': 'מפריד אצבעות', 'Toe separators': 'מפרידי אצבעות',
+  // Makeup
+  'Liquid eyeliner': 'אייליינר נוזלי', 'Powder compact': 'פודריה', 'Pocket watch': 'שעון כיס', 'Lip balm tin': 'קופסת באלם לשפתיים',
+  'Pill box': 'קופסת כדורים', 'Kabuki brush': 'מברשת קבוקי', Paintbrush: 'מכחול', 'Makeup bag': 'תיק איפור',
+  'Pencil case': 'קלמר', Wallet: 'ארנק', 'Lunch bag': 'תיק אוכל', 'Clutch purse': "תיק קלאץ'",
+  'Vanity mirror': 'מראת איפור', 'Ring light': 'טבעת תאורה', Lightbox: 'קופסת אור', 'Medicine cabinet': 'ארון תרופות',
+  'Photo booth': 'תא צילום',
+
+  // Professions (harder)
+  Farrier: 'מפרזל', Saddler: 'יצרן אוכפים', Groom: 'סייס', Glassblower: 'מנפח זכוכית', Potter: 'קדר', Jeweller: 'צורף',
+  Sommelier: 'סומלייה', Butler: 'משרת ראשי', Bartender: 'ברמן', Barista: 'בריסטה', Luthier: 'בונה כלי מיתר',
+  Carpenter: 'נגר', Cabinetmaker: 'נגר רהיטים', 'Piano tuner': 'מכוון פסנתרים', Woodcarver: 'גלף עץ',
+  'Chimney sweep': 'מנקה ארובות', Roofer: 'גגן', 'Window cleaner': 'מנקה חלונות', 'Antenna installer': 'מתקין אנטנות',
+  Stonemason: 'סתת', Bricklayer: 'בנאי', Plasterer: 'טייח', Watchmaker: 'שען', Falconer: 'מאלף בזים',
+  Zookeeper: 'שומר בגן חיות', Hunter: 'צייד', Shepherd: 'רועה צאן', Cobbler: 'סנדלר', Bookbinder: 'כורך ספרים',
+  Upholsterer: 'רפד', 'Air traffic controller': 'פקח טיסה', 'Radio presenter': 'שדר רדיו', 'Security guard': 'מאבטח',
+  'Train dispatcher': 'סדרן רכבות',
 
   // Company logos
   "Which brand's logo is this?": 'של איזה מותג הלוגו הזה?',
