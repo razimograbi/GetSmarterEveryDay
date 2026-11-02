@@ -28,15 +28,52 @@ export const REPORT_REASONS = [
 ];
 export const REPORT_NOTE_MAX = 500;
 
-// Points: a correct answer is worth BASE plus up to SPEED_BONUS for answering fast.
-export const SCORING = { base: 100, speedBonus: 50 };
+// The Daily Challenge: the same questions for everyone on a calendar day (each player's own
+// day, like Wordle). Daily #1 was played on `start`. Picked from easy to hard.
+export const DAILY = { start: '2026-11-01', questions: 10 };
+
+// Duels: two players answer the same questions, each when they like.
+export const DUEL = { questions: 10, maxOpen: 20 };
+
+// Profiles shown to other players.
+export const PROFILE = { nameMax: 20, maxFriends: 200 };
+
+// Push reminders: "Today's Daily is ready" goes out at this local hour.
+export const REMINDER_HOUR = 9;
+
+/** Today's date in a time zone (minutes behind UTC, as from getTimezoneOffset()), as "YYYY-MM-DD". */
+export const localDate = (tzOffsetMin = 0, now = Date.now()) => new Date(now - tzOffsetMin * 60_000).toISOString().slice(0, 10);
+
+/** The Daily's number for a date: #1 on DAILY.start. */
+export const dailyNumber = (date) => Math.round((Date.parse(date) - Date.parse(DAILY.start)) / 86_400_000) + 1;
+
+// Things players do, logged in the `events` table and counted on the admin Players page.
+// `client: true` events are sent by the browser (POST /api/events); the rest are recorded
+// by the server itself, so nobody can fake them: a round is "finished" when the server
+// grades it, and ads and purchases count only once the ad network or payment provider confirms.
+export const EVENTS = {
+  round_started: { client: true },
+  round_finished: {},
+  helper_used: { client: true },
+  ad_offered: { client: true },
+  ad_watched: {},
+  purchase: {},
+};
+
+// Points: a right answer is worth `base`, plus a speed bonus of `speedBonus` points shared out
+// evenly over the time: answer in the first third of the time for 2, the middle third for 1,
+// the last third for 0. A wrong answer or running out of time scores 0. So 0–3 per question.
+export const SCORING = { base: 1, speedBonus: 2 };
 
 export function pointsFor(correct, ms, seconds) {
   if (!correct) return 0;
   const limit = seconds * 1000;
-  const left = Math.max(0, Math.min(1, 1 - ms / limit));
-  return SCORING.base + Math.round(SCORING.speedBonus * left);
+  const band = Math.floor((Math.max(0, ms) * (SCORING.speedBonus + 1)) / limit); // 0 = first third of the time
+  return SCORING.base + Math.max(0, SCORING.speedBonus - band);
 }
+
+/** The most points one question can give. */
+export const MAX_POINTS = SCORING.base + SCORING.speedBonus;
 
 export const CATEGORIES = [
   { id: 'flags', name: 'Flags', blurb: 'Tell the tricolours apart', hue: '#E8414F' },

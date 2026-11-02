@@ -12,6 +12,8 @@
 //   sign  { id }              road sign drawn in SVG (public/js/signs.js)
 //   code  { text }            code snippet
 
+import { applyDifficulty } from './difficulty.js';
+
 const flag = (code, answer, wrong) => ({
   id: `flag-${code}`,
   cat: 'flags',
@@ -1146,3 +1148,6 @@ export const QUESTIONS = [
 ];
 
 export const QUESTION_BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
+
+// How hard each question is (0–10), from shared/difficulty.js. Problems are reported by `npm run validate`.
+export const DIFFICULTY_PROBLEMS = applyDifficulty(QUESTION_BY_ID);

@@ -1,0 +1,25 @@
+/* The privacy policy, terms of use and photo credits pages (drawn by server/pages.js). */
+:root { color-scheme: light; }
+body { margin: 0; background: #2A3BD1; color: #141833; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 720px; margin: 24px auto; padding: 24px 24px 32px; background: #fbfbf8; border-radius: 24px; }
+@media (max-width: 760px) { main { margin: 0; border-radius: 0; min-height: 100vh; box-sizing: border-box; padding-inline: 16px; } }
+h1 { margin: 16px 0 4px; font-size: 28px; line-height: 1.2; }
+h2 { margin: 28px 0 8px; font-size: 19px; }
+p, ul, ol { margin: 0 0 12px; }
+ul, ol { padding-inline-start: 22px; }
+li { margin-bottom: 4px; }
+a { color: #2A3BD1; overflow-wrap: anywhere; }
+.updated { color: #555b7a; font-size: 14px; }
+
+.langs { display: flex; flex-wrap: wrap; gap: 6px; }
+.langs a { padding: 4px 12px; border-radius: 999px; border: 1px solid #dde0ee; text-decoration: none; font-size: 14px; font-weight: 600; }
+.langs a[aria-current] { background: #2A3BD1; border-color: #2A3BD1; color: #fff; }
+
+.credits { list-style: none; padding: 0; font-size: 15px; }
+.credits li { padding: 6px 0; border-bottom: 1px solid #ecedf3; }
+.credits li > span { display: block; color: #555b7a; font-size: 14px; }
+
+.more { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #dde0ee; }
+.back { display: inline-block; margin-top: 16px; font-weight: 700; }
+.back::before { content: "← "; }
+[dir="rtl"] .back::before { content: "→ "; }

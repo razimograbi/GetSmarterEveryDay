@@ -3,7 +3,7 @@
 A picture quiz built for phones (it works on laptops too). Sign in with Google, play
 10-question rounds against a 15-second clock, and track what you've mastered.
 
-**775 questions in 26 topics:** flags (40), capitals (30), seas & oceans (25),
+**915 questions in 29 topics:** flags (40), capitals (30), seas & oceans (25),
 road signs (70: 20 European, 50 Israeli), animals (25), cars (15), programming languages (20), landmarks (25),
 dog breeds (40), world food (40), countries (40), chemical elements (40),
 musical instruments (40), paintings (30), famous books (15: bestsellers published after
@@ -93,6 +93,22 @@ scripts/
 | PUT | `/api/settings` | `{ autoNext?, autoNextDelay? }` → saved settings |
 | POST | `/api/rounds` | `{ mode, category, answers: [{ id, choice, ms }] }` — graded on the server |
 | GET | `/api/stats` | Totals, per-topic mastery, streaks, last 14 days, recent rounds |
+| POST | `/api/events` | `{ name, props? }` → logs an event the browser may report (see Events below) |
+| GET | `/api/admin/retention` | Admins only: daily and monthly players, returns after 1, 7 and 30 days, event counts |
+| PUT | `/api/profile` | `{ name?, avatar?, country?, hidden? }` → the player's public profile |
+| GET | `/api/friends?tz=` | Your friend code, friends (with streaks and today's Daily score) and duels |
+| POST | `/api/friends` | `{ code }` → adds the player with that friend code (both ways) |
+| DELETE | `/api/friends/:id` | Removes a friend (both ways) |
+| GET | `/api/invite/:code` | Who an invite link is from (no sign-in needed) |
+| GET | `/api/daily?date=` | The Daily for the player's date: number, question ids, and their result |
+| POST | `/api/daily/start` | `{ date }` → starts the one try (refused if already started) |
+| POST | `/api/daily/finish` | `{ date, answers, partial? }` → graded and ranked |
+| GET | `/api/daily/board?date=` | Top 50, the player's own place, and their friends |
+| GET/POST | `/api/duels` | List your duels / `{ category, friendId? }` → a new duel |
+| GET | `/api/duels/:id` | One duel as you see it (answers once you've played) |
+| GET | `/api/duels/:id/preview` | Who sent a duel link and their score (no sign-in needed) |
+| POST | `/api/duels/:id/start`, `/finish`, `/rematch` | Take the second seat, send answers, start a rematch |
+| POST | `/api/push/subscribe`, `/unsubscribe` | A browser's push subscription for reminders |
 | GET | `/api/account/export` | Everything stored about the user, as a JSON download |
 | DELETE | `/api/account` | Deletes the user and all their data |
 
@@ -107,7 +123,7 @@ can't post a fake score.
 | Seas & oceans | Esri World Imagery satellite tiles with a marker (no labels, so the map doesn't give the answer away) |
 | Countries | The country's outline, drawn from the free [world-atlas](https://github.com/topojson/world-atlas) map data (Natural Earth). Far-off territories such as Easter Island or the Canary Islands are left out so the shape stays recognisable. |
 | Elements | A periodic-table tile drawn in SVG (symbol, atomic number, mass) |
-| Road signs | European signs are drawn in SVG in `public/js/signs.js`. Israeli signs are the official Ministry of Transport drawings (public domain, from Wikimedia Commons), saved in `public/signs/il/` under their official number (`npm run fetch-signs` downloads any that are missing). Both work offline. |
+| Road signs | European signs are drawn in SVG in `public/js/signs.js`. Israeli signs are drawings of the official Ministry of Transport signs from Wikimedia Commons (public domain or CC BY-SA, see `/credits`), saved in `public/signs/il/` under their official number (`npm run fetch-signs` downloads any that are missing). Both work offline. |
 | Animals, cars, landmarks, dogs, food, instruments | The lead image of the matching English Wikipedia article, fetched in the browser and cached |
 | Programming | The code snippet itself |
 | Paintings, human body, famous people, beauty products, professions | A specific Wikipedia/Commons image pinned by file name (`'File:…'`), each checked so no caption or label gives the answer away |
@@ -134,7 +150,11 @@ Satellite map tiles are always loaded live from Esri.
 
 - 10 questions per round, 15 seconds each (25 seconds for the book topics, which have
   long answers to read). The timer starts only once the picture has loaded.
-- 100 points for a right answer, plus up to 50 for speed.
+- **1 point** for a right answer, plus a **speed bonus of 0–2**: answer in the first third of
+  the time for 2, the middle third for 1, the last third for 0. A wrong answer or running out of
+  time scores 0. So each question is worth 0–3 and a 10-question round up to 30 (`SCORING` in
+  `shared/config.js`). Rounds played under the old 100 + 50 scoring were scored again with these
+  rules when the database was upgraded.
 - **Auto next** (on by default) moves to the next question by itself after a delay the
   player picks: 1 to 7 seconds, default 4. Change it during a game by tapping the
   **Auto 4s** button at the top (the game pauses while that panel is open), or under
@@ -153,6 +173,15 @@ Satellite map tiles are always loaded live from Esri.
   and leave out the three book topics and programming (`book: true` or `quick: false`
   in `shared/config.js`), which are only played from their own tiles.
 - On a laptop, press **1–5** to answer, **Enter** for next and **Esc** to quit.
+
+### How hard each question is
+
+Every question has a difficulty from **0** (almost everyone gets it) to **10** (very few do),
+judged by hand for an average adult player, in `shared/difficulty.js`. It shows as Easy (0–3),
+Medium (4–6) or Hard (7–10) on the results screens, and the Daily Challenge and duels use it to
+go from easy to hard. It doesn't change the points. `npm run validate` checks that every
+question has exactly one rating. Once there are enough players, the share of wrong answers per
+question in the `answers` table is a good way to check and adjust these ratings.
 
 ### Statistics
 
@@ -255,7 +284,14 @@ create `public/lang/<id>/`, add its Google Fonts link to `FONTS` in `i18n.js` an
 ## Data
 
 Everything is stored in one SQLite file, `data/smarts.db` (or `$DATA_DIR/smarts.db`):
-users, sessions, settings, rounds and answers. Delete that file to reset all progress.
+users, sessions, settings, rounds, answers, question reports, events, profiles, friends,
+the Daily's questions and results, duels and push subscriptions. Schema changes that need
+more than a new table run once, in order, from `MIGRATIONS` in `server/db.js`
+(`PRAGMA user_version` remembers which have run).
+
+SQLite is tuned for this size: WAL mode, a 16 MB page cache, indexes for every board and list
+query, and `PRAGMA optimize` every hour and at shutdown. At 100 players the busiest query (the
+Daily board) reads a few hundred rows. Delete that file to reset all progress.
 `data/` is git-ignored. Players can download everything stored about them, or delete
 their account, at the bottom of the Progress page.
 
@@ -303,6 +339,144 @@ their first request until 10 minutes pass without one. When the limit is reached
 already in keep playing, and new visitors see a "Smarts is full right now" page that
 retries every minute (API calls get `503` with a `Retry-After` header). Visitors who
 haven't signed in are counted by IP address; signing in keeps the same slot.
+
+### Profiles and avatars
+
+Each player has a public profile: a display name (their Google first name to start with), an
+avatar and, if they choose, a country. Avatars are illustrated animals drawn in SVG by
+`shared/avatars.js`: 12 animals, 3 faces, 11 background colours and 9 accessories, stored as a
+code such as `fox-happy-lilac-crown`. Every new player starts with a random one picked from
+their id. Google profile photos are never shown to other players.
+
+**Show me on public boards** (on the profile page) turns a player into a "Hidden player" on the
+Daily board for everyone except their friends; friends and duel partners still see them.
+
+### Friends
+
+Every player has a 6-character friend code and an invite link, `/f/CODE`. Opening the link (and
+signing in, if needed) asks "Add … as a friend?". Friends are mutual. The Friends tab lists them
+with their current day streak and today's Daily score, plus your duels. Playing someone's duel
+also makes you friends.
+
+### Daily Challenge
+
+The same 10 questions for everyone on a calendar day, the player's own day like Wordle (Daily #1
+was 1 November 2026). The server picks them the first time someone asks for that date
+(`server/pick.js`): one per topic, never two about the same country, 3 easy, 4 medium and 3 hard,
+played from easy to hard, and not used in the last 90 Dailies. Book topics and programming are
+left out, as in Quick rounds.
+
+**One try:** starting it records the try; leaving halfway counts the answers given so far.
+The board ranks by points, then by less time taken. A Daily round also counts in the player's
+statistics and streak.
+
+### Duels
+
+A player picks mixed topics or one topic, plays 10 questions first, then sends the link,
+`/duel/ID`. Whoever opens it first (or the friend it was sent to, when started from the Friends
+tab) plays the same questions. Someone who isn't signed in sees who challenged them, signs in and
+goes straight into the game. The result screen compares both players question by question, with
+a **Rematch** button that sends a new duel back. More points wins; on equal points, less time.
+A player can have up to 20 unfinished duels they started (`DUEL` in `shared/config.js`).
+
+### Sharing
+
+The Daily's result screen has **Share** (the phone's share sheet, or a copy on laptops),
+**Copy**, and **Story image**: a 1080×1920 picture for Instagram, WhatsApp or Telegram stories,
+drawn in the browser (`public/js/share.js`). The text result looks like:
+
+```
+Smarts Daily #2: 18/30 (6/10 right)
+🟩🟩🟩🟩🟥🟩🟨🟥🟥⬜
+https://your-site/daily
+```
+
+🟩 is a right answer in the fastest third of the time (3 points), 🟨 a slower right answer, 🟥 wrong,
+⬜ not answered.
+
+Shared links get a proper preview in WhatsApp, Telegram and other apps: the server fills in the
+page's Open Graph tags for `/duel/ID` ("Ana challenged you to a duel… scored 18 out of 30"),
+`/f/CODE` and `/daily`, in the sender's language, with `public/og.jpg` as the picture (kept
+under 300 KB, which WhatsApp needs). Previews only work once the site is on a public address:
+set `PUBLIC_URL` to it.
+
+### Reminders
+
+Players can turn on two push notifications under **Progress → Reminders**: "Today's Daily is
+ready" (once a day at 9:00 in their time zone, if they haven't played yet, never after 21:00) and
+"A friend beats you" (when a friend beats their Daily score or wins a duel against them; at most
+once per friend per day). They're sent with the standard Web Push protocol, using only Node's
+built-in crypto (`server/push.js`). The server makes its push key pair once and keeps it in
+`DATA_DIR/vapid.json`; keep that file (and back it up), or every player has to turn reminders on
+again. Set `VAPID_SUBJECT` to a contact address. Reminders need HTTPS. On iPhone they work only
+once Smarts is added to the home screen (iOS 16.4 or later).
+
+### Events and the Players page
+
+The `events` table logs what players do, so each new feature can be judged by its numbers.
+The names are listed in `EVENTS` in `shared/config.js`:
+
+| Event | Logged by | When |
+|---|---|---|
+| `round_started` | browser | a round's questions are picked and it begins |
+| `round_finished` | server | a whole round is saved (quitting halfway isn't counted) |
+| `helper_used` | browser | for later: a hint, skip, extra life or streak saver is used |
+| `ad_offered` | browser | for later: a "Watch ad" button is shown |
+| `ad_watched` | server | for later: the ad network confirms an ad was watched to the end |
+| `purchase` | server | for later: the payment provider confirms a purchase |
+
+The browser may only send the events marked `client: true`; the server logs the rest itself,
+so nobody can fake a finished round, an ad view or a purchase. From server code, call
+`logEvent(db, userId, name, props)` from `server/db.js`. `props` is a flat object of up to 10
+short values. Events are deleted with the player's account and are in their data download.
+
+Admins open **Progress → Players and retention** (`#/admin/players`) to see:
+
+- players today, in the last 7 and 30 days, and daily ÷ monthly players;
+- **coming back**: of the players who first played on some day, the share who played again
+  exactly 1, 7 and 30 days later (only days that are over count), against the plan's goals;
+- players each day for 30 days (new and returning), each calendar month for 6 months, and a
+  table by the week players first played;
+- each event's count for 7 and 30 days, and how many players it came from.
+
+A player is active on a day when they played a round or logged any event. Days follow the
+admin's own time zone. The page works from rounds already in the database, so it has history
+from before events were added.
+
+### Privacy policy, terms of use and photo credits
+
+`/privacy`, `/terms` and `/credits` are plain pages (no JavaScript or sign-in needed), each in
+English, Hebrew and Arabic. They pick the language from `?lang=he`, else the browser's
+languages, else English. The app links to them from the sign-in screen and the Progress page
+in the player's language. Give the `/privacy` and `/terms` addresses to Google's OAuth consent
+screen, ad networks and app stores.
+
+- The text of the privacy policy and terms is in `legal/<page>.<lang>.html`. Change all three
+  languages together, and the "Last updated" date.
+- The credits page is drawn from `legal/credits.json`: the author and licence of every
+  Wikimedia picture the questions use. After adding or changing a picture, run:
+  ```bash
+  npm run fetch-credits
+  ```
+  It also lists files that aren't freely licensed (Wikipedia shows them under "fair use":
+  most club crests, a few logos and some banknotes). Those need replacing or permission before
+  the game earns money.
+
+### Installing on phones
+
+Smarts is an installable web app: `public/manifest.webmanifest` with icons in `public/icons/`
+and a service worker, `public/sw.js`. On Android, Chrome offers **Install app**; on iPhone,
+Safari's **Share → Add to Home Screen**.
+
+The Progress page also shows a **Get the Smarts app** card with an **Install app** button. In
+Chrome and on Android it opens the browser's install prompt; on iPhone (which has no prompt)
+it shows the Add to Home Screen steps. It's hidden when Smarts is already installed or the
+browser can't install it, and each player sees it on at most 20 visits to the Progress page
+(`INSTALL_SHOWS` in `public/js/app.js`, counted on each device). After that, or once they
+install, it doesn't come back. The service worker always loads from the network first
+(so players get new versions straight away) and keeps a copy of the app's files for when
+there's no connection. It needs HTTPS (or `localhost`). If you change what it caches, change
+`CACHE` in `sw.js` so old copies are cleared.
 
 ### Question reports
 

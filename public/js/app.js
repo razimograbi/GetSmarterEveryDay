@@ -1,17 +1,26 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, REPORT_REASONS, REPORT_NOTE_MAX, pointsFor, secondsFor,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, pointsFor, secondsFor, localDate,
 } from '/shared/config.js';
+import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
+import { COUNTRIES } from '/shared/countries.js';
+import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
 import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages } from './visuals.js';
 import { signSvg } from './signs.js';
 import { ICONS } from './icons.js';
 import { api, esc, shuffle, reduceMotion } from './util.js';
 import {
-  LANGUAGES, lang, setLang, savedLang, rememberLang, deviceLang, isLang, t, tn, qt, catName, catBlurb, reasonLabel, timeAgo, fmtDate,
+  LANGUAGES, lang, setLang, savedLang, rememberLang, deviceLang, isLang, locale, t, tn, qt, catName, catBlurb, reasonLabel, timeAgo, fmtDate,
 } from './i18n.js';
 
 const app = document.getElementById('app');
-const state = { config: null, user: null, settings: null, stats: null, lastRound: null };
+const state = {
+  config: null, user: null, settings: null, profile: null, stats: null, lastRound: null,
+  daily: null, // today's Daily and the player's result, for the home screen
+  fixedRound: null, // a Daily or duel about to be played
+  duelFriend: null, // the friend a new duel is for
+  unsaved: null, // a Daily or duel result that failed to save
+};
 let cleanup = () => {};
 let navId = 0; // bumps on every screen change; async screens check it before drawing
 
@@ -27,6 +36,7 @@ async function boot() {
     const [config, me] = await Promise.all([api('/api/config'), api('/api/me'), loadLocalImages(), setLang(firstLang)]);
     state.config = config;
     state.user = me.user;
+    state.profile = me.profile;
     adoptSettings(me.settings);
     await adoptLanguage(me.settings);
   } catch (err) {
@@ -36,8 +46,28 @@ async function boot() {
     app.innerHTML = `<section class="screen center-screen"><p class="error-text">${esc(msg)}</p></section>`;
     return;
   }
+  takeSharedLink();
   window.addEventListener('hashchange', route);
   route();
+  // Makes Smarts installable on phones and lets it open without a connection (public/sw.js).
+  navigator.serviceWorker?.register('/sw.js').catch(() => {});
+}
+
+/**
+ * Shared links are plain addresses (/duel/AB12CD34, /f/CODE12, /daily) so their previews look
+ * right in chat apps. The app itself uses # addresses, so turn them into one.
+ */
+function takeSharedLink() {
+  const path = location.pathname;
+  let m;
+  let hash = null;
+  if ((m = /^\/duel\/([A-Z2-9]{8})\/?$/.exec(path))) {
+    hash = `#/duel/${m[1]}`;
+    // Someone who opens a duel link and signs in goes straight into the game.
+    try { sessionStorage.setItem('smarts:autoplay', m[1]); } catch { /* storage blocked */ }
+  } else if ((m = /^\/f\/([A-Za-z2-9]{6})\/?$/.exec(path))) hash = `#/add/${m[1].toUpperCase()}`;
+  else if (/^\/daily\/?$/.test(path)) hash = '#/daily';
+  if (hash) history.replaceState(null, '', `/${hash}`);
 }
 
 /** A server error as a message in the current language. */
@@ -48,6 +78,22 @@ function errMsg(err) {
   if (!err.status) return t('err.network');
   return lang() === 'en' ? err.message : t('err.generic'); // the server's own messages are in English
 }
+
+/**
+ * Logs an event for the admin Players page (only events marked `client` in EVENTS in
+ * shared/config.js). Fire and forget: it never holds up or breaks the game.
+ */
+function track(name, props = null) {
+  if (!state.user) return;
+  fetch('/api/events', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, props }),
+    keepalive: true, credentials: 'same-origin',
+  }).catch(() => {});
+}
+
+/** Links to the privacy policy, terms of use and photo credits, in the current language. */
+const legalLinks = (cls = '') =>
+  ['privacy', 'terms', 'credits'].map((p) => `<a${cls ? ` class="${cls}"` : ''} href="/${p}?lang=${lang()}">${esc(t(`common.${p}`))}</a>`).join('');
 
 // ── Language ───────────────────────────────────────────────────
 
@@ -204,7 +250,18 @@ async function route() {
   if (!state.user) return showSignIn();
 
   const [, page, arg] = (location.hash || '#/').split('/');
+  if (page === 'play' && (arg === 'daily' || arg === 'duel')) {
+    const fixed = state.fixedRound;
+    state.fixedRound = null;
+    return fixed?.kind === arg ? startRound(arg, fixed) : go('#/', { replace: true });
+  }
   if (page === 'play' && (arg === 'mixed' || arg === 'review' || CATEGORY_BY_ID[arg])) return startRound(arg);
+  if (page === 'daily') return showDaily();
+  if (page === 'duel' && arg === 'new') return showDuelNew();
+  if (page === 'duel' && arg) return showDuel(arg);
+  if (page === 'friends') return showFriends();
+  if (page === 'add' && arg) return showAddFriend(arg);
+  if (page === 'profile') return showProfile();
   if (page === 'results' && state.lastRound) return showResults();
   if (page === 'progress') return showProgress();
   if (page === 'admin' && state.user.admin) return showAdmin(arg);
@@ -232,6 +289,7 @@ function showSignIn() {
   app.innerHTML = `
     <section class="screen signin">
       ${langSwitch()}
+      <div class="link-banner" data-link-banner hidden></div>
       <div class="signin-hero" aria-hidden="true">
         <div class="demo-card">
           <div class="demo-fuse"><span></span></div>
@@ -257,7 +315,7 @@ function showSignIn() {
             </div>
           </form>` : ''}
         <p class="error-text" id="signin-error" hidden></p>
-        <p class="signin-legal"><a href="/privacy">${esc(t('common.privacy'))}</a></p>
+        <p class="signin-legal">${legalLinks()}</p>
       </div>
     </section>`;
 
@@ -273,17 +331,39 @@ function showSignIn() {
   };
 
   if (googleClientId) mountGoogleButton(googleClientId, showError);
+  showLinkBanner();
 
   app.querySelector('.dev-login')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = new FormData(e.target).get('name');
     try {
-      const { user, settings } = await api('/api/auth/dev', { method: 'POST', body: { name } });
-      await signedIn(user, settings);
+      const { user, settings, profile } = await api('/api/auth/dev', { method: 'POST', body: { name } });
+      await signedIn(user, settings, null, profile);
     } catch (err) {
       showError(errMsg(err));
     }
   });
+}
+
+/** On the sign-in screen, says who sent the duel or invite link the player arrived from. */
+async function showLinkBanner() {
+  const banner = app.querySelector('[data-link-banner]');
+  const [, page, arg] = (location.hash || '').split('/');
+  let html = null;
+  try {
+    if (page === 'duel' && arg) {
+      const p = await api(`/api/duels/${encodeURIComponent(arg)}/preview`);
+      html = `${avatarImg(p.challenger?.avatar, 56)}<span><strong>${t('duel.challengedYou', { name: personName(p.challenger) })}</strong><span>${esc(t('link.signInToPlay'))}</span></span>`;
+    } else if (page === 'add' && arg) {
+      const { inviter } = await api(`/api/invite/${encodeURIComponent(arg)}`);
+      html = `${avatarImg(inviter.avatar, 56)}<span><strong>${t('link.invited', { name: personName(inviter) })}</strong><span>${esc(t('link.signInToAdd'))}</span></span>`;
+    } else if (page === 'daily') {
+      html = `<span class="daily-badge">${ICONS.daily}</span><span><strong>${esc(t('link.daily'))}</strong><span>${esc(t('link.signInToPlay'))}</span></span>`;
+    }
+  } catch { /* an old or broken link: no banner */ }
+  if (!html || !banner?.isConnected) return;
+  banner.innerHTML = html;
+  banner.hidden = false;
 }
 
 function loadGoogleScript() {
@@ -306,8 +386,8 @@ async function mountGoogleButton(clientId, showError) {
       ux_mode: 'popup',
       callback: async ({ credential }) => {
         try {
-          const { user, settings, locale } = await api('/api/auth/google', { method: 'POST', body: { credential } });
-          await signedIn(user, settings, locale);
+          const { user, settings, profile, locale: googleLocale } = await api('/api/auth/google', { method: 'POST', body: { credential } });
+          await signedIn(user, settings, googleLocale, profile);
         } catch (err) {
           showError(errMsg(err));
         }
@@ -325,12 +405,14 @@ async function mountGoogleButton(clientId, showError) {
   }
 }
 
-async function signedIn(user, settings, googleLocale = null) {
+async function signedIn(user, settings, googleLocale = null, profile = null) {
   state.user = user;
+  state.profile = profile;
   adoptSettings(settings);
   await adoptLanguage(settings, googleLocale);
   state.stats = null;
-  go('#/');
+  // Arrived from a shared link (a duel, an invite, the Daily): carry on there.
+  go(/^#\/(duel|add|daily)/.test(location.hash) ? location.hash : '#/');
 }
 
 /** Signs out of this device, or with `everywhere` ends the player's sessions on every device. */
@@ -344,7 +426,9 @@ function signedOut() {
   window.google?.accounts?.id?.disableAutoSelect();
   state.user = null;
   state.settings = null;
+  state.profile = null;
   state.stats = null;
+  state.daily = null;
   go('#/');
 }
 
@@ -455,17 +539,14 @@ function markReported(btn, q) {
 
 // ── Shared chrome ──────────────────────────────────────────────
 
-function avatar(user, size = 36) {
-  const initial = esc((user.name || '?').trim()[0]?.toUpperCase() || '?');
-  return user.picture
-    ? `<img class="avatar" src="${esc(user.picture)}" alt="" width="${size}" height="${size}" referrerpolicy="no-referrer">`
-    : `<span class="avatar avatar-initial" style="width:${size}px;height:${size}px">${initial}</span>`;
-}
+/** The signed-in player's own avatar (or any avatar code). */
+const avatar = (code = state.profile?.avatar, size = 36) => avatarImg(code, size);
 
 function tabbar(active) {
   return `
     <nav class="tabbar" aria-label="Main">
       <a href="#/" class="${active === 'home' ? 'is-active' : ''}" ${active === 'home' ? 'aria-current="page"' : ''}>${ICONS.play}<span>${esc(t('tab.play'))}</span></a>
+      <a href="#/friends" class="${active === 'friends' ? 'is-active' : ''}" ${active === 'friends' ? 'aria-current="page"' : ''}>${ICONS.friends}<span>${esc(t('tab.friends'))}</span></a>
       <a href="#/progress" class="${active === 'progress' ? 'is-active' : ''}" ${active === 'progress' ? 'aria-current="page"' : ''}>${ICONS.chart}<span>${esc(t('tab.progress'))}</span></a>
     </nav>`;
 }
@@ -503,6 +584,21 @@ function takeQuickHint(userId) {
   }
 }
 
+/** The Daily Challenge card at the top of the home screen. */
+function dailyCard(d) {
+  const played = d?.result?.finished;
+  const n = d?.number;
+  return `
+    <a class="daily-card ${played ? 'is-played' : ''}" href="#/daily">
+      <span class="daily-badge">${ICONS.daily}</span>
+      <span class="quick-text">
+        <strong>${esc(n ? t('daily.title', { n }) : t('daily.titlePlain'))}</strong>
+        <span>${esc(played ? t('daily.youScored', { score: d.result.score, max: d.questionIds.length * MAX_POINTS }) : t('daily.desc'))}</span>
+      </span>
+      <span class="daily-go">${esc(played ? t('daily.seeBoard') : t('daily.play'))}</span>
+    </a>`;
+}
+
 async function showHome() {
   const user = state.user;
   const firstName = esc(user.name.split(' ')[0]);
@@ -518,12 +614,14 @@ async function showHome() {
           <span class="logo">Smarts</span>
           <span class="topbar-end">
             <button type="button" class="lang-btn" data-lang-open aria-haspopup="dialog" aria-label="${esc(t('lang.change'))}">${ICONS.globe}<span lang="${current.id}">${esc(current.name)}</span></button>
-            <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar(user)}</a>
+            <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
           </span>
         </header>
 
         <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
         <p class="sub">${stats ? esc(t('home.sub', { n: totalMastered, total: QUESTIONS.length })) : '&nbsp;'}</p>
+
+        ${dailyCard(state.daily)}
 
         <a class="quick ${hint ? 'is-hinting' : ''}" href="#/play/mixed">
           ${hint ? `<span class="quick-hint" aria-hidden="true">${esc(t('quick.hint'))}</span>` : ''}
@@ -532,6 +630,11 @@ async function showHome() {
             <span>${esc(t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}</span>
           </span>
           <span class="quick-go" aria-hidden="true"><span>${esc(t('quick.play'))}</span>${ICONS.play}</span>
+        </a>
+
+        <a class="duel-card" href="#/duel/new">
+          <span class="duel-card-icon">${ICONS.duel}</span>
+          <span class="quick-text"><strong>${esc(t('duel.cardTitle'))}</strong><span>${esc(t('duel.cardDesc'))}</span></span>
         </a>
 
         <h2 class="section-title">${esc(t('home.topics'))}</h2>
@@ -578,7 +681,7 @@ async function showHome() {
   const nav = navId;
   draw(state.stats);
   try {
-    const stats = await loadStats();
+    const [stats] = await Promise.all([loadStats(), state.daily?.day === today() ? null : loadDaily().catch(() => null)]);
     if (nav === navId) draw(stats);
   } catch (err) {
     if (err.status === 401) return signOut();
@@ -588,7 +691,12 @@ async function showHome() {
 // ── Round ──────────────────────────────────────────────────────
 
 const roundTitle = (cat) =>
-  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : CATEGORY_BY_ID[cat] ? catName(CATEGORY_BY_ID[cat]) : cat;
+  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : cat === 'daily' ? t('round.daily') : cat === 'duel' ? t('round.duel')
+    : CATEGORY_BY_ID[cat] ? catName(CATEGORY_BY_ID[cat]) : cat;
+
+const diffLevel = (d) => (d <= 3 ? 'easy' : d <= 6 ? 'medium' : 'hard');
+/** "Hard · 8": how hard a question is, 0 to 10. */
+const diffChip = (q) => (q.difficulty === undefined ? '' : `<span class="diff diff-${diffLevel(q.difficulty)}" title="${esc(t('diff.title'))}">${esc(t(`diff.${diffLevel(q.difficulty)}`))} · ${q.difficulty}</span>`);
 
 // Questions of the round played last in this visit, in case the server's stats lag behind.
 let lastPlayedIds = new Set();
@@ -703,19 +811,23 @@ function answersPayload(results) {
   return results.filter((r) => !r.skipped).map((r) => ({ id: r.q.id, choice: r.choice, ms: r.ms }));
 }
 
-async function startRound(cat) {
+/**
+ * Plays a round. `fixed` plays set questions instead of picking them (the Daily, a duel):
+ * { kind, questions, title, after: where to go when done, endpoint and extra: where to send the answers }.
+ */
+async function startRound(cat, fixed = null) {
   const nav = navId;
   const mode = DEFAULT_MODE;
   const cfg = MODES[mode];
   let stats = state.stats;
   // Review and Quick rounds depend on what you just played, so they always use fresh stats.
-  const needFresh = cat === 'review' || cat === 'mixed';
-  if (!stats || needFresh) stats = await loadStats(needFresh).catch(() => stats);
+  const needFresh = !fixed && (cat === 'review' || cat === 'mixed');
+  if (!fixed && (!stats || needFresh)) stats = await loadStats(needFresh).catch(() => stats);
   if (nav !== navId) return; // the player went somewhere else while stats loaded
 
   const round = {
-    cat, mode, cfg,
-    questions: pickQuestions(cat, cfg.questionsPerRound, stats),
+    cat, mode, cfg, fixed,
+    questions: fixed ? [...fixed.questions] : pickQuestions(cat, cfg.questionsPerRound, stats),
     idx: 0,
     results: [], // { q, choice, correct, ms, points, skipped }
     score: 0,
@@ -725,8 +837,9 @@ async function startRound(cat) {
     swaps: 0, // questions replaced because their picture wouldn't load
   };
   if (!round.questions.length) return go('#/', { replace: true });
+  if (!fixed) track('round_started', { mode, category: cat }); // the Daily and duels log theirs when the try starts
 
-  const title = roundTitle(cat);
+  const title = fixed?.title ?? roundTitle(cat);
   app.innerHTML = `
     <section class="screen play">
       <header class="play-top">
@@ -915,7 +1028,8 @@ async function startRound(cat) {
 
     // Still no picture: swap in another question from the same topic (preferring one
     // whose picture has already downloaded), so the player never meets a dead question.
-    if (!ok && round.swaps < MAX_SWAPS) {
+    // (Not in the Daily or a duel: everyone there plays the same questions, so it's just skipped.)
+    if (!ok && !round.fixed && round.swaps < MAX_SWAPS) {
       round.swaps += 1;
       const replacement = await pickReplacement(round, q, stats);
       if (!alive || current !== token) return;
@@ -1123,6 +1237,11 @@ async function startRound(cat) {
     const record = { ...round, saved: null, error: null, payload: answersPayload(round.results) };
     round.saved = true;
     rememberPlayed();
+    if (round.fixed) {
+      const saving = saveFixed(record); // started first, so the next screen can wait for it
+      leave(round.fixed.after);
+      return saving;
+    }
     state.lastRound = record;
     leave('#/results');
     await saveRecord(record);
@@ -1132,6 +1251,11 @@ async function startRound(cat) {
     if (round.saved) return;
     round.saved = true;
     rememberPlayed();
+    // A Daily or duel that's left counts as played, with the answers given so far.
+    if (round.fixed) {
+      saveFixed({ ...round, payload: answersPayload(round.results) }, { partial: true, beacon });
+      return;
+    }
     const answers = answersPayload(round.results);
     if (!answers.length) return;
     const body = JSON.stringify({ mode: round.mode, category: round.cat, answers, partial: true });
@@ -1143,7 +1267,9 @@ async function startRound(cat) {
   function openQuit() {
     if (!autoSheet.hidden) closeAuto();
     const done = round.results.filter((r) => !r.skipped).length;
-    $('[data-quit-note]').textContent = done ? tn('quit.noteSome', done) : t('quit.noteNone');
+    $('[data-quit-note]').textContent = round.fixed
+      ? t(round.fixed.kind === 'daily' ? 'quit.daily' : 'quit.duel')
+      : done ? tn('quit.noteSome', done) : t('quit.noteNone');
     pause();
     quitSheet.hidden = false;
     quitSheet.querySelector('[data-keep]').focus();
@@ -1157,7 +1283,7 @@ async function startRound(cat) {
   function confirmQuit() {
     // If the current question is on screen but unanswered, it simply isn't counted.
     savePartial();
-    leave('#/');
+    leave(round.fixed?.after ?? '#/');
   }
 
   const onPopState = () => {
@@ -1309,6 +1435,7 @@ function showResults() {
             <span class="review-text">
               <strong>${esc(qt(x.q, x.q.answer))}</strong>
               <span>${esc(x.skipped ? t('res.skipped') : x.correct ? t('res.rightLine', { s: (x.ms / 1000).toFixed(1), points: x.points }) : x.choice ? t('res.youSaid', { choice: qt(x.q, x.choice) }) : t('res.timeout'))}</span>
+              ${diffChip(x.q)}
             </span>
             <span class="review-cat">${ICONS[x.q.cat]}</span>
             <button class="review-report" data-report-i="${i}" aria-label="${esc(t('report.button'))}" title="${esc(t('report.button'))}">${ICONS.report}</button>
@@ -1337,10 +1464,875 @@ function showResults() {
   });
 }
 
+// ── People: avatars, flags, names ──────────────────────────────
+
+/** A player's avatar picture (their animal; hidden players get a plain silhouette). */
+const avatarImg = (code, size = 40, cls = '') =>
+  `<img class="avatar ${cls}" src="${avatarUrl(code)}" alt="" width="${size}" height="${size}">`;
+
+function countryName(cc) {
+  try {
+    return new Intl.DisplayNames([locale()], { type: 'region' }).of(cc);
+  } catch {
+    return cc;
+  }
+}
+
+const flagImg = (cc) => (cc
+  ? `<img class="flag" src="https://flagcdn.com/w40/${esc(cc.toLowerCase())}.png" alt="${esc(countryName(cc))}" title="${esc(countryName(cc))}" width="20" height="15" loading="lazy">`
+  : '');
+
+/** Name and flag; a hidden player on a public board shows as "Hidden player". */
+const personName = (p) => (p?.hidden || !p?.name
+  ? `<span class="is-hidden">${esc(t(p?.gone ? 'people.gone' : 'people.hidden'))}</span>`
+  : `<span class="name"><bdi>${esc(p.name)}</bdi>${flagImg(p.country)}</span>`);
+
+const pointsOf = (a) => pointsFor(a.correct, a.ms, secondsFor(QUESTION_BY_ID.get(a.id) || { cat: '' }));
+
+/** One square per question of a fixed round, in the order they were played. */
+function squaresFor(questionIds, answers = []) {
+  const byId = new Map(answers.map((a) => [a.id, a]));
+  return questionIds.map((id) => squareFor(byId.has(id) ? pointsOf(byId.get(id)) : null));
+}
+
+const SQUARE_CLASS = { '🟩': 'is-fast', '🟨': 'is-right', '🟥': 'is-wrong', '⬜': 'is-none' };
+const squaresHtml = (squares) =>
+  `<span class="squares" aria-hidden="true">${squares.map((s) => `<span class="sq ${SQUARE_CLASS[s]}"></span>`).join('')}</span>`;
+
+const topbar = () => `
+  <header class="topbar">
+    <span class="logo">Smarts</span>
+    <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
+  </header>`;
+
+/** A note under share buttons: "Copied", "Saved"… */
+function shareStatus(el, result) {
+  const key = { copied: 'share.copied', saved: 'share.saved', failed: 'share.failed' }[result];
+  el.textContent = key ? t(key) : '';
+}
+
+// ── Fixed rounds (the Daily and duels) ─────────────────────────
+
+let pendingSave = Promise.resolve(); // a Daily or duel result still on its way to the server
+
+/** Plays set questions: { kind: 'daily'|'duel', questions, title, after, endpoint, extra }. */
+function playFixed(fixed) {
+  state.fixedRound = fixed;
+  go(`#/play/${fixed.kind}`);
+}
+
+/** Sends a fixed round's answers. A failed save is kept so the next screen can offer a retry. */
+function saveFixed(record, { partial = false, beacon = false } = {}) {
+  const body = { ...record.fixed.extra, answers: record.payload, partial };
+  state.stats = null;
+  if (beacon && navigator.sendBeacon) {
+    navigator.sendBeacon(record.fixed.endpoint, new Blob([JSON.stringify(body)], { type: 'application/json' }));
+    return Promise.resolve();
+  }
+  state.unsaved = null;
+  pendingSave = api(record.fixed.endpoint, { method: 'POST', body })
+    .catch((err) => {
+      if (err.status !== 409) state.unsaved = { record, partial, error: errMsg(err) }; // 409: already saved
+    });
+  return pendingSave;
+}
+
+/** "Your answers weren't saved" with a retry button, when the last fixed round failed to save. */
+function unsavedNote(endpoint) {
+  const u = state.unsaved;
+  if (!u || u.record.fixed.endpoint !== endpoint) return '';
+  return `<div class="panel unsaved"><p>${esc(t('fixed.notSaved', { error: u.error }))}</p><button class="btn btn-marigold btn-block" data-retry-save>${esc(t('res.retry'))}</button></div>`;
+}
+
+function bindRetry(after) {
+  app.querySelector('[data-retry-save]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    const { record, partial } = state.unsaved;
+    await saveFixed(record, { partial });
+    after();
+  });
+}
+
+// ── Daily Challenge ────────────────────────────────────────────
+
+const today = () => localDate(new Date().getTimezoneOffset());
+
+async function loadDaily() {
+  state.daily = await api(`/api/daily?date=${today()}`);
+  return state.daily;
+}
+
+/** Time until the next Daily (the player's midnight), as "5h 12m". */
+function untilTomorrow() {
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const mins = Math.max(1, Math.round((midnight - now) / 60000));
+  return t('unit.hmin', { h: Math.floor(mins / 60), m: mins % 60 });
+}
+
+async function showDaily() {
+  const nav = navId;
+  app.innerHTML = `<section class="screen daily has-tabbar">${topbar()}<p class="sub">${esc(t('daily.loading'))}</p></section>${tabbar('home')}`;
+  let d;
+  let board = null;
+  try {
+    await pendingSave;
+    d = await loadDaily();
+    if (d.result) board = (await api(`/api/daily/board?date=${d.day}`)).board;
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    app.querySelector('.sub').textContent = t('daily.loadFailed', { error: errMsg(err) });
+    return;
+  }
+  if (!d.result) return drawDailyIntro(d);
+  drawDailyResult(d, board);
+}
+
+function drawDailyIntro(d) {
+  app.innerHTML = `
+    <section class="screen daily has-tabbar">
+      ${topbar()}
+      <div class="daily-hero">
+        <span class="daily-badge">${ICONS.daily}</span>
+        <p class="eyebrow">${esc(fmtDate(new Date(`${d.day}T12:00:00`), { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
+        <h1 class="greeting">${esc(t('daily.title', { n: d.number }))}</h1>
+        <p class="sub">${esc(t('daily.intro'))}</p>
+      </div>
+      <ul class="rules">
+        <li>${ICONS.check}<span>${esc(t('daily.rule1'))}</span></li>
+        <li>${ICONS.clock}<span>${esc(t('daily.rule2', { max: MAX_POINTS }))}</span></li>
+        <li>${ICONS.trophy}<span>${esc(t('daily.rule3'))}</span></li>
+      </ul>
+      <button class="btn btn-marigold btn-block" data-start>${esc(t('daily.start'))}</button>
+    </section>
+    ${tabbar('home')}`;
+  app.querySelector('[data-start]').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const r = await api('/api/daily/start', { method: 'POST', body: { date: d.day } });
+      if (!r.started) return showDaily(); // already played on another device
+      track('round_started', { mode: DEFAULT_MODE, category: 'daily' });
+      playFixed({
+        kind: 'daily', title: t('daily.title', { n: d.number }), after: '#/daily',
+        questions: d.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean),
+        endpoint: '/api/daily/finish', extra: { date: d.day },
+      });
+    } catch (err) {
+      e.currentTarget.disabled = false;
+      window.alert(errMsg(err));
+    }
+  });
+}
+
+function boardList(entries, emptyHtml) {
+  if (!entries.length) return `<p class="board-empty">${emptyHtml}</p>`;
+  return `<ol class="board">${entries.map((e) => `
+    <li class="${e.me ? 'is-me' : ''}">
+      <span class="board-rank">${e.rank}</span>
+      ${avatarImg(e.avatar, 40)}
+      <span class="board-who">${personName(e)}<small>${esc(t('board.right', { c: e.correct, t: e.total }))}</small></span>
+      <span class="board-pts">${e.score}</span>
+    </li>`).join('')}</ol>`;
+}
+
+let boardTab = 'all';
+
+function drawDailyResult(d, board) {
+  const r = d.result;
+  const finished = !!r.finished;
+  const max = d.questionIds.length * MAX_POINTS;
+  const squares = squaresFor(d.questionIds, r.answers || []);
+  const me = board?.me;
+  const answered = new Map((r.answers || []).map((a) => [a.id, a]));
+  app.innerHTML = `
+    <section class="screen daily has-tabbar">
+      ${topbar()}
+      <p class="eyebrow on-cobalt">${esc(t('daily.title', { n: d.number }))}</p>
+      ${unsavedNote('/api/daily/finish')}
+      ${finished ? `
+        <div class="panel result-card">
+          ${avatar(state.profile?.avatar, 64)}
+          <p class="result-score">${r.score}<small>/${max}</small></p>
+          <p class="result-line">${esc(t('daily.rightOf', { right: r.correct ?? 0, total: d.questionIds.length }))}${me ? ` · ${esc(t('daily.rank', { rank: me.rank, players: board.players }))}` : ''}</p>
+          ${squaresHtml(squares)}
+          <div class="share-row">
+            <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('share.share'))}</span></button>
+            <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copy'))}</span></button>
+            <button class="btn btn-ghost-ink" data-story>${ICONS.image}<span>${esc(t('share.image'))}</span></button>
+          </div>
+          <p class="share-status" data-share-status aria-live="polite"></p>
+        </div>` : `
+        <div class="panel"><p>${esc(t('daily.unfinished'))}</p></div>`}
+      <p class="next-daily">${esc(t('daily.next', { time: untilTomorrow() }))}</p>
+
+      <div class="panel">
+        <div class="seg" role="tablist" aria-label="${esc(t('board.aria'))}">
+          <button role="tab" data-tab="all" aria-selected="${boardTab === 'all'}">${esc(t('board.today', { n: board?.players ?? 0 }))}</button>
+          <button role="tab" data-tab="friends" aria-selected="${boardTab === 'friends'}">${esc(t('board.friends'))}</button>
+        </div>
+        <div data-board-all ${boardTab === 'all' ? '' : 'hidden'}>${boardList(board?.top || [], esc(t('board.noneYet')))}
+          ${me && !board.top.some((e) => e.me) ? `<p class="board-gap">…</p>${boardList([me], '')}` : ''}</div>
+        <div data-board-friends ${boardTab === 'friends' ? '' : 'hidden'}>${boardList(board?.friends || [], `${esc(t('board.noFriends'))} <a href="#/friends">${esc(t('board.invite'))}</a>`)}</div>
+      </div>
+
+      ${finished ? `
+        <h2 class="section-title">${esc(t('res.yourAnswers'))}</h2>
+        <ol class="review">
+          ${d.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean).map((q) => {
+            const a = answered.get(q.id);
+            const pts = a ? pointsOf(a) : null;
+            return `
+              <li class="${!a ? 'is-skipped' : a.correct ? 'is-right' : 'is-wrong'}">
+                <span class="review-mark">${!a ? '–' : a.correct ? ICONS.check : ICONS.cross}</span>
+                <span class="review-text">
+                  <strong>${esc(qt(q, q.answer))}</strong>
+                  <span>${esc(!a ? t('res.skipped') : a.correct ? t('res.rightLine', { s: (a.ms / 1000).toFixed(1), points: pts }) : a.choice ? t('res.youSaid', { choice: qt(q, a.choice) }) : t('res.timeout'))}</span>
+                  ${diffChip(q)}
+                </span>
+                <span class="review-cat">${ICONS[q.cat] || ''}</span>
+              </li>`;
+          }).join('')}
+        </ol>` : ''}
+    </section>
+    ${tabbar('home')}`;
+
+  bindRetry(showDaily);
+  app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+    boardTab = b.dataset.tab;
+    app.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+    app.querySelector('[data-board-all]').hidden = boardTab !== 'all';
+    app.querySelector('[data-board-friends]').hidden = boardTab !== 'friends';
+  }));
+  if (!finished) return;
+
+  const status = app.querySelector('[data-share-status]');
+  const url = `${location.origin}/daily?l=${lang()}`;
+  const text = `${t('daily.shareText', { n: d.number, score: r.score, max, right: r.correct ?? 0, total: d.questionIds.length })}\n${squares.join('')}`;
+  app.querySelector('[data-share]').addEventListener('click', async () => shareStatus(status, await shareText({ text, url })));
+  app.querySelector('[data-copy]').addEventListener('click', async () => shareStatus(status, (await copyText(`${text}\n${url}`)) ? 'copied' : 'failed'));
+  app.querySelector('[data-story]').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const blob = await resultImage({
+        heading: t('daily.title', { n: d.number }), score: r.score, max, squares, name: state.profile.name, avatar: state.profile.avatar,
+        lines: [t('daily.rightOf', { right: r.correct ?? 0, total: d.questionIds.length }), me ? t('daily.rank', { rank: me.rank, players: board.players }) : ''].filter(Boolean),
+        footer: t('share.beatMe'), link: url.replace(/^https?:\/\//, '').replace(/\?.*$/, ''),
+      });
+      shareStatus(status, await shareImage(blob, { name: `smarts-daily-${d.number}.png`, text: `${text}\n${url}` }));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+// ── Duels ──────────────────────────────────────────────────────
+
+/** Starts a new duel on `category` (optionally sent to a friend) and plays the first side. */
+async function startDuel(category, friendId = null) {
+  const { duel } = await api('/api/duels', { method: 'POST', body: { category, friendId } });
+  return playDuel(duel.id);
+}
+
+async function playDuel(id) {
+  const { duel } = await api(`/api/duels/${id}/start`, { method: 'POST' });
+  track('round_started', { mode: DEFAULT_MODE, category: 'duel' });
+  playFixed({
+    kind: 'duel', title: t('duel.title'), after: `#/duel/${id}`,
+    questions: duel.questionIds.map((q) => QUESTION_BY_ID.get(q)).filter(Boolean),
+    endpoint: `/api/duels/${id}/finish`, extra: {},
+  });
+}
+
+const duelTopic = (category) => (category === 'mixed' ? t('duel.mixed') : CATEGORY_BY_ID[category] ? catName(CATEGORY_BY_ID[category]) : category);
+
+/** The other player in a duel, from the viewer's side. */
+const duelOther = (d) => (d.role === 'challenger' ? d.opponent || d.invitedFriend : d.challenger);
+
+/** Pick the questions for a new duel: a mix, or one topic. */
+function showDuelNew() {
+  const friend = state.duelFriend;
+  app.innerHTML = `
+    <section class="screen duel-new has-tabbar">
+      ${topbar()}
+      <h1 class="greeting">${esc(t('duel.newTitle'))}</h1>
+      <p class="sub">${friend ? t('duel.newFor', { name: `<bdi>${esc(friend.name)}</bdi>` }) : esc(t('duel.newSub'))}</p>
+      <button class="quick" data-cat="mixed">
+        <span class="quick-text"><strong>${esc(t('duel.mixed'))}</strong><span>${esc(t('duel.mixedDesc'))}</span></span>
+        <span class="quick-go" aria-hidden="true">${ICONS.duel}</span>
+      </button>
+      <h2 class="section-title">${esc(t('duel.orTopic'))}</h2>
+      <ul class="topics">
+        ${CATEGORIES.map((c) => `
+          <li><button class="topic" data-cat="${c.id}" style="--hue:${c.hue}">
+            <span class="topic-icon">${ICONS[c.id]}</span>
+            <span class="topic-text"><strong>${esc(catName(c))}</strong><span>${esc(catBlurb(c))}</span></span>
+          </button></li>`).join('')}
+      </ul>
+    </section>
+    ${tabbar('friends')}`;
+  app.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', async () => {
+    app.querySelectorAll('[data-cat]').forEach((x) => (x.disabled = true));
+    try {
+      await startDuel(b.dataset.cat, friend?.id ?? null);
+      state.duelFriend = null;
+    } catch (err) {
+      app.querySelectorAll('[data-cat]').forEach((x) => (x.disabled = false));
+      window.alert(errMsg(err));
+    }
+  }));
+}
+
+async function showDuel(id) {
+  const nav = navId;
+  app.innerHTML = `<section class="screen duel has-tabbar">${topbar()}<p class="sub">${esc(t('duel.loading'))}</p></section>${tabbar('friends')}`;
+  let duel;
+  try {
+    await pendingSave;
+    ({ duel } = await api(`/api/duels/${encodeURIComponent(id)}`));
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    app.querySelector('.sub').textContent = errMsg(err);
+    return;
+  }
+
+  // Arrived from a duel link and just signed in: straight into the game.
+  let autoplay = null;
+  try { autoplay = sessionStorage.getItem('smarts:autoplay'); sessionStorage.removeItem('smarts:autoplay'); } catch { /* storage blocked */ }
+  if (autoplay === id && (duel.status === 'open' || duel.status === 'invited')) return playDuel(id).catch((err) => window.alert(errMsg(err)));
+
+  const max = duel.questionIds.length * MAX_POINTS;
+  const other = duelOther(duel);
+  const myShareUrl = `${location.origin}/duel/${duel.id}?l=${lang()}`;
+  let body;
+  if (duel.status === 'open' || duel.status === 'invited') {
+    const c = duel.challenger;
+    body = `
+      <div class="panel challenge-card">
+        ${avatarImg(c.avatar, 112, 'avatar-xl')}
+        <h1 class="challenge-title">${t('duel.challengedYou', { name: personName(c) })}</h1>
+        <p class="challenge-sub">${esc(c.score === null ? t('duel.notPlayedYet', { topic: duelTopic(duel.category) }) : t('duel.theyScored', { score: c.score, max, topic: duelTopic(duel.category) }))}</p>
+        <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.playNow'))}</button>
+      </div>`;
+  } else if (duel.status === 'taken') {
+    body = `
+      <div class="panel challenge-card">
+        ${avatarImg(duel.challenger.avatar, 96, 'avatar-xl')}
+        <p>${esc(t('duel.taken'))}</p>
+        <a class="btn btn-marigold btn-block" href="#/duel/new">${esc(t('duel.startOwn'))}</a>
+      </div>`;
+  } else if (duel.status === 'yourTurn') {
+    body = `
+      <div class="panel challenge-card">
+        ${other ? avatarImg(other.avatar, 112, 'avatar-xl') : avatar(state.profile?.avatar, 112)}
+        <h1 class="challenge-title">${esc(t('duel.yourTurn'))}</h1>
+        <p class="challenge-sub">${esc(duelTopic(duel.category))}</p>
+        <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.play'))}</button>
+      </div>`;
+  } else if (duel.status === 'waiting') {
+    const mine = duel[duel.role];
+    body = `
+      <div class="panel challenge-card">
+        ${avatar(state.profile?.avatar, 80)}
+        <p class="result-score">${mine.score}<small>/${max}</small></p>
+        <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.questionIds.length }))}</p>
+        ${other?.name
+          ? `<p class="challenge-sub">${t('duel.waitingFor', { name: personName(other) })}</p>`
+          : `<p class="challenge-sub">${esc(t('duel.sendLink'))}</p>`}
+        <div class="share-row">
+          <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('duel.sendButton'))}</span></button>
+          <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copyLink'))}</span></button>
+        </div>
+        <p class="share-status" data-share-status aria-live="polite"></p>
+      </div>`;
+  } else {
+    body = duelResultHtml(duel, max);
+  }
+
+  app.innerHTML = `
+    <section class="screen duel has-tabbar">
+      ${topbar()}
+      <p class="eyebrow on-cobalt">${esc(t('duel.title'))} · ${esc(duelTopic(duel.category))}</p>
+      ${unsavedNote(`/api/duels/${duel.id}/finish`)}
+      ${body}
+    </section>
+    ${tabbar('friends')}`;
+
+  bindRetry(() => showDuel(id));
+  app.querySelector('[data-play]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await playDuel(duel.id);
+    } catch (err) {
+      if (err.status === 409) return showDuel(id);
+      e.currentTarget.disabled = false;
+      window.alert(errMsg(err));
+    }
+  });
+  const status = app.querySelector('[data-share-status]');
+  const mine = duel.role && duel[duel.role];
+  const shareMsg = duel.status === 'done'
+    ? t('duel.shareResult', { me: mine.score, them: duel[duel.role === 'challenger' ? 'opponent' : 'challenger'].score, max, name: other?.name || '' })
+    : t('duel.shareInvite', { score: mine?.score ?? 0, max });
+  app.querySelector('[data-share]')?.addEventListener('click', async () => shareStatus(status, await shareText({ text: shareMsg, url: myShareUrl })));
+  app.querySelector('[data-copy]')?.addEventListener('click', async () => shareStatus(status, (await copyText(myShareUrl)) ? 'copied' : 'failed'));
+  app.querySelector('[data-rematch]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      const { duel: next } = await api(`/api/duels/${duel.id}/rematch`, { method: 'POST' });
+      await playDuel(next.id);
+    } catch (err) {
+      e.currentTarget.disabled = false;
+      window.alert(errMsg(err));
+    }
+  });
+}
+
+function duelResultHtml(duel, max) {
+  const meSide = duel.role;
+  const themSide = meSide === 'challenger' ? 'opponent' : 'challenger';
+  const me = meSide ? duel[meSide] : duel.challenger;
+  const them = meSide ? duel[themSide] : duel.opponent;
+  const verdict = !meSide ? '' : duel.winner === 'draw' ? t('duel.draw') : duel.winner === meSide ? t('duel.youWon') : t('duel.theyWon', { name: them?.name ? esc(them.name) : esc(t('people.gone')) });
+  const mine = new Map((duel.answers?.[meSide || 'challenger'] || []).map((a) => [a.id, a]));
+  const theirs = new Map((duel.answers?.[meSide ? themSide : 'opponent'] || []).map((a) => [a.id, a]));
+  const pill = (a) => (a ? `<span class="pts-pill ${a.correct ? (pointsOf(a) >= MAX_POINTS ? 'is-fast' : 'is-right') : 'is-wrong'}">${a.correct ? `+${pointsOf(a)}` : '0'}</span>` : '<span class="pts-pill is-none">–</span>');
+  return `
+    <div class="panel versus ${duel.winner === meSide ? 'is-win' : ''}">
+      <p class="verdict">${verdict}</p>
+      <div class="versus-row">
+        <div class="versus-side ${duel.winner === (meSide || 'challenger') ? 'is-winner' : ''}">
+          ${avatarImg(me.avatar, 84)}
+          <span class="versus-name">${meSide ? esc(t('duel.you')) : personName(me)}</span>
+          <span class="versus-score">${me.score}</span>
+        </div>
+        <span class="versus-vs">${esc(t('duel.vs'))}</span>
+        <div class="versus-side ${duel.winner === (meSide ? themSide : 'opponent') ? 'is-winner' : ''}">
+          ${avatarImg(them?.avatar, 84)}
+          <span class="versus-name">${personName(them)}</span>
+          <span class="versus-score">${them?.score ?? '–'}</span>
+        </div>
+      </div>
+      <p class="result-line">${esc(t('duel.outOf', { max }))}</p>
+      ${meSide ? `
+        <div class="share-row">
+          <button class="btn btn-marigold" data-rematch>${ICONS.duel}<span>${esc(t('duel.rematch'))}</span></button>
+          <button class="btn btn-ghost-ink" data-share>${ICONS.share}<span>${esc(t('share.share'))}</span></button>
+        </div>
+        <p class="share-status" data-share-status aria-live="polite"></p>` : ''}
+    </div>
+    <h2 class="section-title">${esc(t('duel.byQuestion'))}</h2>
+    <ol class="compare">
+      <li class="compare-head"><span></span><span>${esc(meSide ? t('duel.you') : t('duel.first'))}</span><span>${them?.name ? `<bdi>${esc(them.name)}</bdi>` : '–'}</span></li>
+      ${duel.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean).map((q) => `
+        <li>
+          <span class="compare-q"><strong>${esc(qt(q, q.answer))}</strong>${diffChip(q)}</span>
+          ${pill(mine.get(q.id))}
+          ${pill(theirs.get(q.id))}
+        </li>`).join('')}
+    </ol>`;
+}
+
+// ── Friends ────────────────────────────────────────────────────
+
+const DUEL_STATUS_KEY = { yourTurn: 'duel.st.yourTurn', invited: 'duel.st.invited', waiting: 'duel.st.waiting', open: 'duel.st.waiting', done: 'duel.st.done', taken: 'duel.st.done' };
+
+function duelRow(d) {
+  const other = duelOther(d);
+  const meSide = d.role;
+  const mine = meSide ? d[meSide].score : null;
+  const theirs = meSide ? d[meSide === 'challenger' ? 'opponent' : 'challenger']?.score : d.challenger.score;
+  const result = d.status === 'done'
+    ? (d.winner === 'draw' ? t('duel.draw') : d.winner === meSide ? t('duel.youWon') : t('duel.youLost'))
+    : t(DUEL_STATUS_KEY[d.status] || 'duel.st.waiting');
+  return `
+    <li><a class="person-row duel-row is-${d.status}" href="#/duel/${d.id}">
+      ${avatarImg(other?.avatar, 44)}
+      <span class="person-text">${other?.name ? personName(other) : `<span class="is-hidden">${esc(t('duel.anyone'))}</span>`}<small>${esc(duelTopic(d.category))} · ${esc(result)}</small></span>
+      <span class="duel-score">${mine ?? '–'}<small>:</small>${theirs ?? '–'}</span>
+    </a></li>`;
+}
+
+async function showFriends() {
+  const nav = navId;
+  app.innerHTML = `<section class="screen friends has-tabbar">${topbar()}<h1 class="greeting">${esc(t('friends.title'))}</h1><p class="sub">${esc(t('friends.loading'))}</p></section>${tabbar('friends')}`;
+  let data;
+  try {
+    data = await api(`/api/friends?tz=${new Date().getTimezoneOffset()}`);
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    app.querySelector('.sub').textContent = t('friends.loadFailed', { error: errMsg(err) });
+    return;
+  }
+  const link = `${location.origin}/f/${data.code}?l=${lang()}`;
+  const turn = data.duels.filter((d) => d.status === 'yourTurn' || d.status === 'invited');
+  const waiting = data.duels.filter((d) => d.status === 'waiting' || d.status === 'open');
+  const done = data.duels.filter((d) => d.status === 'done').slice(0, 8);
+
+  app.innerHTML = `
+    <section class="screen friends has-tabbar">
+      ${topbar()}
+      <h1 class="greeting">${esc(t('friends.title'))}</h1>
+
+      <div class="panel invite-panel">
+        <h2 class="panel-title">${esc(t('friends.invite'))}</h2>
+        <p class="invite-hint">${esc(t('friends.inviteHint'))}</p>
+        <p class="friend-code" dir="ltr"><span>${esc(t('friends.yourCode'))}</span><strong>${esc(data.code)}</strong></p>
+        <div class="share-row">
+          <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('friends.shareLink'))}</span></button>
+          <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copyLink'))}</span></button>
+        </div>
+        <p class="share-status" data-share-status aria-live="polite"></p>
+        <form class="add-friend" data-add novalidate>
+          <label for="friend-code">${esc(t('friends.addLabel'))}</label>
+          <div class="dev-row">
+            <input id="friend-code" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" dir="ltr" placeholder="ABC123">
+            <button class="btn btn-ghost-ink" type="submit">${esc(t('friends.add'))}</button>
+          </div>
+          <p class="form-msg" data-add-msg role="status"></p>
+        </form>
+      </div>
+
+      <a class="duel-card" href="#/duel/new">
+        <span class="duel-card-icon">${ICONS.duel}</span>
+        <span class="quick-text"><strong>${esc(t('duel.cardTitle'))}</strong><span>${esc(t('duel.cardDesc'))}</span></span>
+      </a>
+
+      ${turn.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.yourTurn'))}</h2><ul class="people">${turn.map(duelRow).join('')}</ul></div>` : ''}
+      ${waiting.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.waiting'))}</h2><ul class="people">${waiting.map(duelRow).join('')}</ul></div>` : ''}
+
+      <div class="panel">
+        <h2 class="panel-title">${esc(tn('friends.count', data.friends.length))}</h2>
+        ${data.friends.length ? `<ul class="people">${data.friends.map((f) => `
+          <li class="person-row">
+            ${avatarImg(f.avatar, 44)}
+            <span class="person-text">${personName(f)}<small>${f.streak ? `<span class="streak">${ICONS.fire}${esc(tn('friends.streak', f.streak))}</span>` : esc(t('friends.noStreak'))}${f.daily !== null ? ` · ${esc(t('friends.dailyScore', { score: f.daily }))}` : ''}</small></span>
+            <button class="btn btn-small btn-marigold" data-duel="${esc(f.id)}" data-name="${esc(f.name)}">${esc(t('friends.challenge'))}</button>
+            <button class="icon-btn icon-btn-ink" data-remove="${esc(f.id)}" data-name="${esc(f.name)}" aria-label="${esc(t('friends.remove', { name: f.name }))}" title="${esc(t('friends.remove', { name: f.name }))}">${ICONS.close}</button>
+          </li>`).join('')}</ul>` : `<p class="board-empty">${esc(t('friends.none'))}</p>`}
+      </div>
+
+      ${done.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.finished'))}</h2><ul class="people">${done.map(duelRow).join('')}</ul></div>` : ''}
+    </section>
+    ${tabbar('friends')}`;
+
+  const status = app.querySelector('[data-share-status]');
+  app.querySelector('[data-share]').addEventListener('click', async () =>
+    shareStatus(status, await shareText({ text: t('friends.shareText', { code: data.code }), url: link })));
+  app.querySelector('[data-copy]').addEventListener('click', async () => shareStatus(status, (await copyText(link)) ? 'copied' : 'failed'));
+  app.querySelector('[data-add]').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = app.querySelector('[data-add-msg]');
+    const code = e.target.elements.code.value.trim().toUpperCase();
+    if (!/^[A-Z2-9]{6}$/.test(code)) {
+      msg.textContent = t('friends.badCode');
+      return;
+    }
+    try {
+      const r = await api('/api/friends', { method: 'POST', body: { code } });
+      msg.textContent = t(r.added ? 'friends.added' : 'friends.already', { name: r.friend.name });
+      setTimeout(() => nav === navId && showFriends(), 900);
+    } catch (err) {
+      msg.textContent = err.status === 404 ? t('friends.noSuchCode') : errMsg(err);
+    }
+  });
+  app.querySelectorAll('[data-duel]').forEach((b) => b.addEventListener('click', () => {
+    state.duelFriend = { id: b.dataset.duel, name: b.dataset.name };
+    go('#/duel/new');
+  }));
+  app.querySelectorAll('[data-remove]').forEach((b) => b.addEventListener('click', async () => {
+    if (!window.confirm(t('friends.removeConfirm', { name: b.dataset.name }))) return;
+    await api(`/api/friends/${encodeURIComponent(b.dataset.remove)}`, { method: 'DELETE' }).catch((err) => window.alert(errMsg(err)));
+    showFriends();
+  }));
+}
+
+/** Opened from an invite link: confirm before adding the friend. */
+async function showAddFriend(code) {
+  const nav = navId;
+  app.innerHTML = `<section class="screen friends has-tabbar">${topbar()}<p class="sub">${esc(t('friends.loading'))}</p></section>${tabbar('friends')}`;
+  let inviter;
+  try {
+    ({ inviter } = await api(`/api/invite/${encodeURIComponent(code)}`));
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    app.querySelector('.sub').textContent = errMsg(err);
+    return;
+  }
+  const self = inviter.id === state.user.id;
+  app.innerHTML = `
+    <section class="screen friends has-tabbar">
+      ${topbar()}
+      <div class="panel challenge-card">
+        ${avatarImg(inviter.avatar, 112, 'avatar-xl')}
+        <h1 class="challenge-title">${self ? esc(t('friends.ownLink')) : t('friends.addQuestion', { name: personName(inviter) })}</h1>
+        ${self ? '' : `<p class="challenge-sub">${esc(t('friends.addWhy'))}</p>
+          <button class="btn btn-marigold btn-block" data-add-friend>${esc(t('friends.addButton'))}</button>`}
+        <a class="btn btn-ghost-ink btn-block" href="#/friends">${esc(t(self ? 'friends.toFriends' : 'common.cancel'))}</a>
+        <p class="form-msg" data-add-msg role="status"></p>
+      </div>
+    </section>
+    ${tabbar('friends')}`;
+  app.querySelector('[data-add-friend]')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await api('/api/friends', { method: 'POST', body: { code } });
+      go('#/friends', { replace: true });
+    } catch (err) {
+      e.currentTarget.disabled = false;
+      app.querySelector('[data-add-msg]').textContent = errMsg(err);
+    }
+  });
+}
+
+// ── Profile ────────────────────────────────────────────────────
+
+function showProfile() {
+  const p = state.profile;
+  let draft = { ...parseAvatar(p.avatar) || parseAvatar(randomAvatar(state.user.id)) };
+  const code = () => avatarCode(draft);
+  const countries = [...COUNTRIES].sort((a, b) => countryName(a).localeCompare(countryName(b), locale()));
+  const choice = (part, value, preview) =>
+    `<button type="button" class="avatar-choice" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${esc(t(`avatar.${part}.${value}`))}" title="${esc(t(`avatar.${part}.${value}`))}">${preview}</button>`;
+  const groups = () => `
+    <h2 class="picker-title">${esc(t('profile.animal'))}</h2>
+    <div class="avatar-grid">${ANIMALS.map((a) => choice('animal', a, avatarImg(avatarCode({ ...draft, animal: a }), 64))).join('')}</div>
+    <h2 class="picker-title">${esc(t('profile.face'))}</h2>
+    <div class="avatar-grid">${EYES.map((e) => choice('eyes', e, avatarImg(avatarCode({ ...draft, eyes: e }), 64))).join('')}</div>
+    <h2 class="picker-title">${esc(t('profile.color'))}</h2>
+    <div class="swatch-grid">${Object.entries(BACKGROUNDS).map(([id, hex]) => choice('bg', id, `<span class="swatch" style="background:${hex}"></span>`)).join('')}</div>
+    <h2 class="picker-title">${esc(t('profile.extra'))}</h2>
+    <div class="avatar-grid">${EXTRAS.map((x) => choice('extra', x, avatarImg(avatarCode({ ...draft, extra: x }), 64))).join('')}</div>`;
+
+  app.innerHTML = `
+    <section class="screen profile has-tabbar">
+      ${topbar()}
+      <h1 class="greeting">${esc(t('profile.title'))}</h1>
+      <div class="profile-preview">
+        <span data-preview>${avatarImg(code(), 140, 'avatar-xl')}</span>
+        <button type="button" class="btn btn-small btn-ghost" data-random>${ICONS.dice}<span>${esc(t('profile.random'))}</span></button>
+      </div>
+      <form class="panel profile-form" data-form novalidate>
+        <label class="field">
+          <span>${esc(t('profile.name'))}</span>
+          <input name="name" maxlength="20" value="${esc(p.name)}" autocomplete="nickname" required>
+        </label>
+        <div data-groups>${groups()}</div>
+        <label class="field">
+          <span>${esc(t('profile.country'))}</span>
+          <span class="country-row">
+            <span data-flag>${flagImg(p.country)}</span>
+            <select name="country">
+              <option value="">${esc(t('profile.noCountry'))}</option>
+              ${countries.map((c) => `<option value="${c}" ${c === p.country ? 'selected' : ''}>${esc(countryName(c))}</option>`).join('')}
+            </select>
+          </span>
+        </label>
+        <label class="setting">
+          <span><strong>${esc(t('profile.showOnBoards'))}</strong><span>${esc(t('profile.showHint'))}</span></span>
+          <input type="checkbox" class="switch" name="shown" ${p.hidden ? '' : 'checked'}>
+        </label>
+        <p class="form-msg" data-msg role="status"></p>
+        <button class="btn btn-marigold btn-block" type="submit">${esc(t('profile.save'))}</button>
+      </form>
+    </section>
+    ${tabbar('progress')}`;
+
+  const redraw = () => {
+    app.querySelector('[data-preview]').innerHTML = avatarImg(code(), 140, 'avatar-xl');
+    app.querySelector('[data-groups]').innerHTML = groups();
+  };
+  app.querySelector('[data-groups]').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-part]');
+    if (!b) return;
+    draft = { ...draft, [b.dataset.part]: b.dataset.value };
+    redraw();
+    app.querySelector(`[data-part="${b.dataset.part}"][data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
+  });
+  app.querySelector('[data-random]').addEventListener('click', () => {
+    draft = parseAvatar(randomAvatar());
+    redraw();
+  });
+  const form = app.querySelector('[data-form]');
+  form.elements.country.addEventListener('change', () => {
+    app.querySelector('[data-flag]').innerHTML = flagImg(form.elements.country.value || null);
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = app.querySelector('[data-msg]');
+    const name = form.elements.name.value.trim();
+    if (!name) {
+      msg.textContent = t('profile.needName');
+      return;
+    }
+    const btn = form.querySelector('[type="submit"]');
+    btn.disabled = true;
+    try {
+      const { profile } = await api('/api/profile', {
+        method: 'PUT',
+        body: { name, avatar: code(), country: form.elements.country.value || null, hidden: !form.elements.shown.checked },
+      });
+      state.profile = profile;
+      go('#/progress');
+    } catch (err) {
+      btn.disabled = false;
+      msg.textContent = errMsg(err);
+    }
+  });
+}
+
+// ── Reminders (push notifications) ─────────────────────────────
+
+const urlBytes = (b64) => Uint8Array.from(atob(b64.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+
+/**
+ * Makes sure this browser can receive reminders: asks permission and subscribes it.
+ * Resolves to 'ok', 'denied', 'install' (iPhone: install the app first) or 'unsupported'.
+ */
+async function ensurePush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    return isIos() && !isInstalled() ? 'install' : 'unsupported';
+  }
+  const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+  if (permission !== 'granted') return 'denied';
+  const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 8000))]);
+  if (!reg) return 'unsupported';
+  try {
+    const sub = (await reg.pushManager.getSubscription())
+      || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBytes(state.config.pushKey) }));
+    await api('/api/push/subscribe', { method: 'POST', body: sub.toJSON() });
+    return 'ok';
+  } catch {
+    return 'unsupported';
+  }
+}
+
+function bindReminders() {
+  const note = app.querySelector('[data-remind-note]');
+  app.querySelectorAll('[data-remind]').forEach((box) => box.addEventListener('change', async () => {
+    const name = box.dataset.remind;
+    note.hidden = true;
+    if (!box.checked) return setSetting(name, false);
+    box.disabled = true;
+    const result = await ensurePush();
+    box.disabled = false;
+    if (result === 'ok') return setSetting(name, true);
+    box.checked = false;
+    note.textContent = t(`remind.${result}`);
+    note.hidden = false;
+  }));
+}
+
+// ── Install the app ────────────────────────────────────────────
+// The Progress page offers to install Smarts on the home screen: Chrome and Android show
+// their own install prompt, iPhones get the Add to Home Screen steps. Each player sees the
+// offer on at most INSTALL_SHOWS visits to the Progress page (counted on this device), and
+// never again once they install.
+
+const INSTALL_SHOWS = 20;
+let installPrompt = null; // the browser's install prompt, saved for our button
+let installCounted = false; // this visit to the Progress page has been counted already
+
+const installKey = () => `smarts:${state.user.id}:installShown`;
+const isInstalled = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function installShows() {
+  try {
+    return Number(localStorage.getItem(installKey())) || 0;
+  } catch {
+    return INSTALL_SHOWS; // storage blocked: skip the offer rather than show it forever
+  }
+}
+
+function stopInstallOffer() {
+  try { if (state.user) localStorage.setItem(installKey(), String(INSTALL_SHOWS)); } catch { /* storage blocked */ }
+  document.querySelector('.install-panel')?.remove();
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Once the offer has been used up, leave the browser's own install bar alone.
+  if (state.user && installShows() >= INSTALL_SHOWS) return;
+  e.preventDefault();
+  installPrompt = e;
+  mountInstall(); // the prompt can arrive after the page is drawn
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  stopInstallOffer();
+});
+
+/** Puts the install offer on the Progress page, if this device can install and the player hasn't used up their 20 views. */
+function mountInstall() {
+  const slot = app.querySelector('[data-install-slot]');
+  if (!slot || slot.firstElementChild || !state.user || isInstalled() || !(installPrompt || isIos())) return;
+  if (!installCounted) {
+    const shown = installShows();
+    if (shown >= INSTALL_SHOWS) return;
+    try {
+      localStorage.setItem(installKey(), String(shown + 1));
+    } catch {
+      return;
+    }
+    installCounted = true;
+  }
+  slot.innerHTML = `
+    <div class="panel install-panel">
+      <img class="install-icon" src="/icons/icon-192.png" alt="" width="52" height="52">
+      <span class="install-text"><strong>${esc(t('install.title'))}</strong><span>${esc(t('install.text'))}</span></span>
+      <button type="button" class="btn btn-marigold btn-block" data-install>${esc(t('install.button'))}</button>
+    </div>`;
+  slot.querySelector('[data-install]').addEventListener('click', (e) => installApp(e.currentTarget));
+}
+
+async function installApp(btn) {
+  if (!installPrompt) return openIosInstall(btn);
+  const prompt = installPrompt;
+  installPrompt = null; // a prompt can only be shown once
+  prompt.prompt();
+  const { outcome } = await prompt.userChoice.catch(() => ({ outcome: 'dismissed' }));
+  if (outcome === 'accepted') stopInstallOffer();
+  else document.querySelector('.install-panel')?.remove(); // back next visit, if the browser offers again
+}
+
+/** iPhones can't install from a button, so show the steps instead. */
+function openIosInstall(opener) {
+  const scrim = document.createElement('div');
+  scrim.className = 'sheet-scrim';
+  scrim.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="install-title">
+      <h2 id="install-title">${esc(t('install.iosTitle'))}</h2>
+      <ol class="install-steps">
+        <li>${esc(t('install.ios1'))}</li>
+        <li>${esc(t('install.ios2'))}</li>
+        <li>${esc(t('install.ios3'))}</li>
+      </ol>
+      <button type="button" class="btn btn-marigold btn-block sheet-done" data-install-close>${esc(t('common.done'))}</button>
+    </div>`;
+  document.body.append(scrim);
+  const close = () => {
+    scrim.remove();
+    opener?.focus?.({ preventScroll: true });
+  };
+  scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  scrim.addEventListener('click', (e) => {
+    if (e.target === scrim || e.target.closest('[data-install-close]')) close();
+  });
+  scrim.querySelector('[data-install-close]').focus();
+}
+
 // ── Progress ───────────────────────────────────────────────────
 
 async function showProgress() {
   const user = state.user;
+  if (!rerendering) installCounted = false; // a language change redraws without counting a new view
   app.innerHTML = `<section class="screen progress has-tabbar"><header class="topbar"><span class="logo">Smarts</span></header><p class="sub">${esc(t('prog.loading'))}</p></section>${tabbar('progress')}`;
   const nav = navId;
   let s;
@@ -1392,10 +2384,16 @@ async function showProgress() {
     <section class="screen progress has-tabbar">
       <header class="topbar">
         <span class="logo">Smarts</span>
-        ${avatar(user)}
+        <a href="#/profile" class="avatar-link" aria-label="${esc(t('profile.edit'))}">${avatar()}</a>
       </header>
 
       <h1 class="greeting">${esc(t('prog.title'))}</h1>
+      <a class="panel profile-card" href="#/profile">
+        ${avatar(state.profile?.avatar, 60)}
+        <span class="person-text"><span>${personName({ ...state.profile, hidden: false })}</span><small>${esc(t(state.profile?.hidden ? 'profile.hiddenNote' : 'profile.editHint'))}</small></span>
+        <span class="profile-edit">${ICONS.edit}</span>
+      </a>
+      <div data-install-slot></div>
 
       ${empty ? `
         <div class="panel empty">
@@ -1515,22 +2513,34 @@ async function showProgress() {
             <output id="auto-delay-out" for="auto-delay">${esc(t('unit.seconds', { s: autoDelaySeconds() }))}</output>
           </div>
         </div>
+        <h3 class="setting-group">${ICONS.bell}<span>${esc(t('remind.title'))}</span></h3>
+        <label class="setting">
+          <span><strong>${esc(t('remind.daily'))}</strong><span>${esc(t('remind.dailyHint'))}</span></span>
+          <input type="checkbox" class="switch" data-remind="notifyDaily" ${getSetting('notifyDaily', false) ? 'checked' : ''}>
+        </label>
+        <label class="setting">
+          <span><strong>${esc(t('remind.friends'))}</strong><span>${esc(t('remind.friendsHint'))}</span></span>
+          <input type="checkbox" class="switch" data-remind="notifyFriends" ${getSetting('notifyFriends', false) ? 'checked' : ''}>
+        </label>
+        <p class="remind-note" data-remind-note role="status" hidden></p>
       </div>
 
       <div class="account">
         <p>${t('acc.signedInAs', { name: esc(user.name) })}${user.email ? ` <span dir="ltr">(${esc(user.email)})</span>` : user.provider === 'dev' ? ` ${esc(t('acc.localName'))}` : ''}</p>
         <button class="btn btn-ghost" data-signout>${esc(t('acc.signOut'))}</button>
         <div class="account-links">
-          ${user.admin ? `<a class="link-btn" href="#/admin">${esc(t('acc.reports'))}</a>` : ''}
+          ${user.admin ? `<a class="link-btn" href="#/admin/players">${esc(t('acc.players'))}</a><a class="link-btn" href="#/admin">${esc(t('acc.reports'))}</a>` : ''}
           <button class="link-btn" data-signout-all>${esc(t('acc.signOutAll'))}</button>
           <a class="link-btn" href="/api/account/export" download>${esc(t('acc.download'))}</a>
           <button class="link-btn link-danger" data-delete-account>${esc(t('acc.delete'))}</button>
-          <a class="link-btn" href="/privacy">${esc(t('common.privacy'))}</a>
+          ${legalLinks('link-btn')}
         </div>
       </div>
     </section>
     ${tabbar('progress')}`;
 
+  mountInstall();
+  bindReminders();
   app.querySelector('[data-signout]').addEventListener('click', () => signOut());
   app.querySelector('[data-signout-all]').addEventListener('click', () => signOut({ everywhere: true }));
   app.querySelector('[data-delete-account]').addEventListener('click', (e) => deleteAccount(e.currentTarget));
@@ -1549,24 +2559,140 @@ async function showProgress() {
   });
 }
 
+// ── Admin ──────────────────────────────────────────────────────
+
+/** The admin screens share a header with links to each of them. */
+function adminFrame(section, body) {
+  const link = (id, href) =>
+    `<a class="admin-section ${id === section ? 'is-active' : ''}" href="${href}" ${id === section ? 'aria-current="page"' : ''}>${esc(t(`admin.nav.${id}`))}</a>`;
+  return `
+    <section class="screen admin has-tabbar">
+      <header class="topbar"><span class="logo">Smarts</span></header>
+      <nav class="admin-sections" aria-label="${esc(t('admin.nav.aria'))}">${link('players', '#/admin/players')}${link('reports', '#/admin')}</nav>
+      ${body}
+    </section>
+    ${tabbar('progress')}`;
+}
+
+// ── Admin: players and retention ───────────────────────────────
+
+// What "good" looks like, from the money plan: shown next to each number.
+const RETURN_GOALS = { 1: 30, 7: 15 };
+const STICKINESS_GOAL = 20;
+
+async function showPlayers() {
+  const nav = navId;
+  const frame = (body) => adminFrame('players', `<h1 class="section-title">${esc(t('players.title'))}</h1>${body}`);
+  app.innerHTML = frame(`<p class="sub">${esc(t('players.loading'))}</p>`);
+  let r;
+  try {
+    r = await api(`/api/admin/retention?tz=${new Date().getTimezoneOffset()}`);
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    app.querySelector('.sub').textContent = t('players.loadFailed', { error: errMsg(err) });
+    return;
+  }
+
+  const pct = (x, y) => (y ? Math.round((x / y) * 100) : null);
+  const day = (iso, opts = { day: 'numeric', month: 'short' }) => fmtDate(new Date(`${iso}T12:00:00`), opts);
+  const sticky = pct(r.dauAvg7, r.mau);
+  const returnCell = (x) => {
+    const p = pct(x.back, x.eligible);
+    return p === null ? '<td class="num is-muted">–</td>' : `<td class="num" title="${esc(t('players.dOf', { x: x.back, y: x.eligible }))}">${p}%</td>`;
+  };
+  const maxDaily = Math.max(1, ...r.daily.map((d) => d.active));
+  const maxMonth = Math.max(1, ...r.months.map((m) => m.players));
+
+  app.innerHTML = frame(`
+    <dl class="facts">
+      <div><dt>${esc(t('players.today'))}</dt><dd>${r.dau}</dd><p>${esc(t('players.avg7', { n: r.dauAvg7 }))}</p></div>
+      <div><dt>${esc(t('players.week'))}</dt><dd>${r.wau}</dd><p>${esc(t('players.allTime', { n: r.players }))}</p></div>
+      <div><dt>${esc(t('players.month'))}</dt><dd>${r.mau}</dd><p>${esc(t('players.newMonth', { n: r.newLast30 }))}</p></div>
+      <div><dt>${esc(t('players.sticky'))}</dt><dd>${sticky === null ? '–' : `${sticky}%`}</dd><p>${esc(t('players.goal', { p: STICKINESS_GOAL }))}</p></div>
+    </dl>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.returns'))}</h2>
+      <ul class="returns">
+        ${r.returns.map((x) => {
+          const p = pct(x.back, x.eligible);
+          const goal = RETURN_GOALS[x.n];
+          return `
+            <li>
+              <span class="returns-head"><strong>${esc(t('players.dayN', { n: x.n }))}</strong><span>${esc(x.eligible ? t('players.dOf', { x: x.back, y: x.eligible }) : t('players.noData'))}</span></span>
+              <span class="returns-num ${p !== null && goal && p >= goal ? 'is-good' : ''}">${p === null ? '–' : `${p}%`}</span>
+              <span class="meter meter-ink returns-meter"><span style="width:${p ?? 0}%"></span>${goal ? `<i style="inset-inline-start:${goal}%" title="${esc(t('players.goal', { p: goal }))}"></i>` : ''}</span>
+            </li>`;
+        }).join('')}
+      </ul>
+      <p class="legend">${esc(t('players.returnsHint'))}</p>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.daily'))}</h2>
+      <div class="days" role="img" aria-label="${esc(t('players.daily'))}">
+        ${r.daily.map((d) => `
+          <span class="day" title="${esc(t('players.dayTitle', { date: day(d.date), n: d.active, new: d.new }))}">
+            <span class="day-bar${d.active ? '' : ' is-empty'}" style="height:${(d.active / maxDaily) * 100}%"><span class="is-back" style="height:${d.active ? ((d.active - d.new) / d.active) * 100 : 0}%"></span></span>
+          </span>`).join('')}
+      </div>
+      <div class="days-axis"><span>${esc(day(r.daily[0].date))}</span><span>${esc(t('prog.today'))}</span></div>
+      <p class="legend"><span class="sw sw-back"></span>${esc(t('players.legendBack'))} <span class="sw sw-new"></span>${esc(t('players.legendNew'))}</p>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.cohorts'))}</h2>
+      <div class="table-scroll">
+        <table class="admin-table">
+          <thead><tr><th>${esc(t('players.colFirst'))}</th><th class="num">${esc(t('players.colPlayers'))}</th>${r.returns.map((x) => `<th class="num">${esc(t('players.dayN', { n: x.n }))}</th>`).join('')}</tr></thead>
+          <tbody>
+            ${r.cohorts.map((c) => `
+              <tr><td>${esc(day(c.from))} – ${esc(day(c.to))}</td><td class="num">${c.players}</td>${c.returns.map(returnCell).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.monthly'))}</h2>
+      <ul class="months">
+        ${r.months.map((m) => `
+          <li><span>${esc(day(`${m.month}-15`, { month: 'long', year: 'numeric' }))}</span><span class="meter meter-ink"><span style="width:${(m.players / maxMonth) * 100}%"></span></span><strong>${m.players}</strong></li>`).join('')}
+      </ul>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.events'))}</h2>
+      <div class="table-scroll">
+        <table class="admin-table">
+          <thead><tr><th>${esc(t('players.colEvent'))}</th><th class="num">${esc(t('players.col7'))}</th><th class="num">${esc(t('players.col30'))}</th><th class="num">${esc(t('players.colWho'))}</th></tr></thead>
+          <tbody>
+            ${r.events.map((e) => `<tr><td>${esc(t(`event.${e.name}`))}</td><td class="num">${e.week}</td><td class="num">${e.month}</td><td class="num">${e.players}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="sub admin-note">${esc(t('players.note'))}</p>`);
+}
+
 // ── Admin: question reports ────────────────────────────────────
 
 const REASON_BY_ID = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r]));
 const STATUS_TABS = ['open', 'fixed', 'dismissed'];
 
 async function showAdmin(status = 'open') {
+  if (status === 'players') return showPlayers();
   if (!STATUS_TABS.includes(status)) status = 'open';
   const nav = navId;
   const tabs = STATUS_TABS.map((s) =>
     `<a class="admin-tab ${s === status ? 'is-active' : ''}" href="#/admin/${s}" ${s === status ? 'aria-current="page"' : ''}>${esc(t(`admin.tab.${s}`))}</a>`).join('');
-  const frame = (body) => `
-    <section class="screen admin has-tabbar">
-      <header class="topbar"><span class="logo">Smarts</span></header>
+  const frame = (body) => adminFrame('reports', `
       <h1 class="section-title">${esc(t('admin.title'))}</h1>
       <nav class="admin-tabs" aria-label="${esc(t('admin.statusAria'))}">${tabs}</nav>
-      ${body}
-    </section>
-    ${tabbar('progress')}`;
+      ${body}`);
   app.innerHTML = frame(`<p class="sub">${esc(t('admin.loading'))}</p>`);
 
   let reports;

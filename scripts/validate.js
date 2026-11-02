@@ -6,9 +6,10 @@
 //    of similar length, so the correct one can't be spotted by its length.
 //    "Similar" = every option's character length is within 25% of the longest,
 //    and every option's word count is within 4 words of the longest.
+//  - every question has a difficulty from 0 to 10 (shared/difficulty.js)
 
 import { existsSync } from 'node:fs';
-import { QUESTIONS } from '../shared/questions.js';
+import { QUESTIONS, DIFFICULTY_PROBLEMS } from '../shared/questions.js';
 import { CATEGORIES } from '../shared/config.js';
 
 const PUBLIC = new URL('../public/', import.meta.url);
@@ -22,6 +23,9 @@ const errors = [];
 const ids = new Set();
 const cats = new Set(CATEGORIES.map((c) => c.id));
 const perCat = {};
+
+errors.push(...DIFFICULTY_PROBLEMS);
+for (const q of QUESTIONS) if (q.difficulty === undefined) errors.push(`${q.id}: no difficulty in shared/difficulty.js`);
 
 for (const q of QUESTIONS) {
   const where = q.id;

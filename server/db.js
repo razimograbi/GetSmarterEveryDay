@@ -2,7 +2,10 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { AUTO_DELAY, LANGUAGES } from '../shared/config.js';
+import { AUTO_DELAY, LANGUAGES, PROFILE, pointsFor, secondsFor } from '../shared/config.js';
+import { QUESTION_BY_ID } from '../shared/questions.js';
+import { parseAvatar, randomAvatar } from '../shared/avatars.js';
+import { isCountry } from '../shared/countries.js';
 
 export function openDb(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -12,6 +15,8 @@ export function openDb(file) {
     PRAGMA synchronous = NORMAL;
     PRAGMA busy_timeout = 5000;
     PRAGMA foreign_keys = ON;
+    PRAGMA cache_size = -16000;   -- up to 16 MB of pages kept in memory
+    PRAGMA temp_store = MEMORY;   -- sorting for the boards happens in memory, not in temp files
 
     CREATE TABLE IF NOT EXISTS users (
       id          TEXT PRIMARY KEY,
@@ -73,7 +78,110 @@ export function openDb(file) {
       resolved_at  INTEGER
     );
 
+    -- What players do (see EVENTS in shared/config.js). props is a small JSON object.
+    CREATE TABLE IF NOT EXISTS events (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT REFERENCES users(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      props       TEXT,
+      created_at  INTEGER NOT NULL
+    );
+
+    -- How a player appears to others. Created at first sign-in with a random avatar.
+    CREATE TABLE IF NOT EXISTS profiles (
+      user_id      TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      avatar       TEXT NOT NULL,
+      country      TEXT,
+      hidden       INTEGER NOT NULL DEFAULT 0, -- 1: shown as a hidden player on public boards
+      friend_code  TEXT NOT NULL UNIQUE,
+      tz_offset    INTEGER NOT NULL DEFAULT 0, -- minutes behind UTC, as from getTimezoneOffset()
+      updated_at   INTEGER NOT NULL
+    );
+
+    -- Friendships, stored once in each direction.
+    CREATE TABLE IF NOT EXISTS friends (
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      friend_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at  INTEGER NOT NULL,
+      PRIMARY KEY (user_id, friend_id)
+    ) WITHOUT ROWID;
+
+    -- The Daily Challenge's questions for each date, picked the first time someone asks.
+    CREATE TABLE IF NOT EXISTS daily_challenges (
+      day           TEXT PRIMARY KEY,
+      number        INTEGER NOT NULL,
+      question_ids  TEXT NOT NULL,
+      created_at    INTEGER NOT NULL
+    );
+
+    -- One try per player per day: the row is made when they start, and scored when they finish.
+    CREATE TABLE IF NOT EXISTS daily_results (
+      day          TEXT NOT NULL,
+      user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      round_id     INTEGER REFERENCES rounds(id) ON DELETE SET NULL,
+      score        INTEGER,
+      correct      INTEGER,
+      total        INTEGER,
+      ms           INTEGER,
+      started_at   INTEGER NOT NULL,
+      finished_at  INTEGER,
+      PRIMARY KEY (day, user_id)
+    ) WITHOUT ROWID;
+
+    -- Two players, the same questions. The challenger plays first; whoever opens the link next
+    -- (or the friend it was sent to) plays second.
+    CREATE TABLE IF NOT EXISTS duels (
+      id                  TEXT PRIMARY KEY,
+      challenger_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      opponent_id         TEXT REFERENCES users(id) ON DELETE SET NULL,
+      invited_id          TEXT REFERENCES users(id) ON DELETE SET NULL,
+      category            TEXT NOT NULL,
+      question_ids        TEXT NOT NULL,
+      challenger_score    INTEGER,
+      challenger_correct  INTEGER,
+      challenger_ms       INTEGER,
+      challenger_round    INTEGER,
+      opponent_score      INTEGER,
+      opponent_correct    INTEGER,
+      opponent_ms         INTEGER,
+      opponent_round      INTEGER,
+      rematch_of          TEXT,
+      created_at          INTEGER NOT NULL,
+      accepted_at         INTEGER,
+      finished_at         INTEGER
+    );
+
+    -- Browsers that agreed to receive reminders (Web Push).
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint    TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      p256dh      TEXT NOT NULL,
+      auth        TEXT NOT NULL,
+      created_at  INTEGER NOT NULL
+    );
+
+    -- Reminders already sent, so none goes out twice.
+    CREATE TABLE IF NOT EXISTS notifications_sent (
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind        TEXT NOT NULL,
+      ref         TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      PRIMARY KEY (user_id, kind, ref)
+    ) WITHOUT ROWID;
+
     CREATE INDEX IF NOT EXISTS answers_user ON answers(user_id, id);
+    -- "Questions you got wrong and haven't got right since" looks up each question's latest answer.
+    CREATE INDEX IF NOT EXISTS answers_user_question ON answers(user_id, question_id, id);
+    CREATE INDEX IF NOT EXISTS answers_round ON answers(round_id);
+    CREATE INDEX IF NOT EXISTS daily_board ON daily_results(day, score DESC, ms);
+    CREATE INDEX IF NOT EXISTS daily_user ON daily_results(user_id, day);
+    CREATE INDEX IF NOT EXISTS duels_challenger ON duels(challenger_id, created_at);
+    CREATE INDEX IF NOT EXISTS duels_opponent ON duels(opponent_id, created_at);
+    CREATE INDEX IF NOT EXISTS duels_invited ON duels(invited_id, created_at);
+    CREATE INDEX IF NOT EXISTS push_user ON push_subscriptions(user_id);
+    CREATE INDEX IF NOT EXISTS events_name ON events(name, created_at);
+    CREATE INDEX IF NOT EXISTS events_user ON events(user_id, created_at);
     CREATE INDEX IF NOT EXISTS reports_status ON question_reports(status, question_id);
     CREATE INDEX IF NOT EXISTS rounds_user ON rounds(user_id, id);
     CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id);
@@ -84,7 +192,51 @@ export function openDb(file) {
   // Migration: the player's chosen language (null until they pick one).
   const settingCols = db.prepare('PRAGMA table_info(settings)').all().map((c) => c.name);
   if (!settingCols.includes('language')) db.exec('ALTER TABLE settings ADD COLUMN language TEXT');
+  migrate(db);
   return db;
+}
+
+// Numbered migrations, run once each in order. PRAGMA user_version remembers the last one done.
+const MIGRATIONS = [
+  // 1: scoring changed from 100 + up to 50 per answer to 1 + up to 2. Old rounds are scored again
+  // from their answers, so no score on the old scale is left anywhere.
+  (db) => {
+    const answers = db.prepare('SELECT question_id, category, correct, ms FROM answers WHERE round_id = ?');
+    const update = db.prepare('UPDATE rounds SET score = ? WHERE id = ?');
+    for (const { id } of db.prepare('SELECT id FROM rounds').all()) {
+      let score = 0;
+      for (const a of answers.all(id)) {
+        const q = QUESTION_BY_ID.get(a.question_id) || { cat: a.category };
+        score += pointsFor(a.correct === 1, a.ms, secondsFor(q));
+      }
+      update.run(score, id);
+    }
+  },
+  // 2: reminder choices.
+  (db) => {
+    db.exec('ALTER TABLE settings ADD COLUMN notify_daily INTEGER NOT NULL DEFAULT 0');
+    db.exec('ALTER TABLE settings ADD COLUMN notify_friends INTEGER NOT NULL DEFAULT 0');
+  },
+];
+
+/** Lets SQLite refresh its statistics for the query planner. Cheap; run now and then. */
+export function optimizeDb(db) {
+  db.exec('PRAGMA optimize');
+}
+
+function migrate(db) {
+  const done = db.prepare('PRAGMA user_version').get().user_version;
+  for (let i = done; i < MIGRATIONS.length; i++) {
+    db.exec('BEGIN');
+    try {
+      MIGRATIONS[i](db);
+      db.exec(`PRAGMA user_version = ${i + 1}`);
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
 }
 
 export function upsertUser(db, { id, email, name, picture, provider }) {
@@ -146,13 +298,21 @@ export function purgeExpiredSessions(db) {
 
 /** The player's saved settings, or null if they have never saved any. */
 export function getSettings(db, userId) {
-  const row = db.prepare('SELECT auto_next, auto_next_delay, language FROM settings WHERE user_id = ?').get(userId);
-  return row ? { autoNext: row.auto_next === 1, autoNextDelay: row.auto_next_delay, language: row.language ?? null } : null;
+  const row = db.prepare('SELECT auto_next, auto_next_delay, language, notify_daily, notify_friends FROM settings WHERE user_id = ?').get(userId);
+  return row ? {
+    autoNext: row.auto_next === 1, autoNextDelay: row.auto_next_delay, language: row.language ?? null,
+    notifyDaily: row.notify_daily === 1, notifyFriends: row.notify_friends === 1,
+  } : null;
 }
 
 /** Merges `changes` into the saved settings. Throws a 400 error for invalid values. */
 export function saveSettings(db, userId, changes) {
-  const next = { autoNext: true, autoNextDelay: AUTO_DELAY.fallback, language: null, ...getSettings(db, userId) };
+  const next = { autoNext: true, autoNextDelay: AUTO_DELAY.fallback, language: null, notifyDaily: false, notifyFriends: false, ...getSettings(db, userId) };
+  for (const name of ['notifyDaily', 'notifyFriends']) {
+    if (!(name in changes)) continue;
+    if (typeof changes[name] !== 'boolean') throw badRequest(`${name} must be true or false.`);
+    next[name] = changes[name];
+  }
   if ('language' in changes) {
     if (changes.language !== null && !LANGUAGES.includes(changes.language)) throw badRequest(`language must be one of: ${LANGUAGES.join(', ')}.`);
     next.language = changes.language;
@@ -169,11 +329,11 @@ export function saveSettings(db, userId, changes) {
     next.autoNextDelay = n;
   }
   db.prepare(`
-    INSERT INTO settings (user_id, auto_next, auto_next_delay, language, updated_at) VALUES (?, ?, ?, ?, ?)
+    INSERT INTO settings (user_id, auto_next, auto_next_delay, language, notify_daily, notify_friends, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
-      auto_next = excluded.auto_next, auto_next_delay = excluded.auto_next_delay,
-      language = excluded.language, updated_at = excluded.updated_at
-  `).run(userId, next.autoNext ? 1 : 0, next.autoNextDelay, next.language, Date.now());
+      auto_next = excluded.auto_next, auto_next_delay = excluded.auto_next_delay, language = excluded.language,
+      notify_daily = excluded.notify_daily, notify_friends = excluded.notify_friends, updated_at = excluded.updated_at
+  `).run(userId, next.autoNext ? 1 : 0, next.autoNextDelay, next.language, next.notifyDaily ? 1 : 0, next.notifyFriends ? 1 : 0, Date.now());
   return next;
 }
 
@@ -226,6 +386,122 @@ export function exportUser(db, userId) {
     rounds: db.prepare('SELECT id, mode, category, score, correct, total, complete, created_at FROM rounds WHERE user_id = ? ORDER BY id').all(userId),
     answers: db.prepare('SELECT round_id, question_id, category, choice, correct, ms, created_at FROM answers WHERE user_id = ? ORDER BY id').all(userId),
     reports: db.prepare('SELECT question_id, reason, note, status, created_at FROM question_reports WHERE user_id = ? ORDER BY id').all(userId),
+    events: db.prepare('SELECT name, props, created_at FROM events WHERE user_id = ? ORDER BY id').all(userId)
+      .map((e) => ({ ...e, props: e.props ? JSON.parse(e.props) : null })),
+    profile: db.prepare('SELECT name, avatar, country, hidden, friend_code, updated_at FROM profiles WHERE user_id = ?').get(userId) ?? null,
+    friends: db.prepare('SELECT p.name, f.created_at FROM friends f JOIN profiles p ON p.user_id = f.friend_id WHERE f.user_id = ? ORDER BY f.created_at').all(userId),
+    daily: db.prepare('SELECT day, score, correct, total, ms, started_at, finished_at FROM daily_results WHERE user_id = ? ORDER BY day').all(userId),
+    duels: db.prepare('SELECT id, category, challenger_id = ? AS you_challenged, challenger_score, opponent_score, created_at, finished_at FROM duels WHERE challenger_id = ? OR opponent_id = ? ORDER BY created_at')
+      .all(userId, userId, userId),
+    reminderDevices: db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId).n,
+  };
+}
+
+// ── Events and the Players dashboard ───────────────────────────
+
+/** Records one event (see EVENTS in shared/config.js). `props` is a small plain object or null. */
+export function logEvent(db, userId, name, props = null) {
+  db.prepare('INSERT INTO events (user_id, name, props, created_at) VALUES (?, ?, ?, ?)')
+    .run(userId ?? null, name, props ? JSON.stringify(props) : null, Date.now());
+}
+
+const DAY_MS = 86_400_000;
+const RETURN_DAYS = [1, 7, 30];
+
+/**
+ * Daily and monthly players, how many come back 1, 7 and 30 days after their first day, and
+ * event counts. A player is active on a local day when they played a round or logged an event.
+ * Days are counted in the viewer's time zone (`tzOffsetMin` as from getTimezoneOffset()).
+ */
+export function getRetention(db, { tzOffsetMin = 0, eventNames = [] } = {}) {
+  const shift = -tzOffsetMin * 60_000;
+  const today = Math.floor((Date.now() + shift) / DAY_MS);
+  const rows = db.prepare(`
+    SELECT user_id AS u, CAST((created_at + ?) / ? AS INTEGER) AS day FROM rounds
+    UNION
+    SELECT user_id, CAST((created_at + ?) / ? AS INTEGER) FROM events WHERE user_id IS NOT NULL
+  `).all(shift, DAY_MS, shift, DAY_MS);
+
+  const daysOf = new Map(); // user -> Set of active days
+  for (const { u, day } of rows) {
+    if (!daysOf.has(u)) daysOf.set(u, new Set());
+    daysOf.get(u).add(day);
+  }
+  const firstDay = new Map([...daysOf].map(([u, days]) => [u, Math.min(...days)]));
+  const activeOn = (from, to) => [...daysOf.values()].filter((days) => [...days].some((d) => d >= from && d <= to)).length;
+  const iso = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
+
+  // The last 30 days, split into players new that day and players coming back.
+  const daily = Array.from({ length: 30 }, (_, i) => {
+    const day = today - 29 + i;
+    let active = 0;
+    let fresh = 0;
+    for (const [u, days] of daysOf) {
+      if (!days.has(day)) continue;
+      active++;
+      if (firstDay.get(u) === day) fresh++;
+    }
+    return { date: iso(day), active, new: fresh };
+  });
+
+  // Of the players whose first day was f, how many were active again on day f + n. Only
+  // cohorts whose day f + n is already over count, so today's half-finished day doesn't drag it down.
+  const returned = (users, n) => {
+    const eligible = users.filter((u) => firstDay.get(u) + n < today);
+    const back = eligible.filter((u) => daysOf.get(u).has(firstDay.get(u) + n));
+    return { n, eligible: eligible.length, back: back.length };
+  };
+  const everyone = [...daysOf.keys()];
+
+  // Weekly cohorts by first day, the newest 8 weeks (week 0 is the last 7 days).
+  const cohorts = Array.from({ length: 8 }, (_, w) => {
+    const to = today - w * 7;
+    const from = to - 6;
+    const users = everyone.filter((u) => firstDay.get(u) >= from && firstDay.get(u) <= to);
+    return { from: iso(from), to: iso(to), players: users.length, returns: RETURN_DAYS.map((n) => returned(users, n)) };
+  });
+
+  // Calendar months (in the viewer's time zone), the newest 6.
+  const monthOf = (day) => iso(day).slice(0, 7);
+  const monthly = new Map();
+  for (const days of daysOf.values()) {
+    for (const m of new Set([...days].map(monthOf))) monthly.set(m, (monthly.get(m) || 0) + 1);
+  }
+  const months = [];
+  for (let d = new Date(today * DAY_MS), i = 0; i < 6; i++) {
+    const m = d.toISOString().slice(0, 7);
+    months.unshift({ month: m, players: monthly.get(m) || 0 });
+    d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
+  }
+
+  // Event counts for the last 7 and 30 days, and how many players each event came from.
+  const since = (n) => (today - n + 1) * DAY_MS - shift;
+  const counts = db.prepare(`
+    SELECT name,
+           SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS week,
+           COUNT(*) AS month,
+           COUNT(DISTINCT user_id) AS players
+    FROM events WHERE created_at >= ? GROUP BY name
+  `).all(since(7), since(30));
+  const byName = new Map(counts.map((c) => [c.name, c]));
+  const events = [...new Set([...eventNames, ...byName.keys()])].map((name) => {
+    const c = byName.get(name);
+    return { name, week: c?.week ?? 0, month: c?.month ?? 0, players: c?.players ?? 0 };
+  });
+
+  return {
+    today: iso(today),
+    players: everyone.length,
+    dau: daily.at(-1).active,
+    dauAvg7: Math.round((daily.slice(-7).reduce((s, d) => s + d.active, 0) / 7) * 10) / 10,
+    wau: activeOn(today - 6, today),
+    mau: activeOn(today - 29, today),
+    newLast30: everyone.filter((u) => firstDay.get(u) > today - 30).length,
+    returns: RETURN_DAYS.map((n) => returned(everyone, n)),
+    daily,
+    cohorts,
+    months,
+    events,
   };
 }
 
@@ -254,6 +530,27 @@ export function saveRound(db, userId, { mode, category, graded, complete = true 
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+/**
+ * Day streaks: runs of consecutive local days with at least one answer. The current one is
+ * still alive if the player played today or yesterday.
+ */
+export function dayStreaks(db, userId, tzOffsetMin = 0) {
+  const shift = -tzOffsetMin * 60_000;
+  const today = Math.floor((Date.now() + shift) / DAY_MS);
+  const days = db
+    .prepare('SELECT DISTINCT CAST((created_at + ?) / ? AS INTEGER) AS day FROM answers WHERE user_id = ? ORDER BY day')
+    .all(shift, DAY_MS, userId)
+    .map((r) => r.day);
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < days.length; i++) {
+    run = i > 0 && days[i] === days[i - 1] + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+  }
+  const last = days.at(-1);
+  return { current: last !== undefined && last >= today - 1 ? run : 0, best };
 }
 
 export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
@@ -317,20 +614,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     return { date: new Date(d * dayMs).toISOString().slice(0, 10), answered: r?.answered ?? 0, correct: r?.correct ?? 0 };
   });
 
-  // Day streaks: consecutive local days with at least one answer.
-  const playedDays = db
-    .prepare('SELECT DISTINCT CAST((created_at + ?) / ? AS INTEGER) AS day FROM answers WHERE user_id = ? ORDER BY day')
-    .all(shift, dayMs, userId)
-    .map((r) => r.day);
-  let bestDayStreak = 0;
-  let runDays = 0;
-  for (let i = 0; i < playedDays.length; i++) {
-    runDays = i > 0 && playedDays[i] === playedDays[i - 1] + 1 ? runDays + 1 : 1;
-    bestDayStreak = Math.max(bestDayStreak, runDays);
-  }
-  const lastDay = playedDays.at(-1);
-  // A streak is still alive if you played today or yesterday.
-  const dayStreak = lastDay !== undefined && lastDay >= today - 1 ? runDays : 0;
+  const { current: dayStreak, best: bestDayStreak } = dayStreaks(db, userId, tzOffsetMin);
 
   // This week (last 7 local days) vs the 7 days before.
   const week = (fromDay, toDay) =>
@@ -398,4 +682,289 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     recentMissed,
     lastRoundIds,
   };
+}
+
+// ── Profiles ───────────────────────────────────────────────────
+
+// Friend codes leave out letters and digits that look alike (0/O, 1/I/L).
+const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+export const randomCode = (n) => Array.from(randomBytes(n), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
+
+/** The player's profile, made on first use: their first name, an avatar picked from their id, and a friend code. */
+export function ensureProfile(db, user) {
+  const have = getProfile(db, user.id);
+  if (have) return have;
+  const name = cleanName(String(user.name || '').split(' ')[0]) || 'Player';
+  for (let tries = 0; ; tries++) {
+    try {
+      db.prepare('INSERT INTO profiles (user_id, name, avatar, friend_code, updated_at) VALUES (?, ?, ?, ?, ?)')
+        .run(user.id, name, randomAvatar(user.id), randomCode(6), Date.now());
+      return getProfile(db, user.id);
+    } catch (err) {
+      if (tries > 5 || !/UNIQUE/.test(err.message)) throw err; // a clashing friend code: try another
+    }
+  }
+}
+
+export function getProfile(db, userId) {
+  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset FROM profiles WHERE user_id = ?').get(userId);
+  return row ? toProfile(row) : null;
+}
+
+const toProfile = (r) => ({
+  id: r.user_id, name: r.name, avatar: r.avatar, country: r.country ?? null, hidden: r.hidden === 1, code: r.friend_code, tz: r.tz_offset,
+});
+
+/** How a player shows up to someone else: hidden players are anonymous on public boards. */
+export const shownProfile = (p, { anonymous = false } = {}) =>
+  anonymous && p.hidden ? { id: null, name: null, avatar: null, country: null, hidden: true } : { id: p.id, name: p.name, avatar: p.avatar, country: p.country };
+
+/** A display name: printable characters only, spaces tidied, at most PROFILE.nameMax long. */
+function cleanName(s) {
+  return String(s ?? '').replace(/[\p{C}<>]/gu, '').replace(/\s+/g, ' ').trim().slice(0, PROFILE.nameMax);
+}
+
+/** Saves the player's name, avatar, country and board visibility. Throws a 400 error for invalid values. */
+export function saveProfile(db, userId, changes) {
+  const p = getProfile(db, userId);
+  if ('name' in changes) {
+    const name = cleanName(changes.name);
+    if (!name) throw badRequest('Enter a name.');
+    p.name = name;
+  }
+  if ('avatar' in changes) {
+    if (!parseAvatar(changes.avatar)) throw badRequest('Unknown avatar.');
+    p.avatar = changes.avatar;
+  }
+  if ('country' in changes) {
+    if (changes.country !== null && !isCountry(changes.country)) throw badRequest('Unknown country.');
+    p.country = changes.country;
+  }
+  if ('hidden' in changes) {
+    if (typeof changes.hidden !== 'boolean') throw badRequest('hidden must be true or false.');
+    p.hidden = changes.hidden;
+  }
+  db.prepare('UPDATE profiles SET name = ?, avatar = ?, country = ?, hidden = ?, updated_at = ? WHERE user_id = ?')
+    .run(p.name, p.avatar, p.country, p.hidden ? 1 : 0, Date.now(), userId);
+  return p;
+}
+
+/** Remembers the player's time zone, for their streak as friends see it and for morning reminders. */
+export function setTimezone(db, userId, tzOffsetMin) {
+  db.prepare('UPDATE profiles SET tz_offset = ? WHERE user_id = ? AND tz_offset != ?').run(tzOffsetMin, userId, tzOffsetMin);
+}
+
+export function profileByCode(db, code) {
+  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset FROM profiles WHERE friend_code = ?').get(String(code || '').toUpperCase());
+  return row ? toProfile(row) : null;
+}
+
+// ── Friends ────────────────────────────────────────────────────
+
+/** Makes two players friends (both ways). Returns false if they already were. */
+export function addFriend(db, a, b) {
+  if (a === b) throw badRequest("That's your own code.");
+  const count = db.prepare('SELECT COUNT(*) AS n FROM friends WHERE user_id = ?').get(a).n;
+  if (count >= PROFILE.maxFriends) throw badRequest(`You can have up to ${PROFILE.maxFriends} friends.`);
+  const now = Date.now();
+  const ins = db.prepare('INSERT OR IGNORE INTO friends (user_id, friend_id, created_at) VALUES (?, ?, ?)');
+  const added = ins.run(a, b, now).changes > 0;
+  ins.run(b, a, now);
+  return added;
+}
+
+export function removeFriend(db, a, b) {
+  db.prepare('DELETE FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)').run(a, b, b, a);
+}
+
+export const areFriends = (db, a, b) => !!db.prepare('SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ?').get(a, b);
+
+export const friendIds = (db, userId) => db.prepare('SELECT friend_id AS id FROM friends WHERE user_id = ?').all(userId).map((r) => r.id);
+
+/** The player's friends with their day streak (in their own time zone) and today's Daily score. */
+export function listFriends(db, userId, day) {
+  const rows = db.prepare(`
+    SELECT p.user_id, p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset,
+           d.score AS daily_score, d.finished_at AS daily_done,
+           (SELECT MAX(created_at) FROM rounds r WHERE r.user_id = p.user_id) AS last_played
+    FROM friends f
+    JOIN profiles p ON p.user_id = f.friend_id
+    LEFT JOIN daily_results d ON d.user_id = f.friend_id AND d.day = ?
+    WHERE f.user_id = ?
+  `).all(day, userId);
+  return rows.map((r) => ({
+    ...shownProfile(toProfile(r)),
+    streak: dayStreaks(db, r.user_id, r.tz_offset).current,
+    daily: r.daily_done ? r.daily_score : null,
+    lastPlayed: r.last_played ?? null,
+  })).sort((a, b) => b.streak - a.streak || (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0));
+}
+
+// ── Daily Challenge ────────────────────────────────────────────
+
+/** The Daily for `day` ({ day, number, questionIds }), picking its questions with `pick(recentIds)` the first time. */
+export function getDaily(db, day, number, pick) {
+  let row = db.prepare('SELECT day, number, question_ids FROM daily_challenges WHERE day = ?').get(day);
+  if (!row) {
+    // Questions used in the last 90 Dailies aren't picked again.
+    const recent = new Set(db.prepare('SELECT question_ids FROM daily_challenges ORDER BY day DESC LIMIT 90').all()
+      .flatMap((r) => JSON.parse(r.question_ids)));
+    db.prepare('INSERT OR IGNORE INTO daily_challenges (day, number, question_ids, created_at) VALUES (?, ?, ?, ?)')
+      .run(day, number, JSON.stringify(pick(recent)), Date.now());
+    row = db.prepare('SELECT day, number, question_ids FROM daily_challenges WHERE day = ?').get(day);
+  }
+  return { day: row.day, number: row.number, questionIds: JSON.parse(row.question_ids) };
+}
+
+const toDailyResult = (r) => r && ({
+  started: r.started_at, finished: r.finished_at ?? null, score: r.score, correct: r.correct, total: r.total, ms: r.ms, roundId: r.round_id,
+});
+
+export function dailyResult(db, day, userId) {
+  return toDailyResult(db.prepare('SELECT * FROM daily_results WHERE day = ? AND user_id = ?').get(day, userId));
+}
+
+/** Starts the player's one try. Returns false if they had already started (or finished) it. */
+export function startDaily(db, day, userId) {
+  return db.prepare('INSERT OR IGNORE INTO daily_results (day, user_id, started_at) VALUES (?, ?, ?)').run(day, userId, Date.now()).changes > 0;
+}
+
+/** Scores the player's try. Returns false if it was already scored. */
+export function finishDaily(db, day, userId, { roundId, score, correct, total, ms }) {
+  return db.prepare(`
+    UPDATE daily_results SET round_id = ?, score = ?, correct = ?, total = ?, ms = ?, finished_at = ?
+    WHERE day = ? AND user_id = ? AND finished_at IS NULL
+  `).run(roundId, score, correct, total, ms, Date.now(), day, userId).changes > 0;
+}
+
+/**
+ * The Daily's boards: the top `limit` players, the viewer's own place, and all their friends.
+ * Ranked by score, then by less time taken, then by who finished first.
+ */
+export function dailyBoard(db, day, viewerId, limit = 50) {
+  const ranked = db.prepare(`
+    SELECT ROW_NUMBER() OVER (ORDER BY d.score DESC, d.ms ASC, d.finished_at ASC) AS rank,
+           d.user_id, d.score, d.correct, d.total, d.ms,
+           p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset
+    FROM daily_results d JOIN profiles p ON p.user_id = d.user_id
+    WHERE d.day = ? AND d.finished_at IS NOT NULL
+  `).all(day);
+  const friends = new Set(friendIds(db, viewerId));
+  const entry = (r) => {
+    const known = r.user_id === viewerId || friends.has(r.user_id);
+    return { rank: r.rank, score: r.score, correct: r.correct, total: r.total, ms: r.ms, me: r.user_id === viewerId,
+      ...shownProfile(toProfile(r), { anonymous: !known }) };
+  };
+  return {
+    players: ranked.length,
+    top: ranked.slice(0, limit).map(entry),
+    me: ranked.filter((r) => r.user_id === viewerId).map(entry)[0] ?? null,
+    friends: ranked.filter((r) => r.user_id === viewerId || friends.has(r.user_id)).map(entry),
+  };
+}
+
+/** Friends who already finished `day`'s Daily with a lower score than `score`. */
+export function friendsBeaten(db, day, userId, score) {
+  return db.prepare(`
+    SELECT d.user_id, d.score FROM daily_results d JOIN friends f ON f.friend_id = d.user_id AND f.user_id = ?
+    WHERE d.day = ? AND d.finished_at IS NOT NULL AND d.score < ?
+  `).all(userId, day, score);
+}
+
+// ── Duels ──────────────────────────────────────────────────────
+
+export function createDuel(db, { id, challengerId, invitedId = null, category, questionIds, rematchOf = null }) {
+  db.prepare('INSERT INTO duels (id, challenger_id, invited_id, category, question_ids, rematch_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, challengerId, invitedId, category, JSON.stringify(questionIds), rematchOf, Date.now());
+  return getDuel(db, id);
+}
+
+export function getDuel(db, id) {
+  const r = db.prepare('SELECT * FROM duels WHERE id = ?').get(id);
+  if (!r) return null;
+  const side = (k) => ({ score: r[`${k}_score`], correct: r[`${k}_correct`], ms: r[`${k}_ms`], roundId: r[`${k}_round`] });
+  return {
+    id: r.id, category: r.category, questionIds: JSON.parse(r.question_ids), rematchOf: r.rematch_of,
+    challengerId: r.challenger_id, opponentId: r.opponent_id, invitedId: r.invited_id,
+    challenger: side('challenger'), opponent: side('opponent'),
+    createdAt: r.created_at, acceptedAt: r.accepted_at, finishedAt: r.finished_at,
+  };
+}
+
+/** Makes `userId` the duel's second player if the seat is free. Returns the duel, or null if someone else has it. */
+export function claimDuel(db, id, userId) {
+  db.prepare(`
+    UPDATE duels SET opponent_id = ?, accepted_at = ?
+    WHERE id = ? AND opponent_id IS NULL AND opponent_score IS NULL AND challenger_id != ? AND (invited_id IS NULL OR invited_id = ?)
+  `).run(userId, Date.now(), id, userId, userId);
+  const duel = getDuel(db, id);
+  return duel?.opponentId === userId ? duel : null;
+}
+
+/** Records one side's result. The duel is finished once both have played. */
+export function finishDuelSide(db, id, side, { roundId, score, correct, ms }) {
+  const col = side === 'challenger' ? 'challenger' : 'opponent';
+  const changed = db.prepare(`
+    UPDATE duels SET ${col}_score = ?, ${col}_correct = ?, ${col}_ms = ?, ${col}_round = ? WHERE id = ? AND ${col}_score IS NULL
+  `).run(score, correct, ms, roundId, id).changes > 0;
+  db.prepare('UPDATE duels SET finished_at = ? WHERE id = ? AND finished_at IS NULL AND challenger_score IS NOT NULL AND opponent_score IS NOT NULL')
+    .run(Date.now(), id);
+  return changed;
+}
+
+/** The player's duels, newest first: ones they're in, and ones sent to them that nobody has taken. */
+export function listDuels(db, userId, limit = 30) {
+  return db.prepare(`
+    SELECT id FROM duels
+    WHERE challenger_id = ? OR opponent_id = ? OR (invited_id = ? AND opponent_id IS NULL)
+    ORDER BY COALESCE(finished_at, accepted_at, created_at) DESC LIMIT ?
+  `).all(userId, userId, userId, limit).map((r) => getDuel(db, r.id));
+}
+
+/** Duels the player started that aren't finished yet. */
+export const openDuelCount = (db, userId) =>
+  db.prepare('SELECT COUNT(*) AS n FROM duels WHERE challenger_id = ? AND finished_at IS NULL').get(userId).n;
+
+/** A round's answers in the order they were given: { id, choice, correct, ms }. */
+export function roundAnswers(db, roundId) {
+  if (!roundId) return [];
+  return db.prepare('SELECT question_id AS id, choice, correct, ms FROM answers WHERE round_id = ? ORDER BY id').all(roundId)
+    .map((a) => ({ ...a, correct: a.correct === 1 }));
+}
+
+// ── Push reminders ─────────────────────────────────────────────
+
+export function savePushSubscription(db, userId, { endpoint, p256dh, auth }) {
+  db.prepare(`
+    INSERT INTO push_subscriptions (endpoint, user_id, p256dh, auth, created_at) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth
+  `).run(endpoint, userId, p256dh, auth, Date.now());
+}
+
+export function deletePushSubscription(db, endpoint, userId = null) {
+  if (userId) db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?').run(endpoint, userId);
+  else db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+}
+
+export const pushSubscriptions = (db, userId) =>
+  db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?').all(userId);
+
+/** Notes that a reminder went out. Returns false if it already had, so it isn't sent twice. */
+export function markNotified(db, userId, kind, ref) {
+  return db.prepare('INSERT OR IGNORE INTO notifications_sent (user_id, kind, ref, created_at) VALUES (?, ?, ?, ?)')
+    .run(userId, kind, ref, Date.now()).changes > 0;
+}
+
+/** Players who turned on reminders of `kind` ('daily' or 'friends') and have a browser to send them to. */
+export function reminderTargets(db, kind) {
+  const col = kind === 'daily' ? 'notify_daily' : 'notify_friends';
+  return db.prepare(`
+    SELECT s.user_id, s.language, p.tz_offset, p.name FROM settings s
+    JOIN profiles p ON p.user_id = s.user_id
+    WHERE s.${col} = 1 AND EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = s.user_id)
+  `).all();
+}
+
+export function purgeOldNotifications(db) {
+  db.prepare('DELETE FROM notifications_sent WHERE created_at < ?').run(Date.now() - 30 * DAY_MS);
 }
