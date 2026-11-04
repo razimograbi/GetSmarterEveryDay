@@ -5,7 +5,7 @@ import {
 import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
 import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
-import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages } from './visuals.js';
+import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages, thumb } from './visuals.js';
 import { signSvg } from './signs.js';
 import { ICONS } from './icons.js';
 import { api, esc, shuffle, reduceMotion } from './util.js';
@@ -776,7 +776,10 @@ const roundTitle = (cat) =>
 
 const diffLevel = (d) => (d <= 3 ? 'easy' : d <= 6 ? 'medium' : 'hard');
 /** "Hard · 8": how hard a question is, 0 to 10. */
-const diffChip = (q) => (q.difficulty === undefined ? '' : `<span class="diff diff-${diffLevel(q.difficulty)}" title="${esc(t('diff.title'))}">${esc(t(`diff.${diffLevel(q.difficulty)}`))} · ${q.difficulty}</span>`);
+const diffChip = (q) => (q.difficulty === undefined ? '' : `<span class="diff diff-${diffLevel(q.difficulty)}">${esc(t(`diff.${diffLevel(q.difficulty)}`))}</span>`);
+
+/** What a question was about, for lists of answers: its own wording when the answer needs it, else its topic. */
+const reviewLabel = (q) => (q.visual.type === 'text' || q.ownPrompt ? qt(q, q.prompt) : CATEGORY_BY_ID[q.cat] ? catName(CATEGORY_BY_ID[q.cat]) : '');
 
 // Questions of the round played last in this visit, in case the server's stats lag behind.
 let lastPlayedIds = new Set();
@@ -1472,13 +1475,55 @@ async function saveRecord(record) {
 
 // ── Results ────────────────────────────────────────────────────
 
+/**
+ * One row of a list of answers: the picture with a right/wrong badge, what the player said,
+ * the answer and the points. `x` is { q, choice, correct, ms, points, skipped }. `mixed` names
+ * each row's topic; `reportIndex` adds a report button for that answer.
+ */
+function answerRow(x, { mixed = true, reportIndex = null } = {}) {
+  const q = x.q;
+  const outcome = x.skipped ? 'skipped' : x.correct ? 'right' : x.choice ? 'wrong' : 'timeout';
+  const pic = thumb(q);
+  const hue = CATEGORY_BY_ID[q.cat]?.hue;
+  const label = q.visual.type === 'text' || q.ownPrompt || mixed ? reviewLabel(q) : '';
+  const answer = t('res.answer', { answer: `<bdi>${esc(qt(q, q.answer))}</bdi>` });
+  const lines = {
+    right: `<strong>${answer}</strong><span class="review-time">${esc(t('res.secondsShort', { s: (x.ms / 1000).toFixed(1) }))}</span>`,
+    wrong: `<span class="review-you">${t('res.you', { choice: `<bdi>${esc(qt(q, x.choice))}</bdi>` })}</span><strong>${answer}</strong>${diffChip(q)}`,
+    timeout: `<span class="review-you">${esc(t('res.timeout'))}</span><strong>${answer}</strong>${diffChip(q)}`,
+    skipped: `<strong>${answer}</strong><span>${esc(t('res.skipped'))}</span>`,
+  };
+  const said = { right: tn('res.srRight', x.points), wrong: t('res.srWrong'), timeout: t('res.timeout'), skipped: t('res.srSkipped') }[outcome];
+  const pill = x.skipped ? '' : `<span class="pts-pill ${!x.correct ? 'is-wrong' : x.points >= MAX_POINTS ? 'is-fast' : 'is-right'}" dir="ltr" aria-hidden="true">${x.correct ? `+${x.points}` : '0'}</span>`;
+  return `
+    <li class="is-${outcome}">
+      <span class="review-thumb" style="--hue:${hue}">
+        ${ICONS[q.cat] || ''}${pic || ''}
+        <span class="review-mark" aria-hidden="true">${x.skipped ? '–' : x.correct ? ICONS.check : ICONS.cross}</span>
+      </span>
+      <span class="review-text">
+        <span class="sr-only">${esc(said)}.</span>
+        ${label ? `<span class="review-q">${esc(label)}</span>` : ''}
+        ${lines[outcome]}
+      </span>
+      ${pill}
+      ${reportIndex === null ? '' : `<button class="review-report" data-report-i="${reportIndex}" aria-label="${esc(t('report.button'))}" title="${esc(t('report.button'))}">${ICONS.report}</button>`}
+    </li>`;
+}
+
+/** A thumbnail that doesn't load leaves the topic icon underneath. */
+function bindThumbs() {
+  app.querySelectorAll('.review-thumb img').forEach((img) => img.addEventListener('error', () => img.remove(), { once: true }));
+}
+
 function showResults() {
   const r = state.lastRound;
   const counted = r.results.filter((x) => !x.skipped);
   const right = counted.filter((x) => x.correct).length;
-  const rightMs = counted.filter((x) => x.correct).map((x) => x.ms);
-  const avg = rightMs.length ? (rightMs.reduce((a, b) => a + b, 0) / rightMs.length / 1000).toFixed(1) : null;
+  const max = counted.length * MAX_POINTS;
+  const bonus = r.score - right; // 1 point per right answer; the rest came from speed
   const title = roundTitle(r.cat);
+  const topic = CATEGORY_BY_ID[r.cat];
   const verdict = t(
     !counted.length ? 'res.none'
       : right === counted.length ? 'res.perfect'
@@ -1486,21 +1531,28 @@ function showResults() {
         : right >= counted.length * 0.5 ? 'res.solid'
           : 'res.learn',
   );
+  // In a Quick or Review round each row says which topic it was from; in a topic round they all are.
+  const mixed = !topic;
+  // The player's first finished round just unlocked the Daily and duels (see countFinished).
+  const firstRound = state.played === 1 && state.justUnlocked;
 
   app.innerHTML = `
     <section class="screen results">
-      <header class="topbar">
-        <span class="logo">Smarts</span>
-        <span class="results-topic">${esc(title)}</span>
-      </header>
+      ${topbar()}
 
       <div class="score-hero">
-        <p class="score-big">${r.score}</p>
+        <p class="eyebrow on-cobalt">${esc(title)}</p>
+        <p class="score-big"><bdi dir="ltr">${r.score}<small>/${max}</small></bdi></p>
+        <p class="score-unit">${esc(t('res.points'))}</p>
         <p class="score-line">${t('res.right', { right, total: counted.length })} ${esc(verdict)}</p>
-        <dl class="score-facts">
-          <div><dt>${esc(t('res.bestRun'))}</dt><dd>${r.bestStreak}</dd></div>
-          <div><dt>${esc(t('res.avgTime'))}</dt><dd>${avg ? esc(t('res.secondsShort', { s: avg })) : '–'}</dd></div>
-        </dl>
+        ${counted.length ? `
+          <div class="score-squares" role="img" aria-label="${esc(t('res.squaresAria', { right, total: counted.length }))}">${squaresHtml(r.results.map((x) => squareFor(x.skipped ? null : x.points)))}</div>
+          <dl class="score-sum">
+            <div><dt>${esc(tn('res.rightAnswers', right))}</dt><dd><bdi dir="ltr">+${right}</bdi></dd></div>
+            <div><dt>${esc(t('res.speedBonus'))}</dt><dd><bdi dir="ltr">+${bonus}</bdi></dd></div>
+          </dl>
+          <p class="score-how">${esc(t('res.howPoints', { max: MAX_POINTS - 1 }))}</p>
+          ${r.bestStreak >= 3 ? `<p class="score-how">${esc(t('res.streak', { n: r.bestStreak }))}</p>` : ''}` : ''}
         <p class="save-state ${r.error ? 'is-error' : ''}">
           ${esc(r.error ? t('res.notSaved', { error: r.error }) : r.saved ? t('res.saved') : counted.length ? t('res.saving') : '')}
         </p>
@@ -1508,25 +1560,24 @@ function showResults() {
       </div>
 
       <div class="results-actions">
-        <a class="btn btn-marigold btn-block" href="#/play/${r.cat}" data-again>${esc(t('res.again'))}</a>
+        <a class="btn btn-marigold btn-block" href="#/play/${r.cat}" data-again>${esc(topic ? t('res.againTopic', { topic: catName(topic) }) : t('res.again'))}</a>
         <a class="btn btn-ghost btn-block" href="#/">${esc(t('res.back'))}</a>
       </div>
 
-      <h2 class="section-title">${esc(t('res.yourAnswers'))}</h2>
-      <ol class="review">
-        ${r.results.map((x, i) => `
-          <li class="${x.skipped ? 'is-skipped' : x.correct ? 'is-right' : 'is-wrong'}">
-            <span class="review-mark">${x.skipped ? '–' : x.correct ? ICONS.check : ICONS.cross}</span>
-            <span class="review-text">
-              <strong>${esc(qt(x.q, x.q.answer))}</strong>
-              <span>${esc(x.skipped ? t('res.skipped') : x.correct ? t('res.rightLine', { s: (x.ms / 1000).toFixed(1), points: x.points }) : x.choice ? t('res.youSaid', { choice: qt(x.q, x.choice) }) : t('res.timeout'))}</span>
-              ${diffChip(x.q)}
-            </span>
-            <span class="review-cat">${ICONS[x.q.cat]}</span>
-            <button class="review-report" data-report-i="${i}" aria-label="${esc(t('report.button'))}" title="${esc(t('report.button'))}">${ICONS.report}</button>
-          </li>`).join('')}
-      </ol>
+      ${firstRound ? `
+        <div class="panel unlocked-card">
+          <span class="daily-badge">${ICONS.daily}</span>
+          <h2>${esc(t('res.newDaily'))}</h2>
+          <p>${esc(t('daily.rowDesc'))}</p>
+          <a class="btn btn-ghost-ink btn-block" href="#/daily">${esc(t('daily.start'))}</a>
+          <a class="unlocked-link" href="#/duel/new">${esc(t('duel.cardTitle'))}</a>
+        </div>` : ''}
+
+      <h2 class="section-title" id="answers-title">${esc(t('res.yourAnswers'))}</h2>
+      <ol class="review" aria-labelledby="answers-title">${r.results.map((x, i) => answerRow(x, { mixed, reportIndex: i })).join('')}</ol>
     </section>`;
+
+  bindThumbs();
 
   app.querySelector('[data-retry]')?.addEventListener('click', (e) => {
     e.currentTarget.disabled = true;
@@ -1764,27 +1815,18 @@ function drawDailyResult(d, board) {
       </div>
 
       ${finished ? `
-        <h2 class="section-title">${esc(t('res.yourAnswers'))}</h2>
-        <ol class="review">
+        <h2 class="section-title" id="answers-title">${esc(t('res.yourAnswers'))}</h2>
+        <ol class="review" aria-labelledby="answers-title">
           ${d.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean).map((q) => {
             const a = answered.get(q.id);
-            const pts = a ? pointsOf(a) : null;
-            return `
-              <li class="${!a ? 'is-skipped' : a.correct ? 'is-right' : 'is-wrong'}">
-                <span class="review-mark">${!a ? '–' : a.correct ? ICONS.check : ICONS.cross}</span>
-                <span class="review-text">
-                  <strong>${esc(qt(q, q.answer))}</strong>
-                  <span>${esc(!a ? t('res.skipped') : a.correct ? t('res.rightLine', { s: (a.ms / 1000).toFixed(1), points: pts }) : a.choice ? t('res.youSaid', { choice: qt(q, a.choice) }) : t('res.timeout'))}</span>
-                  ${diffChip(q)}
-                </span>
-                <span class="review-cat">${ICONS[q.cat] || ''}</span>
-              </li>`;
+            return answerRow({ q, choice: a?.choice ?? null, correct: !!a?.correct, ms: a?.ms ?? 0, points: a ? pointsOf(a) : 0, skipped: !a });
           }).join('')}
         </ol>` : ''}
     </section>
     ${tabbar('home')}`;
 
   bindRetry(showDaily);
+  bindThumbs();
   app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
     boardTab = b.dataset.tab;
     app.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
@@ -2467,7 +2509,6 @@ async function showProgress() {
   const weakest = judged.length > 1 ? judged.at(-1) : null;
 
   const toReview = s.missed.filter((m) => QUESTION_BY_ID.has(m.id)).slice(0, 6);
-  const reviewLabel = (q) => (q.visual.type === 'text' || q.ownPrompt ? qt(q, q.prompt) : CATEGORY_BY_ID[q.cat] ? catName(CATEGORY_BY_ID[q.cat]) : '');
   const topicName = (id) => esc(catName(CATEGORY_BY_ID[id]));
 
   app.innerHTML = `

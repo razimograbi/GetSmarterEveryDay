@@ -333,6 +333,28 @@ export function render(q) {
   return { html: '<div class="vis"></div>', ready: () => Promise.resolve(true) };
 }
 
+/**
+ * A small picture of a question for the results list, from what the round already loaded
+ * (so the browser has it cached). Null when there's nothing cheap to show (text, code,
+ * maps, outlines not saved locally): the caller shows the topic icon instead. Shown once the
+ * answer is known, so pictures with blurred parts come unblurred.
+ */
+export function thumb(q) {
+  const v = q.visual;
+  const img = (src, cls = '') => `<img class="thumb-img ${cls}" alt="" loading="lazy" src="${esc(best(src))}">`;
+  switch (v.type) {
+    case 'flag': return img(flagSrc(v.code).src, 'is-contain');
+    case 'image': return img(v.src, 'is-contain');
+    case 'sign': return `<span class="thumb-svg">${signSvg(v.id)}</span>`;
+    case 'country': return local.countries.has(v.iso) ? img(`/img/countries/${v.iso}.svg`, 'is-contain') : null;
+    case 'wiki': {
+      const src = local.photos[q.id]?.src || wikiCache[v.title]?.src;
+      return src ? img(src, v.logo ? 'is-contain' : '') : null;
+    }
+  }
+  return null;
+}
+
 export const missingHtml = () => `<div class="photo-missing"><strong>${esc(t('vis.missingTitle'))}</strong><span>${esc(t('vis.missingText'))}</span></div>`;
 
 // Element families, coloured as on most periodic tables. Colour is a mild hint, never the answer.

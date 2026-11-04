@@ -866,7 +866,6 @@ a.logo { text-decoration: none; }
 
 /* ── Results ─────────────────────────────────────────────────── */
 
-.results-topic { color: var(--on-cobalt-2); font-weight: 650; }
 .score-hero { text-align: center; padding: 26px 0 8px; }
 .score-big {
   margin: 0;
@@ -880,10 +879,60 @@ a.logo { text-decoration: none; }
 }
 @keyframes deal-score { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 .score-line { margin: 14px 0 0; font-size: 18px; }
-.score-facts { display: flex; justify-content: center; gap: 28px; margin: 18px 0 0; }
-.score-facts div { display: grid; gap: 2px; }
-.score-facts dt { font-size: 13px; color: var(--on-cobalt-2); }
-.score-facts dd { margin: 0; font-family: var(--font-show); font-size: 26px; }
+.score-hero .eyebrow { margin: 0 0 8px; }
+.score-big small { font-size: 0.38em; color: var(--on-cobalt-2); text-shadow: none; }
+.score-unit { margin: 6px 0 0; font-size: 16px; font-weight: 700; color: var(--on-cobalt-2); }
+.score-squares { display: flex; justify-content: center; margin-top: 14px; }
+.score-squares .squares { margin: 0; }
+/* How the points add up: 1 per right answer, the rest from speed. */
+.score-sum {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 6px 28px;
+  margin: 16px 0 0;
+  padding: 12px 18px;
+  border-radius: 16px;
+  background: var(--cobalt-ink);
+  text-align: start;
+}
+.score-sum div { display: contents; }
+.score-sum dt { color: var(--on-cobalt-2); }
+.score-sum dd { margin: 0; font-weight: 800; text-align: end; }
+.score-how { max-width: 34ch; margin: 10px auto 0; font-size: 14px; color: var(--on-cobalt-2); }
+@media (prefers-reduced-motion: reduce) { .score-big { animation: none; } }
+
+/* Right after a first round: the Daily it just unlocked. */
+.unlocked-card { display: grid; justify-items: center; gap: 8px; margin-top: 22px; text-align: center; }
+.unlocked-card h2 { margin: 4px 0 0; font-size: 20px; }
+.unlocked-card p { margin: 0 0 6px; color: var(--ink-2); }
+.unlocked-link { padding: 8px 12px; font-weight: 750; color: var(--cobalt); }
+
+/* A row of the answers list: the picture with a right/wrong badge, what you said, the answer, the points. */
+.review-thumb {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--hue, var(--cobalt));
+  color: #fff;
+}
+.review-thumb > svg { width: 26px; height: 26px; }
+.thumb-img, .thumb-svg { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; background: var(--paper-2); }
+.thumb-img { object-fit: cover; }
+.thumb-img.is-contain { object-fit: contain; padding: 5px; }
+.thumb-svg { display: grid; place-items: center; padding: 7px; }
+.thumb-svg svg { width: 100%; height: 100%; }
+.review-thumb .review-mark { position: absolute; bottom: -5px; inset-inline-end: -5px; width: 22px; height: 22px; box-shadow: 0 0 0 2px var(--paper); }
+.review-thumb .review-mark svg { width: 14px; height: 14px; }
+.review-text .review-q { display: -webkit-box; overflow: hidden; font-size: 13px; -webkit-line-clamp: 2; -webkit-box-orient: vertical; } /* long text prompts: two lines */
+.review-text .review-you { color: var(--coral-deep); font-weight: 650; }
+.review-you bdi { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.review .pts-pill { flex: none; min-width: 40px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .save-state { min-height: 1.4em; margin: 16px 0 0; font-size: 14px; color: var(--on-cobalt-2); }
 .save-state.is-error { color: #ffd2cd; }
 
@@ -895,13 +944,11 @@ a.logo { text-decoration: none; }
 .review-mark { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; }
 .review-mark svg { width: 18px; height: 18px; }
 .is-right .review-mark { background: var(--mint); }
-.is-wrong .review-mark { background: var(--coral); }
+.is-wrong .review-mark, .is-timeout .review-mark { background: var(--coral); }
 .is-skipped .review-mark { background: var(--line); color: var(--ink-2); }
 .review-text { flex: 1; min-width: 0; display: grid; }
 .review-text strong { font-weight: 700; }
 .review-text span { font-size: 14px; color: var(--ink-2); }
-.review-cat { color: var(--ink-2); opacity: 0.6; }
-.review-cat svg { width: 20px; height: 20px; }
 
 /* ── Progress ────────────────────────────────────────────────── */
 
@@ -1259,9 +1306,10 @@ button, a, .answer { touch-action: manipulation; }
   flex: none;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  margin: -6px -8px -6px -4px;
+  width: 44px;
+  height: 44px;
+  margin-block: -8px;
+  margin-inline: -6px -10px;
   border: 0;
   border-radius: 12px;
   background: transparent;

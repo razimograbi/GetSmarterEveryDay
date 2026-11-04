@@ -50,7 +50,7 @@ export const ICONS = {
   edit: i('<path d="M4 20h4L19.5 8.5a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   bell: i('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'),
   plus: i('<path d="M12 5v14M5 12h14"/>'),
-  report: i('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'),
+  report: i('<path d="M4.5 5.5h15v10.5H10l-5.5 4.5z"/><path d="M12 8.5v3.5"/><circle cx="12" cy="14.2" r=".7" fill="currentColor"/>'),
   close: i('<path d="M6 6l12 12M18 6 6 18"/>'),
   check: i('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'stroke-width="2.6"'),
   cross: i('<path d="M7 7l10 10M17 7 7 17"/>', 'stroke-width="2.6"'),
