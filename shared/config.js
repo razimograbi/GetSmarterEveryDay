@@ -98,7 +98,7 @@ export const CATEGORIES = [
   { id: 'jobs', name: 'Professions', blurb: 'Name the job', hue: '#2F9E44' },
   { id: 'logos', name: 'Company logos', blurb: 'Know the brand by its symbol', hue: '#0B7285' },
   { id: 'clubs', name: 'Football clubs', blurb: 'Know the club by its crest', hue: '#087F5B' },
-  { id: 'footballers', name: 'Football players', blurb: 'From Pelé to Lamine Yamal', hue: '#A61E4D' },
+  { id: 'footballers', name: 'Football players', blurb: 'From Pelé to Lamine Yamal', hue: '#A61E4D', quick: false }, // own tile only: not in Quick, Daily or mixed duels
   { id: 'currencies', name: 'Currencies', blurb: 'Know the money by its look', hue: '#5C940D' },
   // Topics with their own question wording, some with a photo: a little more time to read.
   { id: 'history', name: 'History', blurb: 'Wars, revolutions and turning points', hue: '#5C677D', seconds: 20 },

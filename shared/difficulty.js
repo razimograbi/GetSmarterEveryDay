@@ -108,7 +108,7 @@ export const DIFFICULTY = {
     fault-in-our-stars:4 da-vinci-code:2 twilight:1 gone-girl:5 divergent:5 lightning-thief:5
     water-for-elephants:7 lovely-bones:6`,
   body: `
-    pectoralis:4 fibula:6 quadriceps:4 nose:0 heart:1 brain:0 large-intestine:3 tongue:0 femur:4 humerus:6
+    pectoralis:4 fibula:6 quadriceps:4 heart:1 large-intestine:3 femur:4 humerus:6
     tibia:5 sternum:6 mandible:5 clavicle:5 rib-cage:1 pelvis:3 navel:0 knee:0 ear:0 radius:7`,
   people: `
     einstein:0 obama:1 taylor-swift:2 ronaldo:1 messi:1 musk:2 oprah:4 michael-jackson:1 monroe:2
@@ -127,8 +127,8 @@ export const DIFFICULTY = {
     jockey:3 farrier:7 glassblower:4 sommelier:5 luthier:8 chimney-sweep:4 stonemason:5 watchmaker:4
     falconer:4 cobbler:5 air-traffic-controller:5`,
   logos: `
-    apple:0 nike:0 mcdonalds:0 mercedes:1 audi:2 mitsubishi:4 twitter:1 instagram:0 whatsapp:0 spotify:2
-    target:4 youtube:0 volkswagen:1 microsoft:1 playstation:3 firefox:3 chrome:1 telegram:2 facebook:0
+    nike:0 mercedes:1 audi:2 mitsubishi:4 twitter:1 instagram:0 spotify:2
+    target:4 youtube:0 volkswagen:1 microsoft:1 chrome:1 telegram:2 facebook:0
     dropbox:5 subaru:6 citroen:5 hyundai:4 renault:4 chevrolet:3 shell:2 jordan:4 slack:6 twitch:5 opera:6`,
   clubs: `
     real-madrid:3 barcelona:2 atletico:5 sevilla:7 juventus:4 inter:6 napoli:6 marseille:7 ajax:6
