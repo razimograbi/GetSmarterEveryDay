@@ -341,8 +341,49 @@ async function loadStats(force = false) {
 
 // ── Sign in ────────────────────────────────────────────────────
 
+/**
+ * Apps like WhatsApp, Instagram and Facebook open links in their own built-in browser. There,
+ * Google's sign-in window opens blank and never comes back (Google blocks sign-in in many of
+ * them on purpose). Returns null in a real browser, else 'android' or 'ios': the way out differs.
+ */
+function inAppBrowser() {
+  if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) return null; // installed app
+  const ua = navigator.userAgent;
+  const app = /FBAN|FBAV|FB_IAB|FBIOS|Instagram|WhatsApp|Telegram|Line\/|Snapchat|TikTok|musical_ly|BytedanceWebview|LinkedInApp|Twitter|MicroMessenger/i.test(ua);
+  if (/Android/i.test(ua)) return app || /; wv\)/.test(ua) ? 'android' : null; // "; wv)": an app's WebView
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return ios && (app || !/Safari\//.test(ua)) ? 'ios' : null; // every real iOS browser says "Safari/"
+}
+
+/** The page as the plain link that was shared (/duel/…, /f/…, /daily), so a real browser opens the same thing. */
+function sharedLink() {
+  const [, page, arg] = (location.hash || '').split('/');
+  const path = page === 'duel' && arg ? `/duel/${arg}` : page === 'add' && arg ? `/f/${arg}` : page === 'daily' ? '/daily' : '/';
+  return `${location.origin}${path}`;
+}
+
+/** Instead of the Google button, inside an in-app browser: how to open Smarts in the phone's own browser. */
+function inAppCard(os) {
+  const url = new URL(sharedLink());
+  // Android opens an intent: link in Chrome; if Chrome is missing, the fallback opens the link as usual.
+  const intent = `intent://${url.host}${url.pathname}#Intent;scheme=${url.protocol.slice(0, -1)};package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url.href)};end`;
+  return `
+    <div class="signin-card inapp-card">
+      <h2>${esc(t('inapp.title'))}</h2>
+      <p>${esc(t('inapp.why'))}</p>
+      ${os === 'android'
+        ? `<a class="btn btn-marigold btn-block" href="${esc(intent)}">${esc(t('inapp.openChrome'))}</a>`
+        : `<ol class="inapp-steps"><li>${esc(t('inapp.ios1'))}</li><li>${esc(t('inapp.ios2'))}</li></ol>`}
+      <button type="button" class="btn btn-ghost-ink btn-block" data-copy-link>${ICONS.copy}<span>${esc(t('inapp.copy'))}</span></button>
+      <p class="inapp-status" data-copy-status aria-live="polite"></p>
+      <button type="button" class="link-btn inapp-try" data-try-here>${esc(t('inapp.tryHere'))}</button>
+      <div id="google-btn" class="google-btn" hidden></div>
+    </div>`;
+}
+
 function showSignIn() {
   const { googleClientId, devLogin } = state.config;
+  const inApp = inAppBrowser();
   const sign = { cat: 'signs' };
   const demoOptions = ['Stop', 'Give way', 'Priority road'];
   app.innerHTML = `
@@ -361,7 +402,8 @@ function showSignIn() {
         <p class="lede">${esc(t('signin.lede', { count: QUESTIONS.length, topics: CATEGORIES.length, secs: MODES[DEFAULT_MODE].secondsPerQuestion }))}</p>
       </div>
       <div class="signin-actions">
-        ${googleClientId ? `
+        ${googleClientId && inApp ? inAppCard(inApp) : ''}
+        ${googleClientId && !inApp ? `
           <div class="signin-card">
             <h2>${esc(t('signin.title'))}</h2>
             <p>${esc(t('signin.why'))}</p>
@@ -392,8 +434,18 @@ function showSignIn() {
     el.hidden = false;
   };
 
-  if (googleClientId) mountGoogleButton(googleClientId, showError);
+  if (googleClientId && !inApp) mountGoogleButton(googleClientId, showError);
   showLinkBanner();
+
+  // In an in-app browser: copy the link for a real browser, or try Google's sign-in here anyway.
+  app.querySelector('[data-copy-link]')?.addEventListener('click', async () => {
+    app.querySelector('[data-copy-status]').textContent = t((await copyText(sharedLink())) ? 'inapp.copied' : 'share.failed');
+  });
+  app.querySelector('[data-try-here]')?.addEventListener('click', (e) => {
+    e.currentTarget.remove();
+    app.querySelector('#google-btn').hidden = false;
+    mountGoogleButton(googleClientId, showError);
+  });
 
   app.querySelector('.dev-login')?.addEventListener('submit', async (e) => {
     e.preventDefault();

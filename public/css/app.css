@@ -271,6 +271,15 @@ a.logo { text-decoration: none; }
 .signin-card p { margin: 0 0 12px; font-size: 16px; color: var(--ink-2); }
 :root:lang(he) .signin-card h2, :root:lang(ar) .signin-card h2 { font-weight: 700; }
 
+/* Inside WhatsApp, Instagram and the like: the way out to the phone's own browser. */
+.inapp-card { gap: 10px; }
+.inapp-card p { margin: 0 0 4px; }
+.inapp-steps { margin: 0 0 4px; padding-inline-start: 22px; display: grid; gap: 6px; text-align: start; font-weight: 600; }
+.inapp-card .btn svg { width: 20px; height: 20px; }
+.inapp-card p.inapp-status { min-height: 1.2em; margin: 0; font-size: 14px; }
+.inapp-card .inapp-try { justify-self: center; color: var(--ink-2); }
+.google-btn[hidden] { display: none; }
+
 .google-btn { position: relative; min-height: 44px; display: flex; justify-content: center; color-scheme: light; }
 /* Until Google's script has drawn the button, hold its place with a soft pill. */
 .google-btn:not(.is-ready)::before {
