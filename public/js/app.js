@@ -290,21 +290,24 @@ function showSignIn() {
     <section class="screen signin">
       ${langSwitch()}
       <div class="link-banner" data-link-banner hidden></div>
-      <div class="signin-hero" aria-hidden="true">
-        <div class="demo-card">
+      <div class="signin-head">
+        <h1 class="logo logo-xl">Smarts</h1>
+        <div class="demo-card" aria-hidden="true">
           <div class="demo-fuse"><span></span></div>
           <div class="demo-pic">${signSvg('give-way')}</div>
           <ul class="demo-options">
             ${demoOptions.map((o) => `<li class="${o === 'Give way' ? 'is-correct' : ''}">${esc(qt(sign, o))}</li>`).join('')}
           </ul>
         </div>
-      </div>
-      <div class="signin-copy">
-        <h1 class="logo logo-xl">Smarts</h1>
         <p class="lede">${esc(t('signin.lede', { count: QUESTIONS.length, topics: CATEGORIES.length, secs: MODES[DEFAULT_MODE].secondsPerQuestion }))}</p>
       </div>
       <div class="signin-actions">
-        ${googleClientId ? `<div id="google-btn" class="google-btn"></div>` : ''}
+        ${googleClientId ? `
+          <div class="signin-card">
+            <h2>${esc(t('signin.title'))}</h2>
+            <p>${esc(t('signin.why'))}</p>
+            <div id="google-btn" class="google-btn"></div>
+          </div>` : ''}
         ${!googleClientId ? `<p class="note">${t('signin.noGoogle')}</p>` : ''}
         ${devLogin ? `
           <form class="dev-login" autocomplete="off">
@@ -396,10 +399,13 @@ async function mountGoogleButton(clientId, showError) {
     const el = document.getElementById('google-btn');
     if (!el) return;
     google.accounts.id.renderButton(el, {
-      theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center',
-      width: Math.min(360, Math.max(240, el.clientWidth)),
+      theme: 'filled_blue', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center',
+      width: Math.min(400, Math.max(240, el.clientWidth)), // 400 is the widest Google allows
       locale: lang(), // the button's own text in the chosen language
     });
+    el.classList.add('is-ready');
+    // Also offer Google's own "Continue as …" prompt, so a signed-in Google user needs one tap.
+    google.accounts.id.prompt();
   } catch (err) {
     showError(err.message);
   }

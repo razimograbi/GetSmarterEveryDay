@@ -14,7 +14,9 @@ export const ui = {
   'lang.choose': 'בחירת שפה',
   'lang.note': 'אפשר להחליף שוב כאן או במסך הכניסה.',
 
-  'signin.lede': 'חידון תמונות לכיס. {count} שאלות ב-{topics} נושאים, מדגלים וצורות של מדינות ועד ציורים מפורסמים והיסטוריה. יש {secs} שניות לכל שאלה.',
+  'signin.lede': 'חידון תמונות לכיס. {count} שאלות ב-{topics} נושאים, {secs} שניות לכל שאלה.',
+  'signin.title': 'התחברו כדי להתחיל לשחק',
+  'signin.why': 'לחיצה אחת עם חשבון Google. בחינם, ובלי סיסמה חדשה.',
   'signin.noGoogle': 'הכניסה עם Google עוד לא הוגדרה. צריך להוסיף את <code>GOOGLE_CLIENT_ID</code> לקובץ <code>.env</code> (ראו README).',
   'signin.devOr': 'או לשחק מקומית עם שם בלבד',
   'signin.dev': 'לשחק מקומית עם שם בלבד',

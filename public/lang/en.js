@@ -18,7 +18,9 @@ export default {
   'lang.note': 'You can change it again here or on the sign-in screen.',
 
   // Sign in
-  'signin.lede': 'A picture quiz for your pocket. {count} questions in {topics} topics, from flags and country shapes to famous paintings and history. You get {secs} seconds for each.',
+  'signin.lede': 'A picture quiz for your pocket. {count} questions in {topics} topics, {secs} seconds each.',
+  'signin.title': 'Sign in to start playing',
+  'signin.why': "One tap with your Google account. It's free, and there's no new password.",
   'signin.noGoogle': "Google sign-in isn't set up yet. Add your <code>GOOGLE_CLIENT_ID</code> to <code>.env</code> (see the README).",
   'signin.devOr': 'Or play locally with just a name',
   'signin.dev': 'Play locally with just a name',
