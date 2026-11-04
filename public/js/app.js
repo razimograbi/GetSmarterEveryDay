@@ -20,7 +20,22 @@ const state = {
   fixedRound: null, // a Daily or duel about to be played
   duelFriend: null, // the friend a new duel is for
   unsaved: null, // a Daily or duel result that failed to save
+  played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
+  justUnlocked: false, // the first round was just finished: say once what the home screen gained
+  newFriend: null, // a new player who added a friend from an invite link: offered as a duel at home
 };
+
+/**
+ * A player who hasn't finished a round yet. They get a simpler home screen with one button,
+ * a "how it works" strip wherever their first round starts, and no tab bar.
+ */
+const isNew = () => !state.played;
+
+/** Counts a finished round. The first one unlocks the full home screen. */
+function countFinished() {
+  if (!state.played) state.justUnlocked = true;
+  state.played += 1;
+}
 let cleanup = () => {};
 let navId = 0; // bumps on every screen change; async screens check it before drawing
 
@@ -37,6 +52,7 @@ async function boot() {
     state.config = config;
     state.user = me.user;
     state.profile = me.profile;
+    state.played = me.played || 0;
     adoptSettings(me.settings);
     await adoptLanguage(me.settings);
   } catch (err) {
@@ -276,6 +292,7 @@ async function loadStats(force = false) {
   const known = (ids) => ids.filter((id) => QUESTION_BY_ID.has(id));
   s.seenIds = known(s.seenIds);
   s.masteredIds = known(s.masteredIds);
+  if (s.rounds > state.played) state.played = s.rounds; // e.g. a round finished on another device
   state.stats = s;
   return s;
 }
@@ -340,8 +357,7 @@ function showSignIn() {
     e.preventDefault();
     const name = new FormData(e.target).get('name');
     try {
-      const { user, settings, profile } = await api('/api/auth/dev', { method: 'POST', body: { name } });
-      await signedIn(user, settings, null, profile);
+      await signedIn(await api('/api/auth/dev', { method: 'POST', body: { name } }));
     } catch (err) {
       showError(errMsg(err));
     }
@@ -389,8 +405,7 @@ async function mountGoogleButton(clientId, showError) {
       ux_mode: 'popup',
       callback: async ({ credential }) => {
         try {
-          const { user, settings, profile, locale: googleLocale } = await api('/api/auth/google', { method: 'POST', body: { credential } });
-          await signedIn(user, settings, googleLocale, profile);
+          await signedIn(await api('/api/auth/google', { method: 'POST', body: { credential } }));
         } catch (err) {
           showError(errMsg(err));
         }
@@ -411,11 +426,13 @@ async function mountGoogleButton(clientId, showError) {
   }
 }
 
-async function signedIn(user, settings, googleLocale = null, profile = null) {
+/** Takes the server's sign-in reply; `locale` is the Google account's language, when known. */
+async function signedIn({ user, settings, profile = null, played = 0, locale = null }) {
   state.user = user;
   state.profile = profile;
+  state.played = played;
   adoptSettings(settings);
-  await adoptLanguage(settings, googleLocale);
+  await adoptLanguage(settings, locale);
   state.stats = null;
   // Arrived from a shared link (a duel, an invite, the Daily): carry on there.
   go(/^#\/(duel|add|daily)/.test(location.hash) ? location.hash : '#/');
@@ -435,6 +452,9 @@ function signedOut() {
   state.profile = null;
   state.stats = null;
   state.daily = null;
+  state.played = 0;
+  state.justUnlocked = false;
+  state.newFriend = null;
   go('#/');
 }
 
@@ -548,21 +568,18 @@ function markReported(btn, q) {
 /** The signed-in player's own avatar (or any avatar code). */
 const avatar = (code = state.profile?.avatar, size = 36) => avatarImg(code, size);
 
+/** The tab bar. New players don't get one until their first round (see isNew); the logo leads home. */
 function tabbar(active) {
+  if (isNew()) return '';
   return `
     <nav class="tabbar" aria-label="Main">
-      <a href="#/" class="${active === 'home' ? 'is-active' : ''}" ${active === 'home' ? 'aria-current="page"' : ''}>${ICONS.play}<span>${esc(t('tab.play'))}</span></a>
+      <a href="#/" class="${active === 'home' ? 'is-active' : ''}" ${active === 'home' ? 'aria-current="page"' : ''}>${ICONS.home}<span>${esc(t('tab.home'))}</span></a>
       <a href="#/friends" class="${active === 'friends' ? 'is-active' : ''}" ${active === 'friends' ? 'aria-current="page"' : ''}>${ICONS.friends}<span>${esc(t('tab.friends'))}</span></a>
       <a href="#/progress" class="${active === 'progress' ? 'is-active' : ''}" ${active === 'progress' ? 'aria-current="page"' : ''}>${ICONS.chart}<span>${esc(t('tab.progress'))}</span></a>
     </nav>`;
 }
 
 // ── Home ───────────────────────────────────────────────────────
-
-// New players get an animated "Tap to play!" hint on the Quick round card for their first
-// few visits to the home screen. Counted on this device, per player.
-const QUICK_HINT_VISITS = 5;
-let lastQuickHint = false;
 
 // The home screen previews a few topics under the Quick round card, with a button to
 // show the rest. Opened stays opened while the app is open, so redraws don't fold it again.
@@ -571,6 +588,8 @@ let topicsOpen = false;
 // Topics the player has answered most come first, so the preview shows their own topics.
 // Kept between draws: stats are briefly missing after a round, and the list shouldn't jump.
 let topicOrder = CATEGORIES;
+// "Unlocked: …" shows on the first home screen after the first round. A language change redraws it.
+let lastUnlocked = false;
 
 function orderTopics(stats) {
   if (!stats) return topicOrder;
@@ -578,111 +597,166 @@ function orderTopics(stats) {
   return (topicOrder = [...CATEGORIES].sort((a, b) => (answered[b.id] || 0) - (answered[a.id] || 0)));
 }
 
-function takeQuickHint(userId) {
-  const key = `smarts:${userId}:quickHintsShown`;
-  try {
-    const shown = Number(localStorage.getItem(key)) || 0;
-    if (shown >= QUICK_HINT_VISITS) return false;
-    localStorage.setItem(key, String(shown + 1));
-    return true;
-  } catch {
-    return false; // storage blocked: skip the hint rather than show it forever
-  }
+/** "See a picture · Tap the right answer · Beat the clock": shown wherever a new player's first round starts. */
+function howItWorks() {
+  const steps = [t('how.see'), t('how.tap'), t('how.clock', { secs: MODES[DEFAULT_MODE].secondsPerQuestion })];
+  return `
+    <div class="how">
+      <h2 class="how-title">${esc(t('how.title'))}</h2>
+      <ol>${steps.map((s, i) => `<li><span class="how-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('')}</ol>
+    </div>`;
 }
 
-/** The Daily Challenge card at the top of the home screen. */
-function dailyCard(d) {
+/** The one big button on the home screen: a label that says what happens, and what it is. */
+const playCta = (label, sub) => `
+  <a class="play-cta" href="#/play/mixed">
+    <span class="play-cta-label"><span>${esc(label)}</span>${ICONS.arrow}</span>
+    <span class="play-cta-sub">${esc(sub)}</span>
+  </a>`;
+
+/** A quieter row under the big button: icon, title, a line or a badge, and a chevron. */
+const homeRow = ({ href = null, data = '', icon, title, sub = '', badge = '' }) => `
+  ${href ? `<a class="home-row" href="${href}"` : `<button type="button" class="home-row" ${data}`}>
+    <span class="home-row-icon">${icon}</span>
+    <span class="home-row-text"><strong>${title}</strong>${sub ? `<span>${sub}</span>` : ''}</span>
+    ${badge ? `<span class="home-row-badge">${esc(badge)}</span>` : ''}
+    <span class="home-row-chevron" aria-hidden="true">${ICONS.chevron}</span>
+  ${href ? '</a>' : '</button>'}`;
+
+/** Today's Daily as a row: "New today" until it's played, then the score and the board. */
+function dailyRow(d) {
   const played = d?.result?.finished;
   const n = d?.number;
+  return homeRow({
+    href: '#/daily',
+    icon: ICONS.daily,
+    title: esc(n ? t('daily.title', { n }) : t('daily.titlePlain')),
+    sub: esc(played ? `${t('daily.youScored', { score: d.result.score, max: d.questionIds.length * MAX_POINTS })} · ${t('daily.seeBoard')}` : t('daily.rowDesc')),
+    badge: played ? '' : t('daily.newToday'),
+  });
+}
+
+function topicRows(stats) {
+  const mastered = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.mastered]));
+  return orderTopics(stats).map((c) => {
+    const m = mastered[c.id] || 0;
+    const total = CAT_COUNT[c.id];
+    return `
+      <li>
+        <a class="topic" href="#/play/${c.id}" style="--hue:${c.hue}">
+          <span class="topic-icon">${ICONS[c.id]}</span>
+          <span class="topic-text">
+            <strong>${esc(catName(c))}</strong>
+            <span>${esc(catBlurb(c))}</span>
+          </span>
+          <span class="topic-meter" aria-label="${esc(t('home.topicMeter', { m, total }))}">
+            <span class="topic-count">${m}<small>/${total}</small></span>
+            <span class="meter"><span style="width:${(m / total) * 100}%"></span></span>
+          </span>
+        </a>
+      </li>`;
+  }).join('');
+}
+
+function homeTopbar() {
+  const current = LANGUAGES.find((l) => l.id === lang());
   return `
-    <a class="daily-card ${played ? 'is-played' : ''}" href="#/daily">
-      <span class="daily-badge">${ICONS.daily}</span>
-      <span class="quick-text">
-        <strong>${esc(n ? t('daily.title', { n }) : t('daily.titlePlain'))}</strong>
-        <span>${esc(played ? t('daily.youScored', { score: d.result.score, max: d.questionIds.length * MAX_POINTS }) : t('daily.desc'))}</span>
+    <header class="topbar">
+      <span class="logo">Smarts</span>
+      <span class="topbar-end">
+        <button type="button" class="lang-btn" data-lang-open aria-haspopup="dialog" aria-label="${esc(t('lang.change'))}">${ICONS.globe}<span lang="${current.id}">${esc(current.name)}</span></button>
+        <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
       </span>
-      <span class="daily-go">${esc(played ? t('daily.seeBoard') : t('daily.play'))}</span>
-    </a>`;
+    </header>`;
+}
+
+/**
+ * A new player's home: how the game works and one button. The Daily, duels and the tab bar
+ * come after the first round; the avatar stays, for the account settings.
+ */
+function drawNewHome(firstName) {
+  const quickTopics = CATEGORIES.filter((c) => !c.book && c.quick !== false).slice(0, TOPIC_PREVIEW);
+  const friend = state.newFriend;
+  app.innerHTML = `
+    <section class="screen home home-new">
+      ${homeTopbar()}
+      <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
+      ${howItWorks()}
+      ${playCta(t('home.firstPlay'), t('home.firstPlaySub', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
+      ${friend ? homeRow({
+        data: 'data-duel-friend', icon: ICONS.duel,
+        title: t('home.duelFriend', { name: `<bdi>${esc(friend.name)}</bdi>` }), sub: esc(t('duel.cardDesc')),
+      }) : ''}
+      <h2 class="home-or">${esc(t('home.topics'))}</h2>
+      <div class="topic-chips">
+        ${quickTopics.map((c) => `<a class="topic-chip" href="#/play/${c.id}" style="--hue:${c.hue}">${ICONS[c.id]}<span>${esc(catName(c))}</span></a>`).join('')}
+        <button type="button" class="topic-chip topic-chip-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
+          <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
+        </button>
+      </div>
+      <ul class="topics" id="topic-list" ${topicsOpen ? '' : 'hidden'}>${topicRows(null)}</ul>
+    </section>`;
+  app.querySelector('[data-duel-friend]')?.addEventListener('click', () => {
+    state.duelFriend = { id: friend.id, name: friend.name };
+    go('#/duel/new');
+  });
+  app.querySelector('.topic-chip-all').addEventListener('click', (e) => {
+    topicsOpen = !topicsOpen;
+    const btn = e.currentTarget;
+    const list = app.querySelector('#topic-list');
+    list.hidden = !topicsOpen;
+    btn.setAttribute('aria-expanded', String(topicsOpen));
+    btn.firstElementChild.textContent = topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length });
+    if (topicsOpen) list.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+  });
+}
+
+function drawHome(firstName, stats, unlocked) {
+  const streak = stats?.dayStreak || 0;
+  app.innerHTML = `
+    <section class="screen home has-tabbar">
+      ${homeTopbar()}
+      ${unlocked ? `<p class="unlocked">${esc(t('home.unlocked'))}</p>` : ''}
+      <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
+      <p class="sub">${streak ? `${ICONS.fire}${esc(tn('home.streak', streak))}` : '&nbsp;'}</p>
+      ${playCta(t('home.quickPlay'), t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
+      <div class="home-rows">
+        ${dailyRow(state.daily)}
+        ${homeRow({ href: '#/duel/new', icon: ICONS.duel, title: esc(t('duel.cardTitle')), sub: esc(t('duel.cardDesc')) })}
+      </div>
+      <h2 class="section-title">${esc(t('home.topics'))}</h2>
+      <ul class="topics ${topicsOpen ? '' : 'is-folded'}" id="topic-list">${topicRows(stats)}</ul>
+      <button type="button" class="see-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
+        <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
+        <span class="see-all-arrow" aria-hidden="true"></span>
+      </button>
+    </section>
+    ${tabbar('home')}`;
+  app.querySelector('.see-all').addEventListener('click', (e) => {
+    topicsOpen = !topicsOpen;
+    const btn = e.currentTarget;
+    app.querySelector('#topic-list').classList.toggle('is-folded', !topicsOpen);
+    btn.setAttribute('aria-expanded', String(topicsOpen));
+    btn.firstElementChild.textContent = topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length });
+    // Bring the rows that just appeared into view, above the floating tab bar, so it's
+    // clear something happened even on a short phone.
+    const target = topicsOpen ? app.querySelector(`#topic-list > li:nth-child(${TOPIC_PREVIEW + 1})`) : app.querySelector('.section-title');
+    target?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: topicsOpen ? 'center' : 'start' });
+  });
 }
 
 async function showHome() {
-  const user = state.user;
-  const firstName = esc(user.name.split(' ')[0]);
+  const firstName = esc(state.user.name.split(' ')[0]);
   // Once per visit, though the screen is drawn twice; a language change redraws without counting.
-  const hint = rerendering ? lastQuickHint : (lastQuickHint = takeQuickHint(user.id));
+  if (!rerendering) {
+    lastUnlocked = state.justUnlocked;
+    state.justUnlocked = false;
+    track('home_viewed', { variant: isNew() ? 'first' : 'returning' });
+  }
   const draw = (stats) => {
-    const mastered = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.mastered]));
-    const totalMastered = stats ? stats.masteredIds.length : 0;
-    const current = LANGUAGES.find((l) => l.id === lang());
-    app.innerHTML = `
-      <section class="screen home has-tabbar">
-        <header class="topbar">
-          <span class="logo">Smarts</span>
-          <span class="topbar-end">
-            <button type="button" class="lang-btn" data-lang-open aria-haspopup="dialog" aria-label="${esc(t('lang.change'))}">${ICONS.globe}<span lang="${current.id}">${esc(current.name)}</span></button>
-            <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
-          </span>
-        </header>
-
-        <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
-        <p class="sub">${stats ? esc(t('home.sub', { n: totalMastered, total: QUESTIONS.length })) : '&nbsp;'}</p>
-
-        ${dailyCard(state.daily)}
-
-        <a class="quick ${hint ? 'is-hinting' : ''}" href="#/play/mixed">
-          ${hint ? `<span class="quick-hint" aria-hidden="true">${esc(t('quick.hint'))}</span>` : ''}
-          <span class="quick-text">
-            <strong>${esc(t('quick.title'))}</strong>
-            <span>${esc(t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}</span>
-          </span>
-          <span class="quick-go" aria-hidden="true"><span>${esc(t('quick.play'))}</span>${ICONS.play}</span>
-        </a>
-
-        <a class="duel-card" href="#/duel/new">
-          <span class="duel-card-icon">${ICONS.duel}</span>
-          <span class="quick-text"><strong>${esc(t('duel.cardTitle'))}</strong><span>${esc(t('duel.cardDesc'))}</span></span>
-        </a>
-
-        <h2 class="section-title">${esc(t('home.topics'))}</h2>
-        <ul class="topics ${topicsOpen ? '' : 'is-folded'}" id="topic-list">
-          ${orderTopics(stats).map((c) => {
-            const m = mastered[c.id] || 0;
-            const total = CAT_COUNT[c.id];
-            return `
-              <li>
-                <a class="topic" href="#/play/${c.id}" style="--hue:${c.hue}">
-                  <span class="topic-icon">${ICONS[c.id]}</span>
-                  <span class="topic-text">
-                    <strong>${esc(catName(c))}</strong>
-                    <span>${esc(catBlurb(c))}</span>
-                  </span>
-                  <span class="topic-meter" aria-label="${esc(t('home.topicMeter', { m, total }))}">
-                    <span class="topic-count">${m}<small>/${total}</small></span>
-                    <span class="meter"><span style="width:${(m / total) * 100}%"></span></span>
-                  </span>
-                </a>
-              </li>`;
-          }).join('')}
-        </ul>
-        <button type="button" class="see-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
-          <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
-          <span class="see-all-arrow" aria-hidden="true"></span>
-        </button>
-      </section>
-      ${tabbar('home')}`;
+    if (isNew()) drawNewHome(firstName);
+    else drawHome(firstName, stats, lastUnlocked);
     app.querySelector('[data-lang-open]').addEventListener('click', (e) => openLangSheet(e.currentTarget));
-    app.querySelector('.see-all').addEventListener('click', (e) => {
-      topicsOpen = !topicsOpen;
-      const btn = e.currentTarget;
-      app.querySelector('#topic-list').classList.toggle('is-folded', !topicsOpen);
-      btn.setAttribute('aria-expanded', String(topicsOpen));
-      btn.firstElementChild.textContent = topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length });
-      // Bring the rows that just appeared into view, above the floating tab bar, so it's
-      // clear something happened even on a short phone.
-      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const target = topicsOpen ? app.querySelector(`#topic-list > li:nth-child(${TOPIC_PREVIEW + 1})`) : app.querySelector('.section-title');
-      target?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: topicsOpen ? 'center' : 'start' });
-    });
   };
   const nav = navId;
   draw(state.stats);
@@ -998,8 +1072,12 @@ async function startRound(cat, fixed = null) {
         : `<figure class="pic pic-${q.visual.type}">${vis.html}<p class="pic-loading" hidden>${esc(t('q.loading'))}</p></figure>
            <p class="prompt" id="prompt">${esc(qt(q, q.prompt))}</p>`;
     // Options are kept in English (that's what is graded) and shown translated.
+    // A new player's very first question says what to do. The clock isn't paused for it,
+    // so a first Daily or duel scores the same as anyone's.
+    const firstHint = isNew() && round.idx === 0 ? `<p class="first-hint">${esc(t('play.firstHint'))}</p>` : '';
     stage.innerHTML = `
       ${head}
+      ${firstHint}
       <div class="answers is-waiting" role="group" aria-labelledby="prompt">
         ${options.map((o, i) => `<button class="answer" data-i="${i}" disabled><kbd>${i + 1}</kbd><span>${esc(qt(q, o))}</span></button>`).join('')}
       </div>`;
@@ -1243,6 +1321,7 @@ async function startRound(cat, fixed = null) {
     const record = { ...round, saved: null, error: null, payload: answersPayload(round.results) };
     round.saved = true;
     rememberPlayed();
+    if (round.fixed || record.payload.length) countFinished(); // a round of only skips isn't saved
     if (round.fixed) {
       const saving = saveFixed(record); // started first, so the next screen can wait for it
       leave(round.fixed.after);
@@ -1507,7 +1586,7 @@ const squaresHtml = (squares) =>
 
 const topbar = () => `
   <header class="topbar">
-    <span class="logo">Smarts</span>
+    <a class="logo logo-link" href="#/" aria-label="${esc(t('tab.home'))}">Smarts</a>
     <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
   </header>`;
 
@@ -1606,6 +1685,7 @@ function drawDailyIntro(d) {
         <h1 class="greeting">${esc(t('daily.title', { n: d.number }))}</h1>
         <p class="sub">${esc(t('daily.intro'))}</p>
       </div>
+      ${isNew() ? howItWorks() : ''}
       <ul class="rules">
         <li>${ICONS.check}<span>${esc(t('daily.rule1'))}</span></li>
         <li>${ICONS.clock}<span>${esc(t('daily.rule2', { max: MAX_POINTS }))}</span></li>
@@ -1806,10 +1886,11 @@ async function showDuel(id) {
     return;
   }
 
-  // Arrived from a duel link and just signed in: straight into the game.
+  // Arrived from a duel link and just signed in: straight into the game. A new player first
+  // sees how the game works, on the card below.
   let autoplay = null;
   try { autoplay = sessionStorage.getItem('smarts:autoplay'); sessionStorage.removeItem('smarts:autoplay'); } catch { /* storage blocked */ }
-  if (autoplay === id && (duel.status === 'open' || duel.status === 'invited')) return playDuel(id).catch((err) => window.alert(errMsg(err)));
+  if (autoplay === id && !isNew() && (duel.status === 'open' || duel.status === 'invited')) return playDuel(id).catch((err) => window.alert(errMsg(err)));
 
   const max = duel.questionIds.length * MAX_POINTS;
   const other = duelOther(duel);
@@ -1822,6 +1903,7 @@ async function showDuel(id) {
         ${avatarImg(c.avatar, 112, 'avatar-xl')}
         <h1 class="challenge-title">${t('duel.challengedYou', { name: personName(c) })}</h1>
         <p class="challenge-sub">${esc(c.score === null ? t('duel.notPlayedYet', { topic: duelTopic(duel.category) }) : t('duel.theyScored', { score: c.score, max, topic: duelTopic(duel.category) }))}</p>
+        ${isNew() ? howItWorks() : ''}
         <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.playNow'))}</button>
       </div>`;
   } else if (duel.status === 'taken') {
@@ -2089,8 +2171,10 @@ async function showAddFriend(code) {
   app.querySelector('[data-add-friend]')?.addEventListener('click', async (e) => {
     e.currentTarget.disabled = true;
     try {
-      await api('/api/friends', { method: 'POST', body: { code } });
-      go('#/friends', { replace: true });
+      const { friend } = await api('/api/friends', { method: 'POST', body: { code } });
+      // A new player goes home, where the new friend waits as a duel next to the first round.
+      if (isNew()) state.newFriend = friend;
+      go(isNew() ? '#/' : '#/friends', { replace: true });
     } catch (err) {
       e.currentTarget.disabled = false;
       app.querySelector('[data-add-msg]').textContent = errMsg(err);
@@ -2679,6 +2763,22 @@ async function showPlayers() {
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('players.firstRound'))}</h2>
+      <ul class="returns">
+        ${[['players.startedRound', r.firstRound.started], ['players.finishedRound', r.firstRound.finished]].map(([key, n]) => {
+          const p = pct(n, r.firstRound.players);
+          return `
+            <li>
+              <span class="returns-head"><strong>${esc(t(key))}</strong><span>${esc(r.firstRound.players ? t('players.dOf', { x: n, y: r.firstRound.players }) : t('players.noData'))}</span></span>
+              <span class="returns-num">${p === null ? '–' : `${p}%`}</span>
+              <span class="meter meter-ink returns-meter"><span style="width:${p ?? 0}%"></span></span>
+            </li>`;
+        }).join('')}
+      </ul>
+      <p class="legend">${esc(r.firstRound.medianMin === null ? t('players.firstRoundHint') : t('players.medianWait', { n: r.firstRound.medianMin }))}</p>
     </div>
 
     <p class="sub admin-note">${esc(t('players.note'))}</p>`);

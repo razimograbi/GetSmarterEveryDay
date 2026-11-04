@@ -85,6 +85,7 @@ code { font-family: var(--font-code); font-size: 0.9em; }
   color: var(--on-cobalt);
 }
 .logo-xl { font-size: clamp(64px, 20vw, 92px); margin: 0; }
+a.logo { text-decoration: none; }
 
 .greeting {
   font-size: 34px;
@@ -366,57 +367,97 @@ code { font-family: var(--font-code); font-size: 0.9em; }
 }
 .quick-go svg { width: 22px; height: 22px; }
 
-/* First visits: a bubble, pulse rings and a little wiggle say "this is the button". */
-.quick.is-hinting { margin-top: 38px; animation: quick-nudge 3s ease-in-out 0.8s infinite; }
-.quick.is-hinting:active { animation: none; } /* the press-down effect wins over the wiggle */
-.quick-hint {
-  position: absolute;
-  top: -22px;
-  inset-inline-end: 18px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  background: #fff;
+/* ── Home: one big button, quieter rows ──────────────────────── */
+
+/* The main action is shaped like a button, not a banner: a label that starts with a verb,
+   a caption, and the ledge every button here has. Marigold is kept for this one thing. */
+.play-cta {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: 22px;
+  padding: 20px 18px 18px;
+  border-radius: var(--r-card);
+  background: var(--marigold);
   color: var(--ink);
-  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: 0 7px 0 var(--marigold-deep);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.play-cta:active { transform: translateY(6px); box-shadow: 0 1px 0 var(--marigold-deep); }
+.play-cta-label { display: inline-flex; align-items: center; gap: 10px; font-size: 23px; font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
+.play-cta-label svg { flex: none; width: 26px; height: 26px; stroke-width: 2.6; transform: scaleX(var(--flip)); }
+.play-cta-sub { font-size: 15px; font-weight: 600; color: rgba(20, 24, 51, 0.72); }
+:root:lang(he) .play-cta-label, :root:lang(ar) .play-cta-label { font-weight: 700; }
+
+/* "How it works", for players who haven't finished a round. */
+.how { margin-top: 18px; padding: 16px 14px; border-radius: var(--r-card); background: var(--paper); color: var(--ink); }
+.how-title { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ink-2); text-align: center; }
+.how ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.how li { display: grid; justify-items: center; align-content: start; gap: 6px; text-align: center; font-size: 14px; font-weight: 650; line-height: 1.3; }
+.how-n { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--cobalt); color: #fff; font-family: var(--font-show); font-size: 17px; line-height: 1; }
+.challenge-card .how { width: 100%; margin: 4px 0; background: var(--paper-2); }
+
+.home-rows { display: grid; gap: 12px; margin-top: 22px; }
+.home-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  box-shadow: 0 4px 0 var(--cobalt-deep);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.home-row:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--cobalt-deep); }
+.home-row-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--paper-2); color: var(--cobalt); }
+.home-row-icon svg { width: 24px; height: 24px; }
+.home-row-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.home-row-text strong { font-size: 17px; font-weight: 750; line-height: 1.25; }
+.home-row-text span { font-size: 14px; color: var(--ink-2); }
+.home-row-badge { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--cobalt); color: #fff; font-size: 13px; font-weight: 750; white-space: nowrap; }
+.home-row-chevron { flex: none; color: var(--ink-2); }
+.home-row-chevron svg { width: 20px; height: 20px; transform: scaleX(var(--flip)); }
+.home-new .home-row { margin-top: 20px; }
+
+.home-or { margin: 28px 0 10px; font-size: 15px; font-weight: 650; color: var(--on-cobalt-2); text-align: center; }
+.topic-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
   font-size: 15px;
-  white-space: nowrap;
-  box-shadow: 0 4px 0 rgba(20, 24, 51, 0.25);
-  animation: quick-bob 0.9s ease-in-out infinite alternate;
-  pointer-events: none;
+  font-weight: 700;
+  text-decoration: none;
 }
-.quick-hint::after {
-  content: '';
-  position: absolute;
-  bottom: -7px;
-  inset-inline-end: 34px;
-  border: 8px solid transparent;
-  border-bottom: 0;
-  border-top-color: #fff;
-}
-.quick.is-hinting .quick-go::before,
-.quick.is-hinting .quick-go::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  border: 3px solid var(--ink);
-  animation: quick-pulse 1.8s ease-out infinite;
-  pointer-events: none;
-}
-.quick.is-hinting .quick-go::after { animation-delay: 0.9s; }
-@keyframes quick-pulse { from { transform: scale(1); opacity: 0.7; } to { transform: scale(1.45, 1.8); opacity: 0; } }
-@keyframes quick-bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
-@keyframes quick-nudge {
-  0%, 72%, 100% { transform: none; }
-  77% { transform: translateY(-5px) rotate(-1.2deg); }
-  82% { transform: translateY(0) rotate(0.8deg); }
-  87% { transform: translateY(-3px) rotate(-0.5deg); }
-  92% { transform: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .quick.is-hinting, .quick-hint { animation: none; }
-  .quick.is-hinting .quick-go::before, .quick.is-hinting .quick-go::after { display: none; }
-}
+.topic-chip svg { width: 20px; height: 20px; color: var(--hue); }
+.topic-chip-all { padding: 0 16px; background: transparent; color: var(--on-cobalt); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35); }
+.home-new .topics { margin-top: 18px; }
+.topics[hidden] { display: none; }
+
+/* After the first round: what the home screen just gained. Shown once. */
+.unlocked { margin: 18px 0 0; padding: 12px 16px; border-radius: 16px; background: var(--cobalt-ink); font-size: 15px; font-weight: 650; text-align: center; }
+.home .sub svg { display: inline-block; width: 18px; height: 18px; margin-inline-end: 4px; vertical-align: -3px; color: var(--marigold); }
+
+/* The first question a new player sees says what to do. */
+.first-hint { margin: 0 2px 12px; font-weight: 700; color: var(--marigold); }
+
 
 .topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 /* Folded: only the first three topics (TOPIC_PREVIEW in app.js) show. */
@@ -1461,7 +1502,7 @@ code { unicode-bidi: isolate; direction: ltr; }
 
 /* ── Home cards ──────────────────────────────────────────────── */
 
-.daily-card, .duel-card {
+.duel-card {
   display: flex;
   align-items: center;
   gap: 14px;
@@ -1473,10 +1514,7 @@ code { unicode-bidi: isolate; direction: ltr; }
   transition: transform 80ms ease, box-shadow 80ms ease;
   -webkit-tap-highlight-color: transparent;
 }
-.daily-card { background: var(--paper); box-shadow: 0 7px 0 var(--cobalt-deep); }
-.daily-card:active, .duel-card:active { transform: translateY(5px); box-shadow: 0 2px 0 var(--cobalt-deep); }
-.daily-card .quick-text strong { font-size: 26px; color: var(--cobalt); }
-.daily-card .quick-text span { font-size: 15px; }
+.duel-card:active { transform: translateY(5px); box-shadow: 0 2px 0 var(--cobalt-deep); }
 .daily-badge {
   flex: none;
   display: grid;
@@ -1488,16 +1526,6 @@ code { unicode-bidi: isolate; direction: ltr; }
   color: var(--marigold);
 }
 .daily-badge svg { width: 30px; height: 30px; }
-.daily-go {
-  flex: none;
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: var(--marigold);
-  font-weight: 800;
-  box-shadow: 0 3px 0 var(--marigold-deep);
-}
-.daily-card.is-played .daily-badge { background: var(--mint); color: #fff; }
-.daily-card.is-played .daily-go { background: var(--paper-2); box-shadow: 0 3px 0 var(--line); }
 .duel-card { background: var(--cobalt-ink); color: #fff; box-shadow: 0 6px 0 rgba(10, 14, 60, 0.6); margin-top: 18px; }
 .duel-card .quick-text strong { font-size: 22px; }
 .duel-card .quick-text span { font-size: 14px; opacity: 0.75; }

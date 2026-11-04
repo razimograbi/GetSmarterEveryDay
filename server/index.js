@@ -5,7 +5,7 @@ import { extname, join, normalize, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  openDb, optimizeDb, upsertUser, deleteUser, saveRound, getStats, exportUser,
+  openDb, optimizeDb, upsertUser, deleteUser, saveRound, getStats, exportUser, finishedRounds,
   createSession, sessionUser, deleteSession, deleteUserSessions, purgeExpiredSessions,
   getSettings, saveSettings, saveReport, listReports, resolveReports, REPORT_STATUSES, logEvent, getRetention,
   ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode,
@@ -146,7 +146,9 @@ const publicUser = (u) => u && {
  */
 function signIn(res, user, locale = null) {
   const token = createSession(db, user.id, SESSION_TTL_MS);
-  json(res, 200, { user: publicUser(user), settings: getSettings(db, user.id), profile: ensureProfile(db, user), locale }, {
+  json(res, 200, {
+    user: publicUser(user), settings: getSettings(db, user.id), profile: ensureProfile(db, user), played: finishedRounds(db, user.id), locale,
+  }, {
     'Set-Cookie': sessionCookie(token, { secure: SECURE_COOKIES }),
   });
 }
@@ -167,6 +169,7 @@ const routes = {
     const user = currentUser(req);
     json(res, 200, {
       user: publicUser(user), settings: user ? getSettings(db, user.id) : null, profile: user ? ensureProfile(db, user) : null,
+      played: user ? finishedRounds(db, user.id) : 0, // rounds finished: 0 shows the new-player home
     });
   },
 

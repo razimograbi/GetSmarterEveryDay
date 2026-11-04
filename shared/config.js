@@ -52,6 +52,7 @@ export const dailyNumber = (date) => Math.round((Date.parse(date) - Date.parse(D
 // by the server itself, so nobody can fake them: a round is "finished" when the server
 // grades it, and ads and purchases count only once the ad network or payment provider confirms.
 export const EVENTS = {
+  home_viewed: { client: true }, // props.variant: 'first' (no finished rounds yet) or 'returning'
   round_started: { client: true },
   round_finished: {},
   helper_used: { client: true },

@@ -489,6 +489,22 @@ export function getRetention(db, { tzOffsetMin = 0, eventNames = [] } = {}) {
     return { name, week: c?.week ?? 0, month: c?.month ?? 0, players: c?.players ?? 0 };
   });
 
+  // Players who signed up in the last 30 days: how many started a round, how many finished
+  // one, and the median time from signing up to their first finished round.
+  const joined = db.prepare(`
+    SELECT u.created_at AS joined,
+           (SELECT MIN(created_at) FROM events WHERE user_id = u.id AND name = 'round_started') AS started,
+           (SELECT MIN(created_at) FROM rounds WHERE user_id = u.id AND complete = 1) AS finished
+    FROM users u WHERE u.created_at >= ?
+  `).all(since(30));
+  const waits = joined.filter((j) => j.finished).map((j) => j.finished - j.joined).sort((a, b) => a - b);
+  const firstRound = {
+    players: joined.length,
+    started: joined.filter((j) => j.started || j.finished).length,
+    finished: waits.length,
+    medianMin: waits.length ? Math.round(waits[Math.floor((waits.length - 1) / 2)] / 60_000) : null,
+  };
+
   return {
     today: iso(today),
     players: everyone.length,
@@ -502,8 +518,13 @@ export function getRetention(db, { tzOffsetMin = 0, eventNames = [] } = {}) {
     cohorts,
     months,
     events,
+    firstRound,
   };
 }
+
+/** How many rounds a player has finished: Quick, topic, Daily and duel rounds, not ones they left. */
+export const finishedRounds = (db, userId) =>
+  db.prepare('SELECT COUNT(*) AS n FROM rounds WHERE user_id = ? AND complete = 1').get(userId).n;
 
 /** Writes a consistent copy of the live database to `file` (safe while the server is running). */
 export function backupDb(db, file) {
