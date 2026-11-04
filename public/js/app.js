@@ -1,6 +1,6 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, pointsFor, secondsFor, localDate,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, pointsFor, secondsFor, localDate,
 } from '/shared/config.js';
 import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
@@ -63,7 +63,10 @@ async function boot() {
     return;
   }
   takeSharedLink();
+  if (state.user) await finishLeftRound();
   window.addEventListener('hashchange', route);
+  // The Back arrow is in many top bars, so one listener serves them all.
+  app.addEventListener('click', (e) => { if (e.target.closest('[data-back]')) goBack(); });
   route();
   // Makes Smarts installable on phones and lets it open without a connection (public/sw.js).
   navigator.serviceWorker?.register('/sw.js').catch(() => {});
@@ -199,9 +202,47 @@ function openLangSheet(opener) {
 
 function go(hash, { replace = false } = {}) {
   if (location.hash === hash) return route();
-  if (replace) location.replace(hash); // keeps Back from restarting a finished round
-  else location.hash = hash;
+  if (replace) {
+    replacingNav = true;
+    location.replace(hash); // keeps Back from restarting a finished round
+  } else {
+    location.hash = hash;
+  }
 }
+
+// How many of the app's own screens are behind this one in the browser history. Each entry is
+// stamped with it, so the Back arrow only steps back inside the app, never out to another site.
+let navDepth = -1;
+let replacingNav = false;
+
+function stampNavDepth() {
+  const depth = history.state?.depth;
+  if (typeof depth === 'number') navDepth = depth;
+  else {
+    navDepth = replacingNav ? Math.max(0, navDepth) : navDepth + 1;
+    history.replaceState({ ...history.state, depth: navDepth }, '');
+  }
+  replacingNav = false;
+}
+
+/** The Back arrow: the previous screen, or home when this is the first one. */
+function goBack() {
+  if (navDepth > 0) history.back();
+  else go('#/', { replace: true });
+}
+
+/** Whether this player sees the Back arrow: their setting, where 'phones' means a touch screen. */
+function showBack() {
+  const mode = BACK_BUTTON.includes(getSetting('backButton')) ? getSetting('backButton') : 'phones';
+  return mode === 'always' || (mode === 'phones' && matchMedia('(hover: none) and (pointer: coarse)').matches);
+}
+
+/** The start of a screen's top bar: the Back arrow (if shown) and the logo, which leads home. */
+const topbarStart = () => `
+  <span class="topbar-start">
+    ${showBack() ? `<button type="button" class="icon-btn back-btn" data-back aria-label="${esc(t('nav.back'))}">${ICONS.back}</button>` : ''}
+    <a class="logo logo-link" href="#/" aria-label="${esc(t('tab.home'))}">Smarts</a>
+  </span>`;
 
 // ── Settings (per player, saved on the server) ─────────────────
 
@@ -258,6 +299,7 @@ function autoDelaySeconds() {
 
 async function route() {
   navId += 1;
+  stampNavDepth();
   closeReport?.();
   cleanup();
   cleanup = () => {};
@@ -433,6 +475,7 @@ async function signedIn({ user, settings, profile = null, played = 0, locale = n
   state.played = played;
   adoptSettings(settings);
   await adoptLanguage(settings, locale);
+  await finishLeftRound();
   state.stats = null;
   // Arrived from a shared link (a duel, an invite, the Daily): carry on there.
   go(/^#\/(duel|add|daily)/.test(location.hash) ? location.hash : '#/');
@@ -1134,6 +1177,7 @@ async function startRound(cat, fixed = null) {
       current.answered = true;
       current.outcome = 'skipped';
       round.results.push({ q, choice: null, correct: false, ms: 0, points: 0, skipped: true });
+      keepOpenRound();
       pips[round.idx].classList.add('is-skipped');
       showDock(`<p class="dock-msg">${esc(t('q.noPicture'))}</p>${reportBtn()}<button class="btn btn-marigold btn-next" data-next><span>${esc(t('q.skip'))}</span></button>`);
       scheduleAutoNext();
@@ -1153,19 +1197,21 @@ async function startRound(cat, fixed = null) {
     }
   }
 
-  function answer(choice) {
-    if (!timing() || pausedAt) return;
+  /** `away`: the player left the app while the question was on screen, so it counts as wrong. */
+  function answer(choice, { away = false } = {}) {
+    if (!timing() || (pausedAt && !away)) return;
     current.answered = true;
     cancelAnimationFrame(raf);
     const { q } = current;
-    const ms = Math.round(performance.now() - current.start);
+    const ms = Math.round((pausedAt || performance.now()) - current.start);
     const correct = choice === q.answer;
     const points = pointsFor(correct, ms, current.seconds);
 
     round.score += points;
     round.streak = correct ? round.streak + 1 : 0;
     round.bestStreak = Math.max(round.bestStreak, round.streak);
-    round.results.push({ q, choice, correct, ms, points, skipped: false });
+    round.results.push({ q, choice, correct, ms, points, skipped: false, away });
+    keepOpenRound();
 
     scoreEl.textContent = round.score;
     pips[round.idx].classList.add(correct ? 'is-right' : 'is-wrong');
@@ -1190,6 +1236,8 @@ async function startRound(cat, fixed = null) {
     const reveal = t(long ? 'q.answerIs' : 'q.its', { answer: ans });
     const msg = correct
       ? `<p class="dock-msg is-right">${ICONS.check}<span>${t('q.right', { points })}</span></p>`
+      : away
+        ? `<p class="dock-msg is-wrong">${ICONS.cross}<span>${esc(t('q.away'))} ${reveal}</span></p>`
       : choice === null
         ? `<p class="dock-msg is-wrong">${ICONS.clock}<span>${esc(t('q.outOfTime'))} ${reveal}</span></p>`
         : `<p class="dock-msg is-wrong">${ICONS.cross}<span>${reveal}</span></p>`;
@@ -1258,7 +1306,7 @@ async function startRound(cat, fixed = null) {
   function openAuto() {
     if (sheetOpen()) return;
     paintAuto();
-    pause();
+    pause({ hide: true }); // the clock stops, so the question can't be read meanwhile
     autoSheet.hidden = false;
     autoBtn.setAttribute('aria-expanded', 'true');
     autoOn.focus();
@@ -1320,9 +1368,35 @@ async function startRound(cat, fixed = null) {
     lastPlayedIds = new Set(round.results.filter((r) => !r.skipped).map((r) => r.q.id));
   };
 
+  // A copy of the round on this device while it's on, so a round the phone closed without
+  // warning (no pagehide, e.g. killed in the background) is finished on the next visit.
+  function keepOpenRound() {
+    storeOpenRound({
+      cat: round.cat, mode: round.mode,
+      fixed: round.fixed && { endpoint: round.fixed.endpoint, extra: round.fixed.extra },
+      ids: round.questions.map((q) => q.id),
+      answers: answersPayload(round.results),
+      skipped: round.results.filter((r) => r.skipped).map((r) => r.q.id),
+    });
+  }
+
+  /**
+   * However a round is left (Leave in the quit sheet, closing the site), it ends as a finished
+   * round: every question not answered yet, the one on screen included, counts as wrong.
+   * Questions whose picture didn't load stay out, as in a round played to the end.
+   */
+  function addUnanswered() {
+    const done = new Set(round.results.map((r) => r.q.id));
+    for (const q of round.questions) {
+      if (!done.has(q.id)) round.results.push({ q, choice: null, correct: false, ms: secondsFor(q, cfg) * 1000, points: 0, skipped: false, left: true });
+    }
+  }
+
   async function finish() {
+    if (round.saved) return; // already ended (e.g. closed, then shown again from the back-forward cache)
     const record = { ...round, saved: null, error: null, payload: answersPayload(round.results) };
     round.saved = true;
+    forgetOpenRound();
     rememberPlayed();
     if (round.fixed || record.payload.length) countFinished(); // a round of only skips isn't saved
     if (round.fixed) {
@@ -1335,30 +1409,31 @@ async function startRound(cat, fixed = null) {
     await saveRecord(record);
   }
 
-  function savePartial({ beacon = false } = {}) {
+  /** The page is closing mid-round: finish it with what's left counted wrong, in a beacon that outlives the page. */
+  function finishOnClose() {
     if (round.saved) return;
+    addUnanswered();
+    const record = { ...round, payload: answersPayload(round.results) };
     round.saved = true;
+    forgetOpenRound();
     rememberPlayed();
-    // A Daily or duel that's left counts as played, with the answers given so far.
-    if (round.fixed) {
-      saveFixed({ ...round, payload: answersPayload(round.results) }, { partial: true, beacon });
-      return;
-    }
-    const answers = answersPayload(round.results);
-    if (!answers.length) return;
-    const body = JSON.stringify({ mode: round.mode, category: round.cat, answers, partial: true });
+    if (!record.payload.length) return;
+    countFinished();
+    if (round.fixed) return void saveFixed(record, { beacon: true });
     state.stats = null;
-    if (beacon && navigator.sendBeacon) navigator.sendBeacon('/api/rounds', new Blob([body], { type: 'application/json' }));
-    else fetch('/api/rounds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    const body = JSON.stringify({ mode: round.mode, category: round.cat, answers: record.payload });
+    if (navigator.sendBeacon?.('/api/rounds', new Blob([body], { type: 'application/json' }))) return;
+    fetch('/api/rounds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
   }
 
   function openQuit() {
     if (!autoSheet.hidden) closeAuto();
-    const done = round.results.filter((r) => !r.skipped).length;
+    const answered = new Set(round.results.map((r) => r.q.id));
+    const left = round.questions.filter((q) => !answered.has(q.id)).length;
     $('[data-quit-note]').textContent = round.fixed
-      ? t(round.fixed.kind === 'daily' ? 'quit.daily' : 'quit.duel')
-      : done ? tn('quit.noteSome', done) : t('quit.noteNone');
-    pause();
+      ? tn(round.fixed.kind === 'daily' ? 'quit.daily' : 'quit.duel', left)
+      : tn('quit.note', left);
+    pause({ hide: true }); // the clock stops, so the question can't be read meanwhile
     quitSheet.hidden = false;
     quitSheet.querySelector('[data-keep]').focus();
   }
@@ -1369,9 +1444,10 @@ async function startRound(cat, fixed = null) {
   }
 
   function confirmQuit() {
-    // If the current question is on screen but unanswered, it simply isn't counted.
-    savePartial();
-    leave(round.fixed?.after ?? '#/');
+    // Ends the round here, like playing it out without answering: the results show it.
+    quitSheet.hidden = true;
+    addUnanswered();
+    finish();
   }
 
   const onPopState = () => {
@@ -1391,11 +1467,18 @@ async function startRound(cat, fixed = null) {
   };
 
   const onVisibility = () => {
-    if (document.hidden) pause({ hide: true });
-    else if (!sheetOpen()) resume();
+    if (document.hidden) {
+      // Leaving the app with a question on screen (another app, the lock button, another tab)
+      // makes it count as wrong, so time away can't go into looking the answer up. Between
+      // questions, the round just waits.
+      if (timing()) answer(null, { away: true });
+      pause({ hide: true });
+    } else if (!sheetOpen()) resume();
   };
 
-  const onPageHide = () => savePartial({ beacon: true });
+  const onPageHide = () => finishOnClose();
+  // Shown again from the back-forward cache after the close already ended the round: move on.
+  const onPageShow = (e) => { if (e.persisted && round.saved && alive) leave(round.fixed?.after ?? '#/'); };
 
   const onClick = (e) => {
     const t = e.target.closest('button');
@@ -1436,7 +1519,10 @@ async function startRound(cat, fixed = null) {
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('popstate', onPopState);
   window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', onPageShow);
   cleanup = () => {
+    // Moved to another screen without finishing (a link, a notification): the round ends here too.
+    if (!round.saved) finishOnClose();
     alive = false;
     cancelAnimationFrame(raf);
     clearTimeout(advanceTimer);
@@ -1444,6 +1530,7 @@ async function startRound(cat, fixed = null) {
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
     // Keep listening until the guard pop has been handled.
     if (!leavingTo) window.removeEventListener('popstate', onPopState);
     else {
@@ -1454,7 +1541,48 @@ async function startRound(cat, fixed = null) {
   };
 
   round.questions.slice(0, 3).forEach(preload);
+  keepOpenRound();
   showQuestion();
+}
+
+// ── Rounds left without warning ─────────────────────────────────
+
+const openRoundKey = () => `smarts:${state.user.id}:openRound`;
+
+function storeOpenRound(r) {
+  try { localStorage.setItem(openRoundKey(), JSON.stringify(r)); } catch { /* storage blocked: closing still sends a beacon */ }
+}
+
+function forgetOpenRound() {
+  try { localStorage.removeItem(openRoundKey()); } catch { /* storage blocked */ }
+}
+
+/**
+ * A round this device still has open (the phone closed the app before it could finish it):
+ * finish it now, with the questions never answered counted wrong. Runs when the app opens.
+ */
+async function finishLeftRound() {
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem(openRoundKey()) || 'null'); } catch { /* unreadable: drop it */ }
+  forgetOpenRound();
+  if (!r?.ids?.length) return;
+  const cfg = MODES[r.mode] || MODES[DEFAULT_MODE];
+  const done = new Set([...(r.answers || []).map((a) => a.id), ...(r.skipped || [])]);
+  const answers = [
+    ...(r.answers || []),
+    ...r.ids.filter((id) => !done.has(id) && QUESTION_BY_ID.has(id)).map((id) => ({ id, choice: null, ms: secondsFor(QUESTION_BY_ID.get(id), cfg) * 1000 })),
+  ];
+  if (!answers.length) return;
+  try {
+    if (r.fixed) await api(r.fixed.endpoint, { method: 'POST', body: { ...r.fixed.extra, answers, partial: false } });
+    else await api('/api/rounds', { method: 'POST', body: { mode: r.mode, category: r.cat, answers } });
+    countFinished();
+    state.stats = null;
+  } catch (err) {
+    // No connection or a server hiccup: keep it for next time. A refusal (e.g. the Daily was
+    // already finished on another device) means there's nothing left to save.
+    if (!err.status || err.status >= 500 || err.status === 429) storeOpenRound(r);
+  }
 }
 
 async function saveRecord(record) {
@@ -1482,7 +1610,7 @@ async function saveRecord(record) {
  */
 function answerRow(x, { mixed = true, reportIndex = null } = {}) {
   const q = x.q;
-  const outcome = x.skipped ? 'skipped' : x.correct ? 'right' : x.choice ? 'wrong' : 'timeout';
+  const outcome = x.skipped ? 'skipped' : x.correct ? 'right' : x.choice ? 'wrong' : x.left ? 'left' : x.away ? 'away' : 'timeout';
   const pic = thumb(q);
   const hue = CATEGORY_BY_ID[q.cat]?.hue;
   const label = q.visual.type === 'text' || q.ownPrompt || mixed ? reviewLabel(q) : '';
@@ -1491,9 +1619,11 @@ function answerRow(x, { mixed = true, reportIndex = null } = {}) {
     right: `<strong>${answer}</strong><span class="review-time">${esc(t('res.secondsShort', { s: (x.ms / 1000).toFixed(1) }))}</span>`,
     wrong: `<span class="review-you">${t('res.you', { choice: `<bdi>${esc(qt(q, x.choice))}</bdi>` })}</span><strong>${answer}</strong>${diffChip(q)}`,
     timeout: `<span class="review-you">${esc(t('res.timeout'))}</span><strong>${answer}</strong>${diffChip(q)}`,
+    left: `<span class="review-you">${esc(t('res.left'))}</span><strong>${answer}</strong>`,
+    away: `<span class="review-you">${esc(t('res.away'))}</span><strong>${answer}</strong>`,
     skipped: `<strong>${answer}</strong><span>${esc(t('res.skipped'))}</span>`,
   };
-  const said = { right: tn('res.srRight', x.points), wrong: t('res.srWrong'), timeout: t('res.timeout'), skipped: t('res.srSkipped') }[outcome];
+  const said = { right: tn('res.srRight', x.points), wrong: t('res.srWrong'), timeout: t('res.timeout'), left: t('res.left'), away: t('res.away'), skipped: t('res.srSkipped') }[outcome];
   const pill = x.skipped ? '' : `<span class="pts-pill ${!x.correct ? 'is-wrong' : x.points >= MAX_POINTS ? 'is-fast' : 'is-right'}" dir="ltr" aria-hidden="true">${x.correct ? `+${x.points}` : '0'}</span>`;
   return `
     <li class="is-${outcome}">
@@ -1637,7 +1767,7 @@ const squaresHtml = (squares) =>
 
 const topbar = () => `
   <header class="topbar">
-    <a class="logo logo-link" href="#/" aria-label="${esc(t('tab.home'))}">Smarts</a>
+    ${topbarStart()}
     <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
   </header>`;
 
@@ -2465,7 +2595,7 @@ function openIosInstall(opener) {
 async function showProgress() {
   const user = state.user;
   if (!rerendering) installCounted = false; // a language change redraws without counting a new view
-  app.innerHTML = `<section class="screen progress has-tabbar"><header class="topbar"><span class="logo">Smarts</span></header><p class="sub">${esc(t('prog.loading'))}</p></section>${tabbar('progress')}`;
+  app.innerHTML = `<section class="screen progress has-tabbar"><header class="topbar">${topbarStart()}</header><p class="sub">${esc(t('prog.loading'))}</p></section>${tabbar('progress')}`;
   const nav = navId;
   let s;
   try {
@@ -2514,7 +2644,7 @@ async function showProgress() {
   app.innerHTML = `
     <section class="screen progress has-tabbar">
       <header class="topbar">
-        <span class="logo">Smarts</span>
+        ${topbarStart()}
         <a href="#/profile" class="avatar-link" aria-label="${esc(t('profile.edit'))}">${avatar()}</a>
       </header>
 
@@ -2644,6 +2774,12 @@ async function showProgress() {
             <output id="auto-delay-out" for="auto-delay">${esc(t('unit.seconds', { s: autoDelaySeconds() }))}</output>
           </div>
         </div>
+        <div class="setting setting-choice">
+          <span id="back-title"><strong>${esc(t('set.back'))}</strong><span>${esc(t('set.backHint'))}</span></span>
+          <div class="choice" role="radiogroup" aria-labelledby="back-title">
+            ${BACK_BUTTON.map((m) => `<label><input type="radio" name="back-button" value="${m}" ${(getSetting('backButton') || 'phones') === m ? 'checked' : ''}><span>${esc(t(`set.back.${m}`))}</span></label>`).join('')}
+          </div>
+        </div>
         <h3 class="setting-group">${ICONS.bell}<span>${esc(t('remind.title'))}</span></h3>
         <label class="setting">
           <span><strong>${esc(t('remind.daily'))}</strong><span>${esc(t('remind.dailyHint'))}</span></span>
@@ -2675,6 +2811,10 @@ async function showProgress() {
   app.querySelector('[data-signout]').addEventListener('click', () => signOut());
   app.querySelector('[data-signout-all]').addEventListener('click', () => signOut({ everywhere: true }));
   app.querySelector('[data-delete-account]').addEventListener('click', (e) => deleteAccount(e.currentTarget));
+  app.querySelectorAll('input[name="back-button"]').forEach((input) => input.addEventListener('change', () => {
+    setSetting('backButton', input.value);
+    app.querySelector('.topbar-start').outerHTML = topbarStart(); // the arrow up top appears or goes at once
+  }));
   const delayRow = app.querySelector('[data-delay-row]');
   const delayInput = app.querySelector('#auto-delay');
   const delayOut = app.querySelector('#auto-delay-out');
@@ -2698,7 +2838,7 @@ function adminFrame(section, body) {
     `<a class="admin-section ${id === section ? 'is-active' : ''}" href="${href}" ${id === section ? 'aria-current="page"' : ''}>${esc(t(`admin.nav.${id}`))}</a>`;
   return `
     <section class="screen admin has-tabbar">
-      <header class="topbar"><span class="logo">Smarts</span></header>
+      <header class="topbar">${topbarStart()}</header>
       <nav class="admin-sections" aria-label="${esc(t('admin.nav.aria'))}">${link('players', '#/admin/players')}${link('reports', '#/admin')}</nav>
       ${body}
     </section>

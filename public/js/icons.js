@@ -35,6 +35,7 @@ export const ICONS = {
   mixed: i('<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="4"/><rect x="3" y="13" width="8" height="8" rx="4"/><path d="m17 13 4 7h-8z"/>'),
   home: i('<path d="M4 11 12 4l8 7"/><path d="M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>'),
   arrow: i('<path d="M4.5 12h15"/><path d="m13.5 6 6 6-6 6"/>'),
+  back: i('<path d="M19.5 12h-15"/><path d="m10.5 6-6 6 6 6"/>'),
   chevron: i('<path d="m9.5 5.5 6.5 6.5-6.5 6.5"/>'),
   chart: i('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
   globe: i('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/>'),

@@ -109,6 +109,9 @@ a.logo { text-decoration: none; }
   justify-content: space-between;
   min-height: 44px;
 }
+.topbar-start { display: flex; align-items: center; gap: 4px; }
+/* The Back arrow points the way the screen came from: left, or right in Hebrew and Arabic. */
+.back-btn svg { width: 26px; height: 26px; transform: scaleX(var(--flip)); }
 
 /* ── Buttons ─────────────────────────────────────────────────── */
 
@@ -944,7 +947,7 @@ a.logo { text-decoration: none; }
 .review-mark { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; }
 .review-mark svg { width: 18px; height: 18px; }
 .is-right .review-mark { background: var(--mint); }
-.is-wrong .review-mark, .is-timeout .review-mark { background: var(--coral); }
+.is-wrong .review-mark, .is-timeout .review-mark, .is-left .review-mark, .is-away .review-mark { background: var(--coral); }
 .is-skipped .review-mark { background: var(--line); color: var(--ink-2); }
 .review-text { flex: 1; min-width: 0; display: grid; }
 .review-text strong { font-weight: 700; }
@@ -1208,6 +1211,15 @@ button, a, .answer { touch-action: manipulation; }
 .setting-range label { display: grid; gap: 2px; }
 .setting-range label > span { font-size: 14px; color: var(--ink-2); }
 .setting-range.is-off { opacity: 0.45; }
+
+/* A setting with a few named choices, as a row of pills (the Back button). */
+.setting-choice { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); cursor: default; }
+.choice { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--paper-2); }
+.choice label { flex: 1; position: relative; cursor: pointer; }
+.choice input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.choice span { display: grid; place-items: center; min-height: 40px; padding: 0 10px; border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink-2); text-align: center; }
+.choice input:checked + span { background: var(--cobalt); color: #fff; }
+.choice input:focus-visible + span { outline: 3px solid var(--marigold); outline-offset: 2px; }
 .range-row { display: flex; align-items: center; gap: 14px; }
 .range-row input[type='range'] { flex: 1; accent-color: var(--cobalt); height: 32px; margin: 0; }
 .range-row output { min-width: 3ch; font-family: var(--font-show); font-size: 22px; color: var(--cobalt); text-align: end; font-variant-numeric: tabular-nums; }
