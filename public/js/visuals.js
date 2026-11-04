@@ -159,11 +159,28 @@ async function hideParts(src, shapes, transparent) {
   if ('filter' in ctx) ctx.filter = `blur(${Math.round(w / 60)}px)`;
   ctx.drawImage(tiny, 0, 0, w, h);
   ctx.restore();
-  try {
-    return { src: canvas.toDataURL(transparent ? 'image/png' : 'image/jpeg', 0.9) };
-  } catch {
-    return { src, canvas };
+  // toBlob encodes without holding up the page (toDataURL froze it for a moment on phones).
+  const blob = await new Promise((resolve) => {
+    try {
+      canvas.toBlob(resolve, transparent ? 'image/png' : 'image/jpeg', 0.9);
+    } catch {
+      resolve(null); // the picture's server doesn't allow reading it back
+    }
+  });
+  return blob ? { src: URL.createObjectURL(blob) } : { src, canvas };
+}
+
+// Pictures with blurred parts, made while the question before is on screen (see downloadPicture),
+// so the question shows at once. question id -> Promise<{ src, canvas? }>
+const hiddenReady = new Map();
+
+function hiddenFor(q, img) {
+  if (!hiddenReady.has(q.id)) {
+    const p = hideParts(img.src, q.visual.hide, q.visual.logo);
+    p.catch(() => hiddenReady.delete(q.id)); // try again next time
+    hiddenReady.set(q.id, p);
   }
+  return hiddenReady.get(q.id);
 }
 
 // ── Satellite map ──────────────────────────────────────────────
@@ -313,7 +330,7 @@ export function render(q) {
               const { src, fallback } = await wikiImage(v.title);
               try { img = await loadImg(best(src)); } catch { img = await loadImg(fallback); }
             }
-            const { src: shown, canvas } = v.hide ? await hideParts(img.src, v.hide, v.logo) : { src: img.src };
+            const { src: shown, canvas } = v.hide ? await hiddenFor(q, img) : { src: img.src };
             box.innerHTML = `
               ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${shown.replace(/'/g, '%27')}')"></div>`}
               <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(shown)}">
@@ -419,8 +436,15 @@ function downloadPicture(q) {
       return local.countries.has(v.iso) ? all([`/img/countries/${v.iso}.svg`]) : loadWorldAtlas().then(() => true, () => false);
     case 'wiki': {
       const saved = local.photos[q.id]?.src;
-      if (saved) return all([saved]);
-      return wikiImage(v.title).then(({ src }) => all([src]), () => false);
+      const got = saved ? all([saved]) : wikiImage(v.title).then(({ src }) => all([src]), () => false);
+      if (!v.hide) return got;
+      // Blur the parts that give the answer away now, not when the question appears.
+      return got.then(async (ok) => {
+        if (!ok) return false;
+        const src = saved || (await wikiImage(v.title)).src;
+        await hiddenFor(q, await loadImg(best(src)));
+        return true;
+      }).catch(() => false);
     }
     case 'map':
       return all(mapTiles(v).tiles.map((t) => t.src));
