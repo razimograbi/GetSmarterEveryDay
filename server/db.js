@@ -219,6 +219,9 @@ const MIGRATIONS = [
   },
   // 3: when the Back arrow shows (see BACK_BUTTON).
   (db) => db.exec("ALTER TABLE settings ADD COLUMN back_button TEXT NOT NULL DEFAULT 'phones'"),
+  // 4: the default wait before the next question went from 4 seconds to 2. Players on 4 had the
+  // old default (a chosen 4 can't be told apart from it), so they move to the new one.
+  (db) => db.exec('UPDATE settings SET auto_next_delay = 2 WHERE auto_next_delay = 4'),
 ];
 
 /** Lets SQLite refresh its statistics for the query planner. Cheap; run now and then. */
