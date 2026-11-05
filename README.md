@@ -156,8 +156,8 @@ Satellite map tiles are always loaded live from Esri.
   `shared/config.js`). Rounds played under the old 100 + 50 scoring were scored again with these
   rules when the database was upgraded.
 - **Auto next** (on by default) moves to the next question by itself after a delay the
-  player picks: 1 to 7 seconds, default 4. Change it during a game by tapping the
-  **Auto 4s** button at the top (the game pauses while that panel is open), or under
+  player picks: 1 to 7 seconds, default 2. Change it during a game by tapping the
+  **Auto 2s** button at the top (the game pauses while that panel is open), or under
   Settings on the Progress page. The delay is read when each countdown starts and stays
   fixed until it ends; a countdown interrupted by the panel restarts with the new value.
   The Next button fills up while it counts down, and tapping it skips the wait. Turn it off with the **Auto** switch at the top of the game

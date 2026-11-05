@@ -15,7 +15,7 @@ export const DEFAULT_MODE = 'classic';
 export const LANGUAGES = ['en', 'he', 'ar'];
 
 // How long the result stays on screen before auto next moves on (whole seconds).
-export const AUTO_DELAY = { min: 1, max: 7, fallback: 4 };
+export const AUTO_DELAY = { min: 1, max: 7, fallback: 2 };
 
 // When the Back arrow shows at the top of a screen: on phones (touch screens) only, always, or never.
 export const BACK_BUTTON = ['phones', 'always', 'never'];
