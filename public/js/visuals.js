@@ -174,9 +174,19 @@ async function hideParts(src, shapes, transparent) {
 // so the question shows at once. question id -> Promise<{ src, canvas? }>
 const hiddenReady = new Map();
 
-function hiddenFor(q, img) {
+/** Downloads a picture and blurs its parts, once: the blur's own load is the only download. */
+function hiddenFor(q) {
   if (!hiddenReady.has(q.id)) {
-    const p = hideParts(img.src, q.visual.hide, q.visual.logo);
+    const { title, hide, logo } = q.visual;
+    const make = async () => {
+      const saved = local.photos[q.id]?.src;
+      if (saved) {
+        try { return await hideParts(best(saved), hide, logo); } catch { /* use the live picture */ }
+      }
+      const { src, fallback } = await wikiImage(title);
+      try { return await hideParts(best(src), hide, logo); } catch { return hideParts(fallback, hide, logo); }
+    };
+    const p = make();
     p.catch(() => hiddenReady.delete(q.id)); // try again next time
     hiddenReady.set(q.id, p);
   }
@@ -323,14 +333,20 @@ export function render(q) {
         ready: async (el) => {
           const box = el.querySelector('.vis-photo');
           try {
-            let img;
-            const saved = local.photos[q.id]?.src;
-            if (saved) img = await loadImg(best(saved)).catch(() => null);
-            if (!img) {
-              const { src, fallback } = await wikiImage(v.title);
-              try { img = await loadImg(best(src)); } catch { img = await loadImg(fallback); }
+            let shown;
+            let canvas;
+            if (v.hide) {
+              ({ src: shown, canvas } = await hiddenFor(q));
+            } else {
+              let img;
+              const saved = local.photos[q.id]?.src;
+              if (saved) img = await loadImg(best(saved)).catch(() => null);
+              if (!img) {
+                const { src, fallback } = await wikiImage(v.title);
+                try { img = await loadImg(best(src)); } catch { img = await loadImg(fallback); }
+              }
+              shown = img.src;
             }
-            const { src: shown, canvas } = v.hide ? await hiddenFor(q, img) : { src: img.src };
             box.innerHTML = `
               ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${shown.replace(/'/g, '%27')}')"></div>`}
               <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(shown)}">
@@ -419,14 +435,24 @@ const preloadedOk = new Set(); // question ids whose picture finished downloadin
 export const isPreloaded = (q) => preloadedOk.has(q.id);
 let preloading = false;
 
+// The last few downloaded pictures stay in memory. While one is held, showing it takes no
+// request; once let go, the browser may ask the picture's server whether it changed.
+const KEPT_IMAGES = 12; // a full map question is more than this, but its tiles are small
+const keptImages = [];
+
+function keepImage(img) {
+  keptImages.push(img);
+  if (keptImages.length > KEPT_IMAGES) keptImages.shift();
+}
+
 function downloadPicture(q) {
   const v = q.visual;
   // A failed image is tried once more at the same "?retry=1" address the game itself
   // uses when it retries, so a successful second try is already in the browser cache.
   const one = (src) =>
     loadImg(src).then(
-      () => true,
-      () => loadImg(withRetry(src)).then(() => (workingSrc.set(src, withRetry(src)), true), () => false)
+      (img) => (keepImage(img), true),
+      () => loadImg(withRetry(src)).then((img) => (keepImage(img), workingSrc.set(src, withRetry(src)), true), () => false)
     );
   const all = (srcs) => Promise.all(srcs.map(one)).then((r) => r.every(Boolean));
   switch (v.type) {
@@ -435,16 +461,10 @@ function downloadPicture(q) {
     case 'country':
       return local.countries.has(v.iso) ? all([`/img/countries/${v.iso}.svg`]) : loadWorldAtlas().then(() => true, () => false);
     case 'wiki': {
-      const saved = local.photos[q.id]?.src;
-      const got = saved ? all([saved]) : wikiImage(v.title).then(({ src }) => all([src]), () => false);
-      if (!v.hide) return got;
       // Blur the parts that give the answer away now, not when the question appears.
-      return got.then(async (ok) => {
-        if (!ok) return false;
-        const src = saved || (await wikiImage(v.title)).src;
-        await hiddenFor(q, await loadImg(best(src)));
-        return true;
-      }).catch(() => false);
+      if (v.hide) return hiddenFor(q).then(() => true, () => false);
+      const saved = local.photos[q.id]?.src;
+      return saved ? all([saved]) : wikiImage(v.title).then(({ src }) => all([src]), () => false);
     }
     case 'map':
       return all(mapTiles(v).tiles.map((t) => t.src));

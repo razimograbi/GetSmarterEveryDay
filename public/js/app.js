@@ -998,8 +998,9 @@ async function startRound(cat, fixed = null) {
   const mode = DEFAULT_MODE;
   const cfg = MODES[mode];
   let stats = state.stats;
-  // Review and Quick rounds depend on what you just played, so they always use fresh stats.
-  const needFresh = !fixed && (cat === 'review' || cat === 'mixed');
+  // Review plays exactly what you've missed, so it always uses fresh stats. Other rounds use the
+  // ones already loaded (lastPlayedIds covers a round whose save is still on its way).
+  const needFresh = !fixed && cat === 'review';
   if (!fixed && (!stats || needFresh)) stats = await loadStats(needFresh).catch(() => stats);
   if (nav !== navId) return; // the player went somewhere else while stats loaded
 
