@@ -3,7 +3,7 @@
 //
 // Two kinds, each switched on by the player in Settings:
 //   daily   "Today's Daily is ready", once a day at REMINDER_HOUR in the player's time zone
-//   friends "Your friend beat you", when a friend beats their Daily score or wins a duel against them
+//   friends News from friends: a friend beat their Daily score, sent them a duel, or finished one with them
 
 import { createECDH, createHmac, createCipheriv, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -107,24 +107,42 @@ const TEXT = {
     dailyBody: 'Smarts #{n}: 10 questions, one try. How high can you get on the board?',
     beatDailyTitle: '{name} beat you',
     beatDailyBody: '{name} scored {their} in today\'s Daily. You scored {yours}.',
-    beatDuelTitle: '{name} won your duel',
-    beatDuelBody: '{name} {their}, you {yours}. Time for a rematch?',
+    duelSentTitle: '{name} challenged you to a duel',
+    duelSentBody: '{name} scored {score}. Your turn, whenever you like.',
+    duelLostTitle: '{name} won your duel',
+    duelLostBody: '{name} {their}, you {yours}. Time for a rematch?',
+    duelWonTitle: 'You won your duel with {name}',
+    duelWonBody: 'You {yours}, {name} {their}. Tap to see how it went.',
+    duelDrawTitle: 'Your duel with {name} is a draw',
+    duelDrawBody: 'You both scored {yours}. Time for a rematch?',
   },
   he: {
     dailyTitle: 'האתגר היומי של היום מחכה',
     dailyBody: 'Smarts #{n}: עשר שאלות, ניסיון אחד. לאיזה מקום תגיעו בטבלה?',
     beatDailyTitle: '{name} עקף/ה אותך',
     beatDailyBody: '{name} השיג/ה {their} נקודות באתגר היומי. לך יש {yours}.',
-    beatDuelTitle: '{name} ניצח/ה בדו־קרב',
-    beatDuelBody: '{name} {their}, את/ה {yours}. מה דעתך על משחק חוזר?',
+    duelSentTitle: '{name} הזמין/ה אותך לדו־קרב',
+    duelSentBody: '{name} השיג/ה {score}. התור שלך, מתי שנוח לך.',
+    duelLostTitle: '{name} ניצח/ה בדו־קרב',
+    duelLostBody: '{name} {their}, את/ה {yours}. מה דעתך על משחק חוזר?',
+    duelWonTitle: 'ניצחת בדו־קרב מול {name}',
+    duelWonBody: 'את/ה {yours}, {name} {their}. לחצו כדי לראות איך היה.',
+    duelDrawTitle: 'הדו־קרב מול {name} הסתיים בתיקו',
+    duelDrawBody: 'לשניכם {yours}. מה דעתך על משחק חוזר?',
   },
   ar: {
     dailyTitle: 'تحدّي اليوم جاهز',
     dailyBody: 'Smarts #{n}: عشرة أسئلة، محاولة واحدة. إلى أي مرتبة ستصل؟',
     beatDailyTitle: '{name} تفوّق عليك',
     beatDailyBody: 'حصل {name} على {their} في تحدّي اليوم. نتيجتك {yours}.',
-    beatDuelTitle: '{name} فاز في المبارزة',
-    beatDuelBody: '{name} {their}، وأنت {yours}. ما رأيك في مباراة ثأرية؟',
+    duelSentTitle: '{name} يتحدّاك في مبارزة',
+    duelSentBody: 'حصل {name} على {score}. دورك، متى شئت.',
+    duelLostTitle: '{name} فاز في المبارزة',
+    duelLostBody: '{name} {their}، وأنت {yours}. ما رأيك في مباراة ثأرية؟',
+    duelWonTitle: 'فزت في مبارزتك مع {name}',
+    duelWonBody: 'أنت {yours}، {name} {their}. اضغط لترى كيف سارت.',
+    duelDrawTitle: 'انتهت مبارزتك مع {name} بالتعادل',
+    duelDrawBody: 'حصل كلاكما على {yours}. ما رأيك في مباراة ثأرية؟',
   },
 };
 
@@ -151,16 +169,24 @@ export function createReminders({ db, keys, subject }) {
 
   const langOf = (userId) => TEXT[getSettings(db, userId)?.language] ? getSettings(db, userId).language : 'en';
 
-  /** "{friend} beat you" — sent at most once per friend, day and kind. Never waits for the push service. */
-  function friendBeatYou(userId, kind, ref, vars) {
+  /** News from a friend, if the player asked for it and hasn't had this one. Never waits for the push service. */
+  function tell(userId, kind, ref, message) {
     if (!getSettings(db, userId)?.notifyFriends) return;
     if (!markNotified(db, userId, kind, ref)) return;
-    const T = TEXT[langOf(userId)];
-    const message = kind === 'beat-duel'
-      ? { title: fill(T.beatDuelTitle, vars), body: fill(T.beatDuelBody, vars), url: `/#/duel/${vars.duelId}`, tag: `duel-${vars.duelId}` }
-      : { title: fill(T.beatDailyTitle, vars), body: fill(T.beatDailyBody, vars), url: '/#/daily', tag: 'daily-board' };
-    deliver(userId, message).catch(() => {});
+    deliver(userId, message(TEXT[langOf(userId)])).catch(() => {});
   }
+
+  /** "{friend} beat you" in the Daily: at most once per friend and day (`ref` holds both). */
+  const friendBeatYou = (userId, ref, vars) =>
+    tell(userId, 'beat-daily', ref, (T) => ({ title: fill(T.beatDailyTitle, vars), body: fill(T.beatDailyBody, vars), url: '/#/daily', tag: 'daily-board' }));
+
+  /** A friend played first and it's this player's turn. */
+  const duelSent = (userId, duelId, vars) =>
+    tell(userId, 'duel-sent', duelId, (T) => ({ title: fill(T.duelSentTitle, vars), body: fill(T.duelSentBody, vars), url: `/#/duel/${duelId}`, tag: `duel-${duelId}` }));
+
+  /** The other player finished. `outcome` is how it went for this player: 'Won', 'Lost' or 'Draw'. */
+  const duelFinished = (userId, duelId, outcome, vars) =>
+    tell(userId, 'duel-done', duelId, (T) => ({ title: fill(T[`duel${outcome}Title`], vars), body: fill(T[`duel${outcome}Body`], vars), url: `/#/duel/${duelId}`, tag: `duel-${duelId}` }));
 
   /** Morning reminders for everyone who asked for them and hasn't played today's Daily yet. */
   async function sendDailyReminders() {
@@ -185,5 +211,5 @@ export function createReminders({ db, keys, subject }) {
     setInterval(run, 5 * 60_000).unref();
   }
 
-  return { publicKey: keys.publicKey, friendBeatYou, sendDailyReminders, deliver, start };
+  return { publicKey: keys.publicKey, friendBeatYou, duelSent, duelFinished, sendDailyReminders, deliver, start };
 }

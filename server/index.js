@@ -11,7 +11,7 @@ import {
   ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode,
   addFriend, removeFriend, areFriends, listFriends,
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten,
-  createDuel, getDuel, claimDuel, finishDuelSide, listDuels, openDuelCount, roundAnswers,
+  createDuel, getDuel, claimDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, recentQuestionIds, roundAnswers,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
 import {
@@ -387,7 +387,7 @@ const routes = {
     // Friends who already played and scored less hear about it (if they asked to).
     const me = getProfile(db, user.id);
     for (const f of friendsBeaten(db, date, user.id, result.score)) {
-      reminders.friendBeatYou(f.user_id, 'beat-daily', `${date}:${user.id}`, { name: me.name, their: result.score, yours: f.score });
+      reminders.friendBeatYou(f.user_id, `${date}:${user.id}`, { name: me.name, their: result.score, yours: f.score });
     }
   },
 
@@ -416,7 +416,7 @@ const routes = {
     ensureProfile(db, user);
     const duel = createDuel(db, {
       id: randomCode(8), challengerId: user.id, invitedId: friendId, category,
-      questionIds: pickQuestions({ count: DUEL.questions, category }),
+      questionIds: pickQuestions({ count: DUEL.questions, category, seenRecently: seenByPlayers(user.id, friendId) }),
     });
     json(res, 200, { duel: duelView(duel, user.id) });
   },
@@ -464,6 +464,7 @@ const paramRoutes = [
     if (!user) return json(res, 401, { error: 'Sign in to see this duel.' });
     const duel = getDuel(db, id);
     if (!duel) return json(res, 404, { error: 'This duel link is no longer valid.' });
+    markDuelResultSeen(db, id, user.id);
     json(res, 200, { duel: duelView(duel, user.id) });
   }],
 
@@ -506,13 +507,16 @@ const paramRoutes = [
     finishDuelSide(db, id, role, saveFixedRound(user.id, 'duel', graded, partial === true));
     const done = getDuel(db, id);
     json(res, 200, { duel: duelView(done, user.id) });
-    // The other player hears about it if they lost (and asked to be told).
+    // The other player hears how it ended, or that it's their turn (if they asked to be told).
     const other = role === 'challenger' ? 'opponent' : 'challenger';
     const otherId = role === 'challenger' ? done.opponentId : done.challengerId;
-    if (done.finishedAt && otherId && duelWinner(done) === role) {
-      reminders.friendBeatYou(otherId, 'beat-duel', id, {
-        name: getProfile(db, user.id).name, their: done[role].score, yours: done[other].score, duelId: id,
-      });
+    const name = getProfile(db, user.id).name;
+    if (done.finishedAt && otherId) {
+      const winner = duelWinner(done);
+      const outcome = winner === 'draw' ? 'Draw' : winner === other ? 'Won' : 'Lost';
+      reminders.duelFinished(otherId, id, outcome, { name, their: done[role].score, yours: done[other].score });
+    } else if (!done.finishedAt && role === 'challenger' && done.invitedId) {
+      reminders.duelSent(done.invitedId, id, { name, score: done[role].score });
     }
   }, 'duels'],
 
@@ -526,7 +530,9 @@ const paramRoutes = [
     if (openDuelCount(db, user.id) >= DUEL.maxOpen) return json(res, 409, { error: `You have ${DUEL.maxOpen} duels waiting. Finish some first.` });
     const rematch = createDuel(db, {
       id: randomCode(8), challengerId: user.id, invitedId: otherId, category: duel.category, rematchOf: id,
-      questionIds: pickQuestions({ count: DUEL.questions, category: duel.category }),
+      questionIds: pickQuestions({
+        count: DUEL.questions, category: duel.category, avoid: new Set(duel.questionIds), seenRecently: seenByPlayers(user.id, otherId),
+      }),
     });
     json(res, 200, { duel: duelView(rematch, user.id) });
   }, 'duelCreate'],
@@ -596,6 +602,9 @@ function dailyDate(value) {
 
 const dailyFor = (date) => getDaily(db, date, dailyNumber(date), (recent) => pickQuestions({ count: DAILY.questions, seed: `daily:${date}`, avoid: recent }));
 
+/** Questions any of these players met lately, so a new duel can stay away from them. */
+const seenByPlayers = (...userIds) => new Set(userIds.filter(Boolean).flatMap((id) => recentQuestionIds(db, id)));
+
 /** 'challenger', 'opponent' or 'draw' once both have played: more points wins, then less time. */
 function duelWinner(d) {
   const a = d.challenger;
@@ -618,10 +627,11 @@ function duelView(d, viewerId, { brief = false } = {}) {
   };
   const mine = role && d[role].score !== null;
   const status = d.finishedAt ? 'done'
-    : !role ? (d.opponentId ? 'taken' : d.invitedId === viewerId ? 'invited' : 'open')
+    : !role ? (d.opponentId ? 'taken' : d.invitedId === viewerId ? 'invited' : d.invitedId ? 'taken' : 'open')
       : mine ? 'waiting' : 'yourTurn';
   const view = {
     id: d.id, category: d.category, role, status, winner: duelWinner(d), invited: d.invitedId === viewerId,
+    resultReady: d.resultUnseenBy === viewerId, isFriend: areFriends(db, viewerId, d.challengerId),
     challenger: person(d.challengerId, d.challenger),
     opponent: d.opponentId || d.opponent.score !== null ? person(d.opponentId, d.opponent) : null,
     invitedFriend: !d.opponentId && d.invitedId ? shownProfile(getProfile(db, d.invitedId) ?? { id: d.invitedId, name: null }) : null,

@@ -470,6 +470,10 @@ a.logo { text-decoration: none; }
 /* The first question a new player sees says what to do. */
 .first-hint { margin: 0 2px 12px; font-weight: 700; color: var(--marigold); }
 
+/* A past mistake coming back in a Quick round. Sits over the card, so the layout doesn't move. */
+.stage { position: relative; }
+.retry-chip { position: absolute; z-index: 2; top: 10px; inset-inline-end: 10px; margin: 0; padding: 4px 12px; border-radius: 999px; background: var(--marigold); color: var(--ink); font-size: 13px; font-weight: 750; }
+
 
 .topics { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 /* Folded: only the first three topics (TOPIC_PREVIEW in app.js) show. */

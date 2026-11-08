@@ -18,7 +18,7 @@ export const LEVEL_SLOTS = [
 const MAX_PER_TOPIC = 2;
 
 // `known` slots only reuse questions you've answered right once there are this many to choose
-// from. With fewer, a new player would keep meeting the same few questions.
+// from. With fewer, a player would keep meeting the same few questions.
 const KNOWN_MIN = 20;
 
 // When a slot has nothing to offer, the rules give way in this order: the difficulty band widens
@@ -45,10 +45,11 @@ export const subjectOf = (q) => (q.about ? `country:${q.about.toLowerCase()}` : 
 
 /**
  * The questions of a level, in playing order. `history` holds Sets of question ids:
- * `seen` (answered before), `known` (answered right at least once), `missed` (recent mistakes
- * that can come back) and `recent` (the round just played).
+ * `seen` (answered before), `known` (answered right and not waiting to come back), `mastered`
+ * (right on two different days), `missed` (mistakes ready to come back) and `recent` (the round
+ * just played).
  */
-export function pickLevel(pool, count, { seen = new Set(), known = new Set(), missed = new Set(), recent = new Set() } = {}) {
+export function pickLevel(pool, count, { seen = new Set(), known = new Set(), mastered = new Set(), missed = new Set(), recent = new Set() } = {}) {
   const slots = Array.from({ length: count }, (_, i) => LEVEL_SLOTS[Math.floor((i * LEVEL_SLOTS.length) / count)]);
   const level = Array(count).fill(null);
   const perTopic = {};
@@ -59,10 +60,17 @@ export function pickLevel(pool, count, { seen = new Set(), known = new Set(), mi
     && (perTopic[q.cat] || 0) < MAX_PER_TOPIC
     && !(apart && (level[i - 1]?.cat === q.cat || level[i + 1]?.cat === q.cat));
 
-  /** New questions first, then ones you've missed, then ones you know; `known` slots start with what you know. */
+  /**
+   * New questions first, then ones you've missed, then ones you know. `known` slots start with
+   * what you know, and with what isn't mastered yet, because a second right answer on another
+   * day is what masters it.
+   */
   function bestGroup(options, slot) {
     const right = options.filter((q) => known.has(q.id));
-    if (slot.known && right.length >= KNOWN_MIN) return right;
+    if (slot.known && right.length >= KNOWN_MIN) {
+      const learning = right.filter((q) => !mastered.has(q.id));
+      return learning.length >= KNOWN_MIN ? learning : right;
+    }
     const unseen = options.filter((q) => !seen.has(q.id));
     if (unseen.length) return unseen;
     const wrong = options.filter((q) => !known.has(q.id));
