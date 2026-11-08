@@ -91,7 +91,8 @@ scripts/
 | POST | `/api/auth/logout` | Ends this session |
 | POST | `/api/auth/logout-all` | Ends every session of this user, on all devices |
 | PUT | `/api/settings` | `{ autoNext?, autoNextDelay? }` → saved settings |
-| POST | `/api/rounds` | `{ mode, category, answers: [{ id, choice, ms }] }` — graded on the server |
+| POST | `/api/questions` | `{ ids }` (up to 20) → the words, options and answers of a Quick or topic round |
+| POST | `/api/rounds` | `{ mode, category, answers: [{ id, choice, ms }] }` — saves a Quick or topic round |
 | GET | `/api/stats` | Totals, per-topic mastery, streaks, last 14 days, recent rounds |
 | POST | `/api/events` | `{ name, props? }` → logs an event the browser may report (see Events below) |
 | GET | `/api/admin/retention` | Admins only: daily and monthly players, returns after 1, 7 and 30 days, event counts |
@@ -100,20 +101,55 @@ scripts/
 | POST | `/api/friends` | `{ code }` → adds the player with that friend code (both ways) |
 | DELETE | `/api/friends/:id` | Removes a friend (both ways) |
 | GET | `/api/invite/:code` | Who an invite link is from (no sign-in needed) |
-| GET | `/api/daily?date=` | The Daily for the player's date: number, question ids, and their result |
-| POST | `/api/daily/start` | `{ date }` → starts the one try (refused if already started) |
-| POST | `/api/daily/finish` | `{ date, answers, partial? }` → graded and ranked |
+| GET | `/api/daily?date=` | The Daily for the player's date: number, how many questions, and their result (the questions only once finished) |
+| POST | `/api/daily/start` | `{ date }` → starts the one try, or picks up one still open (`started: false` once played) |
+| POST | `/api/daily/finish` | `{ date }` → ends the try now: anything unanswered counts as wrong |
 | GET | `/api/daily/board?date=` | Top 50, the player's own place, and their friends |
 | GET/POST | `/api/duels` | List your duels / `{ category, friendId? }` → a new duel |
-| GET | `/api/duels/:id` | One duel as you see it (answers once you've played) |
+| GET | `/api/duels/:id` | One duel as you see it (questions and answers once you've played) |
 | GET | `/api/duels/:id/preview` | Who sent a duel link and their score (no sign-in needed) |
-| POST | `/api/duels/:id/start`, `/finish`, `/rematch` | Take the second seat, send answers, start a rematch |
+| POST | `/api/duels/:id/start`, `/finish`, `/rematch` | Take the seat and start your side, end your side now, start a rematch |
+| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily or duel question at a time (see Fair play) |
 | POST | `/api/push/subscribe`, `/unsubscribe` | A browser's push subscription for reminders |
 | GET | `/api/account/export` | Everything stored about the user, as a JSON download |
 | DELETE | `/api/account` | Deletes the user and all their data |
 
-The server grades every answer itself from `shared/questions.js`, so the browser
-can't post a fake score.
+### Fair play
+
+Other players see Daily and duel scores, so those rounds run on the server (`server/play.js`).
+
+- **Browsers never get the question bank.** `shared/questions.js` stays on the server. The address
+  `/shared/questions.js` serves an index made by `server/bank.js`: ids, topics and difficulty, enough
+  to choose a Quick round. A Quick or topic round asks for its own questions when it starts
+  (`POST /api/questions`), so it needs a connection then.
+- **One question at a time.** A round has a row in the `plays` table. The browser asks to open the
+  current question, and only then gets its words and options, with no id and no answer. Pictures
+  come from `/pic/<round>/<n>`, an address that doesn't name them; up to two later pictures can be
+  downloaded ahead (`PLAY.lookahead`), so the next question still appears at once.
+- **The server times and grades.** A question's clock starts when the server opens it, opening it
+  again doesn't restart it, and sheets don't pause it. The time is what the server measured minus
+  400 ms for the network, and an answer may arrive up to 1.5 s past the limit (`PLAY` in
+  `shared/config.js`). The browser sends only its choice; the first answer to a question stands.
+- **Forward only, once.** One round per player per Daily or duel side, and a question that has been
+  seen can't be skipped. A round can be picked up again, but only where it stands.
+- **Leaving ends the round fairly.** Leave and closing the page tell the server. If the phone kills
+  the app, the next visit does, from `localStorage` that holds only which round to end. If nobody
+  comes back, the server ends it after 15 idle minutes. Either way the rest counts as wrong and the
+  points already earned stay.
+
+Quick and topic rounds are still graded from what the browser reports (`POST /api/rounds`). They
+only count towards a player's own progress and day streak, never a board or a duel.
+
+**What this doesn't stop.** The answers still exist in the game, so someone determined can:
+
+- build an answer key, by scripting `POST /api/questions` or just by playing, and then have a bot
+  play the Daily with it. This takes minutes and scores full marks. Only questions kept out of Quick
+  rounds altogether would prevent it;
+- let a second account play first, since every result screen shows that round's answers;
+- look an answer up in another app or ask a friend during the clock. Leaving the app counts as
+  wrong, but that rule runs in the browser, so a script can ignore it (the server's clock still runs);
+- see upcoming pictures, without their words, before their clock starts. The 100 or so Wikipedia
+  pictures with no local copy (`npm run fetch-images`) also keep their real title in the question.
 
 ### Pictures
 
@@ -379,7 +415,8 @@ was 1 November 2026). The server picks them the first time someone asks for that
 played from easy to hard, and not used in the last 90 Dailies. Book topics and programming are
 left out, as in Quick rounds.
 
-**One try:** starting it records the try; leaving halfway counts the answers given so far.
+**One try:** starting it records the try; leaving halfway counts the answers given so far, and the
+rest as wrong (see Fair play).
 The board ranks by points, then by less time taken. A Daily round also counts in the player's
 statistics and streak.
 

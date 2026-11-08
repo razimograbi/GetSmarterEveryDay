@@ -296,7 +296,6 @@ export const ui = {
   'link.invited': '{name} يدعوك لتصبحا صديقين في Smarts',
   'link.signInToPlay': 'سجّل الدخول لتلعب. يستغرق ذلك ثواني.',
   'link.signInToAdd': 'سجّل الدخول لتضيفه صديقًا.',
-  'fixed.notSaved': 'لم تُحفظ إجاباتك: {error}',
   'daily.title': 'تحدّي اليوم #{n}',
   'daily.titlePlain': 'تحدّي اليوم',
   'daily.seeBoard': 'الترتيب',

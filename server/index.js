@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
 import { extname, join, normalize, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,7 +11,7 @@ import {
   getSettings, saveSettings, saveReport, listReports, resolveReports, REPORT_STATUSES, logEvent, getRetention,
   ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode,
   addFriend, removeFriend, areFriends, listFriends,
-  getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten,
+  getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
   createDuel, getDuel, claimDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, recentQuestionIds, roundAnswers,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
@@ -24,6 +25,8 @@ import {
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
 import { pickQuestions } from './pick.js';
+import { BROWSER_BANK, contentFor } from './bank.js';
+import { createPlays } from './play.js';
 import { loadVapidKeys, createReminders } from './push.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -67,6 +70,7 @@ const db = openDb(DB_FILE);
 purgeExpiredSessions(db);
 setInterval(() => {
   purgeExpiredSessions(db);
+  purgeOldPlays(db);
   optimizeDb(db);
 }, 3_600_000).unref();
 
@@ -76,6 +80,9 @@ const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@localhost';
 if (PRODUCTION && !process.env.VAPID_SUBJECT) console.warn('  VAPID_SUBJECT is not set: push services want a contact, such as mailto:you@example.com.');
 const reminders = createReminders({ db, keys: loadVapidKeys(join(DATA_DIR, 'vapid.json')), subject: VAPID_SUBJECT });
 reminders.start();
+
+const plays = createPlays(db, { onFinish: finishFixedRound });
+setInterval(() => plays.endStale(), 60_000).unref();
 
 // ── HTTP helpers ───────────────────────────────────────────────
 
@@ -122,7 +129,7 @@ async function body(req, limit = 64 * 1024) {
   }
   if (!chunks.length) return {};
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return JSON.parse(Buffer.concat(chunks).toString('utf8')) ?? {}; // a body of "null" says nothing, like an empty one
   } catch {
     throw Object.assign(new Error('Request body must be JSON'), { status: 400 });
   }
@@ -250,7 +257,8 @@ const routes = {
     if (!isAdmin(user)) return json(res, user ? 403 : 401, { error: 'Only admins can see reports.' });
     const status = url.searchParams.get('status') || 'open';
     if (!REPORT_STATUSES.includes(status)) return json(res, 400, { error: `Status must be one of: ${REPORT_STATUSES.join(', ')}.` });
-    json(res, 200, { reports: listReports(db, status) });
+    const reports = listReports(db, status);
+    json(res, 200, { reports, questions: contentFor(reports.map((r) => r.questionId)) });
   },
 
   'POST /api/admin/reports/resolve': async (req, res) => {
@@ -287,6 +295,16 @@ const routes = {
     json(res, 200, { ...result, graded: graded.map(({ id, correct, points }) => ({ id, correct, points })) });
   },
 
+  // The questions of a Quick or topic round about to be played: their words, options and answers.
+  // Daily and duel questions never come through here (see server/play.js).
+  'POST /api/questions': async (req, res) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    const { ids } = await body(req);
+    if (!Array.isArray(ids) || !ids.length || ids.length > QUESTIONS_PER_REQUEST) return json(res, 400, { error: `Ask for 1 to ${QUESTIONS_PER_REQUEST} questions.` });
+    json(res, 200, { questions: contentFor(ids) });
+  },
+
   // Events the browser reports (see EVENTS in shared/config.js). Signed-out visitors aren't counted.
   'POST /api/events': async (req, res) => {
     const user = currentUser(req);
@@ -311,7 +329,8 @@ const routes = {
     if (!user) return json(res, 401, { error: 'Sign in to see your progress.' });
     const tz = tzParam(url);
     setTimezone(db, user.id, tz);
-    json(res, 200, getStats(db, user.id, { tzOffsetMin: tz }));
+    const stats = getStats(db, user.id, { tzOffsetMin: tz });
+    json(res, 200, { ...stats, questions: contentFor(stats.missed.slice(0, MISSED_SHOWN).map((m) => m.id)) });
   },
 
   // ── Profile and friends ──
@@ -354,48 +373,51 @@ const routes = {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to play the Daily.' });
     const date = dailyDate(url.searchParams.get('date'));
-    const daily = dailyFor(date);
+    const { questionIds, ...daily } = dailyFor(date);
     const result = dailyResult(db, date, user.id);
-    if (result?.finished) result.answers = roundAnswers(db, result.roundId);
-    json(res, 200, { ...daily, result });
+    const out = { ...daily, count: questionIds.length, result };
+    // The questions stay secret until the player has finished their try.
+    if (result?.finished) {
+      result.answers = roundAnswers(db, result.roundId);
+      Object.assign(out, { questionIds, questions: contentFor(questionIds) });
+    }
+    json(res, 200, out);
   },
 
+  // Starts the player's one try, or picks up the one they already have open.
   'POST /api/daily/start': async (req, res) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to play the Daily.' });
     const date = dailyDate((await body(req)).date);
-    dailyFor(date);
+    const { questionIds } = dailyFor(date);
     ensureProfile(db, user);
-    const started = startDaily(db, date, user.id);
-    json(res, 200, { started, result: dailyResult(db, date, user.id) });
+    let play = plays.find('daily', date, user.id);
+    if (!play) {
+      if (!startDaily(db, date, user.id)) return json(res, 200, { started: false, result: dailyResult(db, date, user.id) });
+      play = plays.begin({ kind: 'daily', ref: date, userId: user.id, questionIds });
+    } else if (play.finishedAt) {
+      return json(res, 200, { started: false, result: dailyResult(db, date, user.id) });
+    }
+    json(res, 200, { started: true, result: dailyResult(db, date, user.id), play: plays.view(play) });
   },
 
+  // Ends the player's try where it stands: whatever they haven't answered counts as wrong.
   'POST /api/daily/finish': async (req, res) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to play the Daily.' });
-    const { date: rawDate, answers = [], partial = false } = await body(req);
-    const date = dailyDate(rawDate);
-    const daily = dailyFor(date);
-    const before = dailyResult(db, date, user.id);
-    if (!before) return json(res, 409, { error: "Start today's Daily first." });
-    if (before.finished) return json(res, 409, { error: "You've already played today's Daily.", result: before });
-    const graded = grade(answers, { allowed: new Set(daily.questionIds), allowEmpty: true });
-    const saved = saveFixedRound(user.id, 'daily', graded, partial === true);
-    finishDaily(db, date, user.id, { ...saved, total: daily.questionIds.length });
-    const result = dailyResult(db, date, user.id);
-    json(res, 200, { result, board: dailyBoard(db, date, user.id, 10) });
-    // Friends who already played and scored less hear about it (if they asked to).
-    const me = getProfile(db, user.id);
-    for (const f of friendsBeaten(db, date, user.id, result.score)) {
-      reminders.friendBeatYou(f.user_id, `${date}:${user.id}`, { name: me.name, their: result.score, yours: f.score });
-    }
+    const date = dailyDate((await body(req)).date);
+    const play = plays.find('daily', date, user.id);
+    if (!play) return json(res, 409, { error: "Start today's Daily first." });
+    if (!plays.finish(play)) return json(res, 409, { error: "You've already played today's Daily.", result: dailyResult(db, date, user.id) });
+    json(res, 200, { result: dailyResult(db, date, user.id), board: dailyBoard(db, date, user.id, 10) });
   },
 
   'GET /api/daily/board': (req, res, url) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to see the board.' });
     const date = dailyDate(url.searchParams.get('date'));
-    json(res, 200, { ...dailyFor(date), board: dailyBoard(db, date, user.id) });
+    const { day, number } = dailyFor(date);
+    json(res, 200, { day, number, board: dailyBoard(db, date, user.id) });
   },
 
   // ── Duels ──
@@ -444,6 +466,26 @@ const routes = {
 
 // Routes with a value in the path: [method, pattern, handler(req, res, url, ...matches), rate limit].
 const DUEL_PATH = '([A-Z2-9]{8})';
+const PLAY_PATH = '([0-9a-f-]{36})';
+
+/** A route for one question of a round the signed-in player owns. */
+function playRoute(act) {
+  return async (req, res, url, id) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    const input = await body(req, 4096);
+    if (!Number.isInteger(input?.idx)) return json(res, 400, { error: 'Say which question this is.' });
+    const play = plays.get(id);
+    if (!play || play.userId !== user.id) return json(res, 404, { error: 'This round no longer exists.' });
+    try {
+      json(res, 200, act(play, input));
+    } catch (err) {
+      if (err.status !== 409) throw err;
+      json(res, 409, { error: err.message, ended: !!err.ended });
+    }
+  };
+}
+
 const paramRoutes = [
   ['DELETE', /^\/api\/friends\/([^/]{1,100})$/, (req, res, url, friendId) => {
     const user = currentUser(req);
@@ -491,34 +533,28 @@ const paramRoutes = [
     } else if (duel[role].score !== null) {
       return json(res, 409, { error: "You've already played this duel.", duel: duelView(duel, user.id) });
     }
-    json(res, 200, { duel: duelView(duel, user.id) });
+    const side = duel.challengerId === user.id ? 'challenger' : 'opponent';
+    const play = plays.begin({ kind: 'duel', ref: id, side, userId: user.id, questionIds: duel.questionIds });
+    if (play.finishedAt) return json(res, 409, { error: "You've already played this duel.", duel: duelView(duel, user.id) });
+    json(res, 200, { duel: duelView(duel, user.id), play: plays.view(play) });
   }, 'duels'],
 
-  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/finish$`), async (req, res, url, id) => {
+  // Ends the player's side where it stands: whatever they haven't answered counts as wrong.
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/finish$`), (req, res, url, id) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to play this duel.' });
-    const { answers = [], partial = false } = await body(req);
     const duel = getDuel(db, id);
     if (!duel) return json(res, 404, { error: 'This duel link is no longer valid.' });
-    const role = duel.challengerId === user.id ? 'challenger' : duel.opponentId === user.id ? 'opponent' : null;
-    if (!role) return json(res, 403, { error: "You're not in this duel." });
-    if (duel[role].score !== null) return json(res, 409, { error: "You've already played this duel." });
-    const graded = grade(answers, { allowed: new Set(duel.questionIds), allowEmpty: true });
-    finishDuelSide(db, id, role, saveFixedRound(user.id, 'duel', graded, partial === true));
-    const done = getDuel(db, id);
-    json(res, 200, { duel: duelView(done, user.id) });
-    // The other player hears how it ended, or that it's their turn (if they asked to be told).
-    const other = role === 'challenger' ? 'opponent' : 'challenger';
-    const otherId = role === 'challenger' ? done.opponentId : done.challengerId;
-    const name = getProfile(db, user.id).name;
-    if (done.finishedAt && otherId) {
-      const winner = duelWinner(done);
-      const outcome = winner === 'draw' ? 'Draw' : winner === other ? 'Won' : 'Lost';
-      reminders.duelFinished(otherId, id, outcome, { name, their: done[role].score, yours: done[other].score });
-    } else if (!done.finishedAt && role === 'challenger' && done.invitedId) {
-      reminders.duelSent(done.invitedId, id, { name, score: done[role].score });
-    }
+    if (duel.challengerId !== user.id && duel.opponentId !== user.id) return json(res, 403, { error: "You're not in this duel." });
+    const play = plays.find('duel', id, user.id);
+    if (!play || !plays.finish(play)) return json(res, 409, { error: "You've already played this duel." });
+    json(res, 200, { duel: duelView(getDuel(db, id), user.id) });
   }, 'duels'],
+
+  // One question at a time (see server/play.js).
+  ['POST', new RegExp(`^/api/plays/${PLAY_PATH}/open$`), playRoute((play, input) => plays.open(play, input.idx)), 'play'],
+  ['POST', new RegExp(`^/api/plays/${PLAY_PATH}/answer$`), playRoute((play, input) => plays.answer(play, input.idx, input.choice)), 'play'],
+  ['POST', new RegExp(`^/api/plays/${PLAY_PATH}/skip$`), playRoute((play, input) => plays.skip(play, input.idx)), 'play'],
 
   ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/rematch$`), (req, res, url, id) => {
     const user = currentUser(req);
@@ -555,17 +591,16 @@ const badRequest = (message) => Object.assign(new Error(message), { status: 400 
 const tzParam = (url) => Math.max(-840, Math.min(720, Math.round(Number(url.searchParams.get('tz')) || 0)));
 
 /**
- * Grades answers on the server, from shared/questions.js, so the browser can't post a fake
- * score. `allowed` limits them to one round's questions (the Daily, a duel).
+ * Grades a Quick or topic round, from shared/questions.js. These only count towards the player's
+ * own progress; Daily and duel answers are graded one at a time in server/play.js.
  */
-function grade(answers, { modeCfg = MODES[DEFAULT_MODE], allowed = null, allowEmpty = false } = {}) {
-  if (!Array.isArray(answers) || answers.length > 50 || (!allowEmpty && !answers.length)) throw badRequest('A round needs between 1 and 50 answers.');
+function grade(answers, { modeCfg = MODES[DEFAULT_MODE] } = {}) {
+  if (!Array.isArray(answers) || answers.length > 50 || !answers.length) throw badRequest('A round needs between 1 and 50 answers.');
   const graded = [];
   const seen = new Set();
   for (const a of answers) {
     const q = QUESTION_BY_ID.get(a?.id);
     if (!q) throw badRequest(`Unknown question "${a?.id}".`);
-    if (allowed && !allowed.has(q.id)) throw badRequest(`Question "${q.id}" isn't in this round.`);
     if (seen.has(q.id)) throw badRequest(`Question "${q.id}" appears twice in one round.`);
     seen.add(q.id);
     const seconds = secondsFor(q, modeCfg); // some topics (the books) allow more time
@@ -582,11 +617,42 @@ function grade(answers, { modeCfg = MODES[DEFAULT_MODE], allowed = null, allowEm
 }
 
 /** Saves a Daily or duel round like any other (it counts in stats). Returns its score and time. */
-function saveFixedRound(userId, category, graded, partial) {
-  if (!graded.length) return { roundId: null, score: 0, correct: 0, ms: 0 };
-  const r = saveRound(db, userId, { mode: DEFAULT_MODE, category, graded, complete: !partial });
-  if (!partial) logEvent(db, userId, 'round_finished', { mode: DEFAULT_MODE, category, correct: r.correct, total: r.total, score: r.score });
-  return { roundId: r.roundId, score: r.score, correct: r.correct, ms: graded.reduce((sum, a) => sum + a.ms, 0) };
+function saveFixedRound(userId, category, graded, skippedMs) {
+  const time = graded.reduce((sum, a) => sum + a.ms, 0) + skippedMs;
+  if (!graded.length) return { roundId: null, score: 0, correct: 0, ms: time };
+  const r = saveRound(db, userId, { mode: DEFAULT_MODE, category, graded, complete: true });
+  logEvent(db, userId, 'round_finished', { mode: DEFAULT_MODE, category, correct: r.correct, total: r.total, score: r.score });
+  return { roundId: r.roundId, score: r.score, correct: r.correct, ms: time };
+}
+
+/** A Daily or duel round has ended on the server: saves the result and tells whoever should hear. */
+function finishFixedRound(play, graded, skippedMs) {
+  const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs);
+  if (play.kind === 'daily') {
+    finishDaily(db, play.ref, play.userId, { ...saved, total: play.questionIds.length });
+    // Friends who already played and scored less hear about it (if they asked to).
+    const me = getProfile(db, play.userId);
+    for (const f of friendsBeaten(db, play.ref, play.userId, saved.score)) {
+      reminders.friendBeatYou(f.user_id, `${play.ref}:${play.userId}`, { name: me.name, their: saved.score, yours: f.score });
+    }
+    return;
+  }
+  const id = play.ref;
+  const role = play.side;
+  finishDuelSide(db, id, role, saved);
+  const done = getDuel(db, id);
+  if (!done) return; // the challenger deleted their account mid-round, and the duel went with it
+  // The other player hears how it ended, or that it's their turn (if they asked to be told).
+  const other = role === 'challenger' ? 'opponent' : 'challenger';
+  const otherId = role === 'challenger' ? done.opponentId : done.challengerId;
+  const name = getProfile(db, play.userId).name;
+  if (done.finishedAt && otherId) {
+    const winner = duelWinner(done);
+    const outcome = winner === 'draw' ? 'Draw' : winner === other ? 'Won' : 'Lost';
+    reminders.duelFinished(otherId, id, outcome, { name, their: done[role].score, yours: done[other].score });
+  } else if (!done.finishedAt && role === 'challenger' && done.invitedId) {
+    reminders.duelSent(done.invitedId, id, { name, score: done[role].score });
+  }
 }
 
 /**
@@ -596,7 +662,8 @@ function saveFixedRound(userId, category, graded, partial) {
 function dailyDate(value) {
   const today = localDate(0);
   const date = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : today;
-  if (Math.abs(Date.parse(date) - Date.parse(today)) > 86_400_000 || date < DAILY.start) throw badRequest('That Daily is not available.');
+  const away = Math.abs(Date.parse(date) - Date.parse(today)); // NaN for a date that doesn't exist, like 2026-99-99
+  if (!(away <= 86_400_000) || date < DAILY.start) throw badRequest('That Daily is not available.');
   return date;
 }
 
@@ -635,12 +702,16 @@ function duelView(d, viewerId, { brief = false } = {}) {
     challenger: person(d.challengerId, d.challenger),
     opponent: d.opponentId || d.opponent.score !== null ? person(d.opponentId, d.opponent) : null,
     invitedFriend: !d.opponentId && d.invitedId ? shownProfile(getProfile(db, d.invitedId) ?? { id: d.invitedId, name: null }) : null,
-    createdAt: d.createdAt, finishedAt: d.finishedAt,
+    createdAt: d.createdAt, finishedAt: d.finishedAt, count: d.questionIds.length,
   };
   if (brief) return view;
-  view.questionIds = d.questionIds;
-  if (mine) view.answers = { [role]: roundAnswers(db, d[role].roundId) };
-  if (d.finishedAt && role) {
+  // The questions stay secret until the viewer has played their side.
+  if (mine) {
+    view.questionIds = d.questionIds;
+    view.questions = contentFor(d.questionIds);
+    view.answers = { [role]: roundAnswers(db, d[role].roundId) };
+  }
+  if (d.finishedAt && mine) {
     view.answers.challenger = roundAnswers(db, d.challenger.roundId);
     view.answers.opponent = roundAnswers(db, d.opponent.roundId);
   }
@@ -664,6 +735,8 @@ function cleanProps(props) {
 // pictures per question.
 
 const MINUTE = 60_000;
+const QUESTIONS_PER_REQUEST = 20; // a round, with a few to spare
+const MISSED_SHOWN = 6; // "questions you miss most" on the Progress page
 const LIMITS = {
   perAddress: rateLimiter({ limit: 300, windowMs: MINUTE }), // every API request from one IP
   perClient: rateLimiter({ limit: 60, windowMs: MINUTE }), // every API request from one browser
@@ -674,6 +747,8 @@ const LIMITS = {
   events: rateLimiter({ limit: 60, windowMs: 10 * MINUTE }), // logged events per browser
   social: rateLimiter({ limit: 30, windowMs: 10 * MINUTE }), // friend adds, profile saves, push sign-ups
   daily: rateLimiter({ limit: 20, windowMs: 10 * MINUTE }), // Daily starts and finishes
+  play: rateLimiter({ limit: 300, windowMs: 10 * MINUTE }), // opening and answering Daily and duel questions
+  questions: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // Quick rounds' questions, per browser
   duels: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // duel starts and finishes
   duelCreate: rateLimiter({ limit: 30, windowMs: 60 * MINUTE }), // new duels and rematches
   static: rateLimiter({ limit: 600, windowMs: MINUTE }), // pages, scripts and pictures from one IP
@@ -697,6 +772,7 @@ const ROUTE_LIMITS = {
   'POST /api/auth/google': 'signIn',
   'POST /api/auth/dev': 'signIn',
   'POST /api/rounds': 'rounds',
+  'POST /api/questions': 'questions',
   'GET /api/account/export': 'export',
   'POST /api/reports': 'reports',
   'POST /api/events': 'events',
@@ -823,12 +899,38 @@ function siteOrigin(req) {
   return `${proto}://${req.headers.host}`;
 }
 
+// The shared files browsers use. Listed one by one so that shared/questions.js, which has the
+// right answers, can't be fetched under another spelling of its address.
+const BROWSER_SHARED = new Set(['avatars.js', 'config.js', 'countries.js', 'geo.js', 'levels.js']);
+const browserBank = { data: Buffer.from(BROWSER_BANK), gzip: gzipSync(BROWSER_BANK) };
+const browserBankEtag = `"${createHash('sha256').update(BROWSER_BANK).digest('hex').slice(0, 16)}"`;
+
+function sendBrowserBank(req, res) {
+  const headers = { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache', ETag: browserBankEtag, Vary: 'Accept-Encoding' };
+  if (req.headers['if-none-match'] === browserBankEtag) return send(res, 304, undefined, headers);
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return send(res, 200, browserBank.gzip, { ...headers, 'Content-Encoding': 'gzip' });
+  send(res, 200, browserBank.data, headers);
+}
+
+/** A question's picture during a Daily or duel, at an address that says nothing about it. */
+async function sendPlayPicture(req, res, playId, idx) {
+  const user = currentUser(req);
+  const play = user ? plays.get(playId) : null;
+  const file = play && play.userId === user.id ? plays.pictureFile(play, idx) : null;
+  if (!file) return send(res, 404, 'Not found');
+  const data = await readFile(file);
+  send(res, 200, data, { 'Content-Type': MIME[extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'private, max-age=3600' });
+}
+
 const STATIC_ROOTS = [
   ['/shared/', join(ROOT, 'shared')],
   ['/', join(ROOT, 'public')],
 ];
 
 async function serveStatic(req, res, pathname) {
+  if (pathname === '/shared/questions.js') return sendBrowserBank(req, res);
+  const picture = /^\/pic\/([0-9a-f-]{36})\/(\d{1,2})$/.exec(pathname);
+  if (picture) return sendPlayPicture(req, res, picture[1], Number(picture[2]));
   for (const [prefix, dir] of STATIC_ROOTS) {
     if (!pathname.startsWith(prefix)) continue;
     let rel;
@@ -837,6 +939,7 @@ async function serveStatic(req, res, pathname) {
     } catch {
       return send(res, 400, 'Bad path');
     }
+    if (prefix === '/shared/' && !BROWSER_SHARED.has(rel)) return send(res, 404, 'Not found');
     const file = join(dir, rel);
     // Must stay inside `dir` (a bare startsWith(dir) would also allow a sibling like "public-old").
     if (file !== dir && !file.startsWith(dir + sep)) return send(res, 403, 'Forbidden');

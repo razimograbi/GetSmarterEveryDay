@@ -179,7 +179,7 @@ function hiddenFor(q) {
   if (!hiddenReady.has(q.id)) {
     const { title, hide, logo } = q.visual;
     const make = async () => {
-      const saved = local.photos[q.id]?.src;
+      const saved = q.visual.src || local.photos[q.id]?.src;
       if (saved) {
         try { return await hideParts(best(saved), hide, logo); } catch { /* use the live picture */ }
       }
@@ -238,7 +238,7 @@ export function render(q) {
   const v = q.visual;
   switch (v.type) {
     case 'flag': {
-      const { src, srcset } = flagSrc(v.code);
+      const { src, srcset } = v.src ? { src: v.src, srcset: '' } : flagSrc(v.code);
       const html = `
         <div class="vis vis-flag">
           <img class="flag-img" alt="${esc(t('vis.flagAlt'))}" src="${best(src)}"${srcset && !workingSrc.has(src) ? ` srcset="${srcset}"` : ''}>
@@ -247,7 +247,7 @@ export function render(q) {
     }
 
     case 'sign':
-      return { html: `<div class="vis vis-sign">${signSvg(v.id)}</div>`, ready: () => Promise.resolve(true) };
+      return { html: `<div class="vis vis-sign">${v.svg ?? signSvg(v.id)}</div>`, ready: () => Promise.resolve(true) };
 
     case 'image': {
       const html = `<div class="vis vis-sign"><img class="sign-img" alt="${esc(t('vis.signAlt'))}" src="${best(v.src)}"></div>`;
@@ -255,8 +255,8 @@ export function render(q) {
     }
 
     case 'country': {
-      if (local.countries.has(v.iso)) {
-        const html = `<div class="vis vis-country"><img class="country-img" alt="${esc(t('vis.countryAlt'))}" src="${best(`/img/countries/${v.iso}.svg`)}"></div>`;
+      if (v.src || local.countries.has(v.iso)) {
+        const html = `<div class="vis vis-country"><img class="country-img" alt="${esc(t('vis.countryAlt'))}" src="${best(v.src || `/img/countries/${v.iso}.svg`)}"></div>`;
         return { html, ready: (el) => imgReady(el.querySelector('img')) };
       }
       return {
@@ -339,7 +339,7 @@ export function render(q) {
               ({ src: shown, canvas } = await hiddenFor(q));
             } else {
               let img;
-              const saved = local.photos[q.id]?.src;
+              const saved = v.src || local.photos[q.id]?.src;
               if (saved) img = await loadImg(best(saved)).catch(() => null);
               if (!img) {
                 const { src, fallback } = await wikiImage(v.title);
@@ -457,13 +457,14 @@ function downloadPicture(q) {
   const all = (srcs) => Promise.all(srcs.map(one)).then((r) => r.every(Boolean));
   switch (v.type) {
     case 'flag':
-      return all([flagSrc(v.code).src]);
+      return all([v.src || flagSrc(v.code).src]);
     case 'country':
+      if (v.src) return all([v.src]);
       return local.countries.has(v.iso) ? all([`/img/countries/${v.iso}.svg`]) : loadWorldAtlas().then(() => true, () => false);
     case 'wiki': {
       // Blur the parts that give the answer away now, not when the question appears.
       if (v.hide) return hiddenFor(q).then(() => true, () => false);
-      const saved = local.photos[q.id]?.src;
+      const saved = v.src || local.photos[q.id]?.src;
       return saved ? all([saved]) : wikiImage(v.title).then(({ src }) => all([src]), () => false);
     }
     case 'map':

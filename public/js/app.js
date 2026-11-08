@@ -21,7 +21,6 @@ const state = {
   duels: null, // the player's duels, for the home screen
   fixedRound: null, // a Daily or duel about to be played
   duelFriend: null, // the friend a new duel is for
-  unsaved: null, // a Daily or duel result that failed to save
   played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
   justUnlocked: false, // the first round was just finished: say once what the home screen gained
   newFriend: null, // a new player who added a friend from an invite link: offered as a duel at home
@@ -326,10 +325,29 @@ async function route() {
   return showHome();
 }
 
+/**
+ * Fills in questions the server has sent. The bank this page starts with has only ids and topics,
+ * so that it can't be read for answers: what a question says arrives when it's about to be played,
+ * or once the player has answered it.
+ */
+function learn(questions) {
+  for (const content of Object.values(questions || {})) {
+    const q = QUESTION_BY_ID.get(content.id);
+    if (q) Object.assign(q, content);
+  }
+}
+
+/** Gets the words, options and answers of these Quick or topic questions, unless they're already here. */
+async function loadQuestions(list) {
+  const ids = list.filter((q) => !q.options).map((q) => q.id);
+  if (ids.length) learn((await api('/api/questions', { method: 'POST', body: { ids } })).questions);
+}
+
 async function loadStats(force = false) {
   if (state.stats && !force) return state.stats;
   await pendingSave; // otherwise the numbers would miss the round just played
   const s = await api(`/api/stats?tz=${new Date().getTimezoneOffset()}`);
+  learn(s.questions);
   // Answers to questions that were removed (e.g. the old Islands topic) stay in the
   // history but don't count toward "x of 400".
   const known = (ids) => ids.filter((id) => QUESTION_BY_ID.has(id));
@@ -586,7 +604,7 @@ function openReportSheet(q) {
     scrim.innerHTML = `
       <form class="sheet report-sheet" role="dialog" aria-modal="true" aria-labelledby="report-title" novalidate>
         <h2 id="report-title">${esc(t('report.title'))}</h2>
-        <p class="report-q">${esc(qt(q, q.prompt))} <strong>${esc(t('report.answer', { answer: qt(q, q.answer) }))}</strong></p>
+        <p class="report-q">${esc(qt(q, q.prompt))}${q.answer ? ` <strong>${esc(t('report.answer', { answer: qt(q, q.answer) }))}</strong>` : ''}</p>
         <fieldset class="report-reasons">
           <legend>${esc(t('report.whatsWrong'))}</legend>
           ${reasons.map((r) => `<label class="report-reason"><input type="radio" name="reason" value="${r.id}"><span>${esc(reasonLabel(r))}</span></label>`).join('')}
@@ -729,7 +747,7 @@ function dailyRow(d) {
     href: '#/daily',
     icon: ICONS.daily,
     title: esc(n ? t('daily.title', { n }) : t('daily.titlePlain')),
-    sub: esc(played ? `${t('daily.youScored', { score: d.result.score, max: d.questionIds.length * MAX_POINTS })} · ${t('daily.seeBoard')}` : t('daily.rowDesc')),
+    sub: esc(played ? `${t('daily.youScored', { score: d.result.score, max: d.count * MAX_POINTS })} · ${t('daily.seeBoard')}` : t('daily.rowDesc')),
     badge: played ? '' : t('daily.newToday'),
   });
 }
@@ -999,6 +1017,7 @@ async function pickReplacement(round, failed, stats) {
   const ready = best.find(isPreloaded);
   if (ready) return ready;
   const candidates = ordered.slice(0, 4);
+  await loadQuestions(candidates).catch(() => {}); // without their pictures' addresses they just count as failed
   const attempts = candidates.map((c) =>
     fetchNow(c).then((ok) => {
       if (!ok) failedPictures.add(c.id); // only pictures that really failed are remembered
@@ -1016,8 +1035,8 @@ function answersPayload(results) {
 }
 
 /**
- * Plays a round. `fixed` plays set questions instead of picking them (the Daily, a duel):
- * { kind, questions, title, after: where to go when done, endpoint and extra: where to send the answers }.
+ * Plays a round. `fixed` plays a round the server runs (the Daily, a duel), one question at a time:
+ * { kind, play: where it stands, title, after: where to go when done, endpoint and extra: how to end it early }.
  */
 async function startRound(cat, fixed = null) {
   const nav = navId;
@@ -1032,16 +1051,22 @@ async function startRound(cat, fixed = null) {
 
   const round = {
     cat, mode, cfg, fixed,
-    questions: fixed ? [...fixed.questions] : pickQuestions(cat, cfg.questionsPerRound, stats),
+    // In a Daily or duel, each question is a blank slot until the server opens it.
+    questions: fixed ? Array.from({ length: fixed.play.total }, (_, slot) => ({ id: `play:${fixed.play.id}:${slot}`, slot })) : pickQuestions(cat, cfg.questionsPerRound, stats),
     comingBack: new Set(cat === 'mixed' ? stats?.dueMistakes : []), // past mistakes a Quick round may bring back
-    idx: 0,
+    idx: fixed?.play.idx ?? 0,
     results: [], // { q, choice, correct, ms, points, skipped }
     score: 0,
     streak: 0,
     bestStreak: 0,
     saved: false, // set once answers have been sent to the server
     swaps: 0, // questions replaced because their picture wouldn't load
+    ended: false, // a Daily or duel the server has already finished
   };
+  fixed?.play.results.forEach((r, i) => {
+    round.results.push({ q: round.questions[i], choice: null, correct: r.correct, ms: 0, points: r.points, skipped: !!r.skipped });
+    round.score += r.points;
+  });
   if (!round.questions.length) return go('#/', { replace: true });
   if (!fixed) track('round_started', { mode, category: cat }); // the Daily and duels log theirs when the try starts
 
@@ -1051,12 +1076,15 @@ async function startRound(cat, fixed = null) {
       <header class="play-top">
         <button class="icon-btn" data-quit aria-label="${esc(t('play.quit'))}">${ICONS.close}</button>
         <ol class="pips" aria-label="${esc(t('play.progress', { title }))}">
-          ${round.questions.map(() => '<li></li>').join('')}
+          ${round.questions.map((_, i) => {
+            const r = round.results[i];
+            return `<li${r ? ` class="${r.skipped ? 'is-skipped' : r.correct ? 'is-right' : 'is-wrong'}"` : ''}></li>`;
+          }).join('')}
         </ol>
         <button class="auto-toggle" data-auto aria-haspopup="dialog" aria-expanded="false">
           <span class="auto-switch" aria-hidden="true"></span><span class="auto-label" data-auto-label></span>
         </button>
-        <span class="play-score" aria-label="${esc(t('play.score'))}"><span data-score>0</span></span>
+        <span class="play-score" aria-label="${esc(t('play.score'))}"><span data-score>${round.score}</span></span>
       </header>
       <div class="fuse-row">
         <div class="fuse" role="timer" aria-label="${esc(t('play.timeLeft'))}"><span class="fuse-fill"></span><span class="fuse-spark"></span></div>
@@ -1111,7 +1139,8 @@ async function startRound(cat, fixed = null) {
 
   let raf = 0;
   let advanceTimer = 0;
-  let current = null; // { q, options, start, answered, outcome, preloaded }
+  let current = null; // { q, options, start, answered, outcome, preloaded, seconds, limitMs }
+  let retryCall = null; // what the Retry button does after the connection to the server failed
   let alive = true;
   let pausedAt = 0; // performance.now() when paused, 0 while running
   let leavingTo = null; // hash to go to once the history guard entry is popped
@@ -1144,6 +1173,7 @@ async function startRound(cat, fixed = null) {
   // ── Pause: used by the quit sheet and when the app goes to the background ──
 
   function pause({ hide = false } = {}) {
+    if (round.fixed && timing()) return; // the server's clock doesn't stop for a sheet, so this one doesn't either
     if (!pausedAt) {
       pausedAt = performance.now();
       cancelAnimationFrame(raf);
@@ -1171,13 +1201,88 @@ async function startRound(cat, fixed = null) {
 
   // ── Questions ──
 
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** Calls the server about this round, trying again for a moment if the connection drops. */
+  async function playCall(action, body) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await api(`/api/plays/${round.fixed.play.id}/${action}`, { method: 'POST', body });
+      } catch (err) {
+        if ((err.status && err.status < 500 && err.status !== 429) || attempt >= 3 || !alive) throw err;
+        await wait(400 * 2 ** attempt);
+      }
+    }
+  }
+
+  /** A call failed: the round is over on the server (on to the result), or there's no connection (offer a retry). */
+  function fixedTrouble(err, retry) {
+    if (!alive) return;
+    if (err.status === 409 || err.status === 404) {
+      round.saved = true;
+      round.ended = true;
+      forgetOpenRound();
+      state.stats = null;
+      return leave(round.fixed.after);
+    }
+    retryCall = retry;
+    showDock(`<p class="dock-msg is-wrong">${esc(errMsg(err))}</p><button class="btn btn-marigold btn-next" data-retry><span>${esc(t('res.retry'))}</span></button>`);
+  }
+
+  /** Pictures the server says can be downloaded now, for slots that haven't been played. */
+  function usePreviews(list) {
+    for (const { idx, visual } of list || []) {
+      const slot = round.questions[idx];
+      if (slot?.slot === undefined) continue;
+      slot.visual ??= visual;
+      if (idx > round.idx) preload(slot);
+    }
+  }
+
+  /** A question has been answered or skipped: the slot becomes the real question. */
+  function useResult(r, token) {
+    learn({ q: r.question });
+    const real = QUESTION_BY_ID.get(r.question.id) || r.question;
+    round.questions[r.idx] = real;
+    if (token) token.q = real;
+    if (r.finished) round.ended = true;
+    usePreviews(r.previews);
+    return real;
+  }
+
+  /** Waits until the player is here to see it, then opens the question, which starts the server's clock. */
+  async function openFixed(token) {
+    while ((document.hidden || pausedAt) && alive && current === token) await wait(200);
+    if (!alive || current !== token) return false;
+    let opened;
+    try {
+      opened = await playCall('open', { idx: round.idx });
+    } catch (err) {
+      fixedTrouble(err, showQuestion);
+      return false;
+    }
+    if (!alive || current !== token) return false;
+    const q = token.q;
+    Object.assign(q, { cat: opened.cat, prompt: opened.prompt, visual: q.visual ?? opened.visual });
+    token.options = opened.options;
+    token.seconds = opened.seconds;
+    token.limitMs = opened.seconds * 1000;
+    token.remainingMs = opened.remainingMs;
+    return true;
+  }
+
   async function showQuestion() {
     const q = round.questions[round.idx];
-    const options = shuffle([q.answer, ...q.wrong]);
-    const seconds = secondsFor(q, cfg);
-    current = { q, options, start: 0, answered: false, outcome: null, preloaded: false, seconds, limitMs: seconds * 1000 };
+    current = { q, options: [], start: 0, answered: false, outcome: null, preloaded: false, seconds: 0, limitMs: 0, remainingMs: null };
     const token = current;
-
+    // Nothing to download for this one: its words come first, so the screen changes all at once.
+    if (round.fixed && !q.visual && !(await openFixed(token))) return;
+    if (!round.fixed) {
+      token.options = shuffle(q.options);
+      token.seconds = secondsFor(q, cfg);
+      token.limitMs = token.seconds * 1000;
+    }
+    const seconds = token.seconds || cfg.secondsPerQuestion;
     window.scrollTo(0, 0); // the last answer may have scrolled the page
     pips.forEach((p, i) => p.classList.toggle('is-current', i === round.idx));
     dock.hidden = true;
@@ -1207,7 +1312,7 @@ async function startRound(cat, fixed = null) {
       ${head}
       ${firstHint}
       <div class="answers is-waiting" role="group" aria-labelledby="prompt">
-        ${options.map((o, i) => `<button class="answer" data-i="${i}" disabled><kbd>${i + 1}</kbd><span>${esc(qt(q, o))}</span></button>`).join('')}
+        ${(token.options.length ? token.options : Array(5).fill('')).map((o, i) => `<button class="answer" data-i="${i}" disabled><kbd>${i + 1}</kbd><span>${esc(qt(q, o))}</span></button>`).join('')}
       </div>`;
     stage.classList.remove('enter');
     void stage.offsetWidth;
@@ -1251,6 +1356,15 @@ async function startRound(cat, fixed = null) {
       }
     }
 
+    if (!ok && round.fixed) {
+      try {
+        useResult(await playCall('skip', { idx: round.idx }), token);
+      } catch (err) {
+        return fixedTrouble(err, showQuestion);
+      }
+      if (!alive || current !== token) return;
+    }
+
     fuseRow.classList.remove('is-waiting');
     if (!ok) {
       // The picture failed or is too slow: offer a skip that doesn't count.
@@ -1258,7 +1372,7 @@ async function startRound(cat, fixed = null) {
       if (pic) pic.outerHTML = `<div class="vis vis-photo">${missingHtml()}</div>`;
       current.answered = true;
       current.outcome = 'skipped';
-      round.results.push({ q, choice: null, correct: false, ms: 0, points: 0, skipped: true });
+      round.results.push({ q: token.q, choice: null, correct: false, ms: 0, points: 0, skipped: true });
       keepOpenRound();
       pips[round.idx].classList.add('is-skipped');
       showDock(`<p class="dock-msg">${esc(t('q.noPicture'))}</p>${reportBtn()}<button class="btn btn-marigold btn-next" data-next><span>${esc(t('q.skip'))}</span></button>`);
@@ -1266,10 +1380,21 @@ async function startRound(cat, fixed = null) {
       return;
     }
 
+    // Now the picture is on screen, the server can start the clock and send the words.
+    if (round.fixed && !token.options.length) {
+      if (!(await openFixed(token))) return;
+      stage.querySelector('#prompt').textContent = qt(q, q.prompt);
+      stage.querySelectorAll('.answer span').forEach((s, i) => { s.textContent = qt(q, token.options[i]); });
+      secsEl.textContent = token.seconds;
+    }
+
     // Options appear together with the picture, so nobody gets a head start reading them.
     stage.querySelector('.answers').classList.remove('is-waiting');
     stage.querySelectorAll('.answer').forEach((b) => (b.disabled = false));
     current.start = performance.now();
+    if (token.remainingMs !== null) current.start -= token.limitMs - token.remainingMs; // opened earlier: its clock kept running
+    // Left the app while the server was opening it: its clock has started, so it counts as left.
+    if (pausedAt && round.fixed) return void answer(null, { away: true });
     if (pausedAt) {
       // Went to the background while the picture loaded: start paused and hidden.
       pausedAt = current.start;
@@ -1284,10 +1409,38 @@ async function startRound(cat, fixed = null) {
     if (!timing() || (pausedAt && !away)) return;
     current.answered = true;
     cancelAnimationFrame(raf);
-    const { q } = current;
-    const ms = Math.round((pausedAt || performance.now()) - current.start);
+    const token = current;
+    if (round.fixed) {
+      // The server decides: until it does, the tap shows and the clock stops.
+      stage.querySelectorAll('.answer').forEach((b) => {
+        b.disabled = true;
+        if (token.options[Number(b.dataset.i)] === choice) b.classList.add('is-picked');
+      });
+      fuseRow.classList.add('is-done');
+      submitFixed(token, choice, away);
+      return;
+    }
+    const { q } = token;
+    const ms = Math.round((pausedAt || performance.now()) - token.start);
     const correct = choice === q.answer;
-    const points = pointsFor(correct, ms, current.seconds);
+    reveal(token, { choice, away, correct, ms, points: pointsFor(correct, ms, token.seconds) });
+  }
+
+  async function submitFixed(token, choice, away) {
+    let r;
+    try {
+      r = await playCall('answer', { idx: round.idx, choice });
+    } catch (err) {
+      return fixedTrouble(err, () => { dock.hidden = true; submitFixed(token, choice, away); });
+    }
+    if (!alive || current !== token) return;
+    useResult(r, token);
+    reveal(token, { choice, away, correct: r.correct, ms: r.ms, points: r.points });
+  }
+
+  /** Shows how a question went. */
+  function reveal(token, { choice, away, correct, ms, points }) {
+    const { q } = token;
 
     round.score += points;
     round.streak = correct ? round.streak + 1 : 0;
@@ -1309,6 +1462,7 @@ async function startRound(cat, fixed = null) {
 
     if (!correct) navigator.vibrate?.(70);
     current.outcome = correct ? 'right' : 'wrong';
+    if (sheetOpen()) pause(); // its time ran out behind a sheet: the next question waits for it to close
     preload(nextQuestion()); // no-op if it's already cached
 
     // Short answers stay on one line ("No U-turn" shouldn't split); long ones wrap.
@@ -1341,7 +1495,7 @@ async function startRound(cat, fixed = null) {
     clearTimeout(advanceTimer);
     const btn = dock.querySelector('.btn-next');
     btn?.classList.remove('is-counting');
-    if (!current?.answered || pausedAt || !autoNextOn()) return;
+    if (!current?.outcome || pausedAt || !autoNextOn()) return;
     // Read when the countdown starts and fixed until it ends; settings can only change
     // while the game is paused, and a paused countdown is restarted with the new value.
     const ms = autoDelaySeconds() * 1000;
@@ -1421,7 +1575,7 @@ async function startRound(cat, fixed = null) {
   function next() {
     clearTimeout(advanceTimer);
     // Guard against double triggers (auto timer + tap, or Enter + click).
-    if (!alive || pausedAt || !current?.answered) return;
+    if (!alive || pausedAt || !current?.outcome) return;
     current = null;
     round.idx += 1;
     if (round.idx >= round.questions.length) return finish();
@@ -1454,9 +1608,10 @@ async function startRound(cat, fixed = null) {
   // warning (no pagehide, e.g. killed in the background) is finished on the next visit.
   function keepOpenRound() {
     if (round.saved) return; // already ended (closing the page can still fire the "left the app" answer)
+    // All the server needs to end a Daily or duel; the answers it has already.
+    if (round.fixed) return storeOpenRound({ fixed: { endpoint: round.fixed.endpoint, extra: round.fixed.extra } });
     storeOpenRound({
       cat: round.cat, mode: round.mode,
-      fixed: round.fixed && { endpoint: round.fixed.endpoint, extra: round.fixed.extra },
       ids: round.questions.map((q) => q.id),
       answers: answersPayload(round.results),
       skipped: round.results.filter((r) => r.skipped).map((r) => r.q.id),
@@ -1483,7 +1638,7 @@ async function startRound(cat, fixed = null) {
     rememberPlayed();
     if (round.fixed || record.payload.length) countFinished(); // a round of only skips isn't saved
     if (round.fixed) {
-      const saving = saveFixed(record); // started first, so the next screen can wait for it
+      const saving = round.ended ? roundEnded() : endFixed(round.fixed); // started first, so the next screen can wait for it
       leave(round.fixed.after);
       return saving;
     }
@@ -1495,6 +1650,14 @@ async function startRound(cat, fixed = null) {
   /** The page is closing mid-round: finish it with what's left counted wrong, in a beacon that outlives the page. */
   function finishOnClose() {
     if (round.saved) return;
+    if (round.fixed) {
+      round.saved = true;
+      forgetOpenRound();
+      rememberPlayed();
+      countFinished();
+      if (!round.ended) endFixed(round.fixed, { beacon: true });
+      return;
+    }
     addUnanswered();
     const record = { ...round, payload: answersPayload(round.results) };
     round.saved = true;
@@ -1502,7 +1665,6 @@ async function startRound(cat, fixed = null) {
     rememberPlayed();
     if (!record.payload.length) return;
     countFinished();
-    if (round.fixed) return void saveFixed(record, { beacon: true });
     state.stats = null;
     const body = JSON.stringify({ mode: round.mode, category: round.cat, answers: record.payload });
     if (navigator.sendBeacon?.('/api/rounds', new Blob([body], { type: 'application/json' }))) return;
@@ -1568,6 +1730,7 @@ async function startRound(cat, fixed = null) {
     if (!t) return;
     if (t.classList.contains('answer')) return current && answer(current.options[Number(t.dataset.i)]);
     if (t.hasAttribute('data-next')) return next();
+    if (t.hasAttribute('data-retry')) return retryCall?.();
     if (t.hasAttribute('data-report')) return reportCurrent(t);
     if (t.hasAttribute('data-auto')) return openAuto();
     if (t.hasAttribute('data-auto-done')) return closeAuto();
@@ -1623,9 +1786,25 @@ async function startRound(cat, fixed = null) {
     }
   };
 
-  round.questions.slice(0, 3).forEach(preload);
   keepOpenRound();
-  showQuestion();
+  if (fixed) {
+    usePreviews(fixed.play.previews);
+    preload(round.questions[round.idx]);
+    showQuestion();
+    return;
+  }
+  // The screen is up; the questions of the round follow in one request.
+  loadQuestions(round.questions).then(() => {
+    if (!alive) return;
+    round.questions.slice(0, 3).forEach(preload);
+    showQuestion();
+  }, (err) => {
+    if (!alive) return;
+    round.saved = true; // nothing was played
+    forgetOpenRound();
+    window.alert(errMsg(err));
+    leave('#/');
+  });
 }
 
 // ── Rounds left without warning ─────────────────────────────────
@@ -1693,6 +1872,17 @@ async function finishLeftRound() {
   let r = null;
   try { r = JSON.parse(localStorage.getItem(openRoundKey()) || 'null'); } catch { /* unreadable: drop it */ }
   forgetOpenRound();
+  if (r?.fixed) {
+    // A Daily or duel: the server knows what was answered, so this only tells it the round is over.
+    try {
+      await api(r.fixed.endpoint, { method: 'POST', body: r.fixed.extra });
+      countFinished();
+      state.stats = null;
+    } catch (err) {
+      if (mightSaveLater(err)) storeOpenRound({ fixed: r.fixed });
+    }
+    return;
+  }
   if (!r?.ids?.length) return;
   const cfg = MODES[r.mode] || MODES[DEFAULT_MODE];
   const done = new Set([...(r.answers || []).map((a) => a.id), ...(r.skipped || [])]);
@@ -1702,8 +1892,7 @@ async function finishLeftRound() {
   ];
   if (!answers.length) return;
   try {
-    if (r.fixed) await api(r.fixed.endpoint, { method: 'POST', body: { ...r.fixed.extra, answers, partial: false } });
-    else await api('/api/rounds', { method: 'POST', body: { mode: r.mode, category: r.cat, answers } });
+    await api('/api/rounds', { method: 'POST', body: { mode: r.mode, category: r.cat, answers } });
     countFinished();
     state.stats = null;
   } catch (err) {
@@ -1908,43 +2097,30 @@ function shareStatus(el, result) {
 
 // ── Fixed rounds (the Daily and duels) ─────────────────────────
 
-/** Plays set questions: { kind: 'daily'|'duel', questions, title, after, endpoint, extra }. */
+/** Plays a round the server runs: { kind: 'daily'|'duel', play, title, after, endpoint, extra }. */
 function playFixed(fixed) {
   state.fixedRound = fixed;
   go(`#/play/${fixed.kind}`);
 }
 
-/** Sends a fixed round's answers. A failed save is kept so the next screen can offer a retry. */
-function saveFixed(record, { partial = false, beacon = false } = {}) {
-  const body = { ...record.fixed.extra, answers: record.payload, partial };
-  if (beacon && navigator.sendBeacon) {
-    state.stats = null;
-    navigator.sendBeacon(record.fixed.endpoint, new Blob([JSON.stringify(body)], { type: 'application/json' }));
-    return Promise.resolve();
-  }
-  state.unsaved = null;
-  pendingSave = api(record.fixed.endpoint, { method: 'POST', body })
-    .then(() => void loadStats(true).catch(() => {}))
-    .catch((err) => {
-      if (err.status !== 409) state.unsaved = { record, partial, error: errMsg(err) }; // 409: already saved
-    });
+/** The server has the round's result: the next screen and the stats can read it. */
+function roundEnded() {
+  state.stats = null;
+  pendingSave = loadStats(true).then(() => {}, () => {});
   return pendingSave;
 }
 
-/** "Your answers weren't saved" with a retry button, when the last fixed round failed to save. */
-function unsavedNote(endpoint) {
-  const u = state.unsaved;
-  if (!u || u.record.fixed.endpoint !== endpoint) return '';
-  return `<div class="panel unsaved"><p>${esc(t('fixed.notSaved', { error: u.error }))}</p><button class="btn btn-marigold btn-block" data-retry-save>${esc(t('res.retry'))}</button></div>`;
-}
-
-function bindRetry(after) {
-  app.querySelector('[data-retry-save]')?.addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
-    const { record, partial } = state.unsaved;
-    await saveFixed(record, { partial });
-    after();
-  });
+/** Tells the server a Daily or duel is over early. Whatever wasn't answered counts as wrong. */
+function endFixed(fixed, { beacon = false } = {}) {
+  if (beacon && navigator.sendBeacon) {
+    state.stats = null;
+    navigator.sendBeacon(fixed.endpoint, new Blob([JSON.stringify(fixed.extra)], { type: 'application/json' }));
+    return Promise.resolve();
+  }
+  pendingSave = api(fixed.endpoint, { method: 'POST', body: fixed.extra })
+    .catch((err) => { if (mightSaveLater(err)) storeOpenRound({ fixed: { endpoint: fixed.endpoint, extra: fixed.extra } }); })
+    .then(() => { state.stats = null; loadStats(true).catch(() => {}); });
+  return pendingSave;
 }
 
 // ── Daily Challenge ────────────────────────────────────────────
@@ -1953,6 +2129,7 @@ const today = () => localDate(new Date().getTimezoneOffset());
 
 async function loadDaily() {
   state.daily = await api(`/api/daily?date=${today()}`);
+  learn(state.daily.questions);
   return state.daily;
 }
 
@@ -2011,8 +2188,7 @@ function drawDailyIntro(d) {
       track('round_started', { mode: DEFAULT_MODE, category: 'daily' });
       playFixed({
         kind: 'daily', title: t('daily.title', { n: d.number }), after: '#/daily',
-        questions: d.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean),
-        endpoint: '/api/daily/finish', extra: { date: d.day },
+        play: r.play, endpoint: '/api/daily/finish', extra: { date: d.day },
       });
     } catch (err) {
       e.currentTarget.disabled = false;
@@ -2037,20 +2213,19 @@ let boardTab = 'all';
 function drawDailyResult(d, board) {
   const r = d.result;
   const finished = !!r.finished;
-  const max = d.questionIds.length * MAX_POINTS;
-  const squares = squaresFor(d.questionIds, r.answers || []);
+  const max = d.count * MAX_POINTS;
+  const squares = squaresFor(d.questionIds || [], r.answers || []);
   const me = board?.me;
   const answered = new Map((r.answers || []).map((a) => [a.id, a]));
   app.innerHTML = `
     <section class="screen daily has-tabbar">
       ${topbar()}
       <p class="eyebrow on-cobalt">${esc(t('daily.title', { n: d.number }))}</p>
-      ${unsavedNote('/api/daily/finish')}
       ${finished ? `
         <div class="panel result-card">
           ${avatar(state.profile?.avatar, 64)}
           <p class="result-score">${r.score}<small>/${max}</small></p>
-          <p class="result-line">${esc(t('daily.rightOf', { right: r.correct ?? 0, total: d.questionIds.length }))}${me ? ` · ${esc(t('daily.rank', { rank: me.rank, players: board.players }))}` : ''}</p>
+          <p class="result-line">${esc(t('daily.rightOf', { right: r.correct ?? 0, total: d.count }))}${me ? ` · ${esc(t('daily.rank', { rank: me.rank, players: board.players }))}` : ''}</p>
           ${squaresHtml(squares)}
           <div class="share-row">
             <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('share.share'))}</span></button>
@@ -2083,7 +2258,6 @@ function drawDailyResult(d, board) {
     </section>
     ${tabbar('home')}`;
 
-  bindRetry(showDaily);
   bindThumbs();
   app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
     boardTab = b.dataset.tab;
@@ -2095,7 +2269,7 @@ function drawDailyResult(d, board) {
 
   const status = app.querySelector('[data-share-status]');
   const url = `${location.origin}/daily?l=${lang()}`;
-  const text = `${t('daily.shareText', { n: d.number, score: r.score, max, right: r.correct ?? 0, total: d.questionIds.length })}\n${squares.join('')}`;
+  const text = `${t('daily.shareText', { n: d.number, score: r.score, max, right: r.correct ?? 0, total: d.count })}\n${squares.join('')}`;
   app.querySelector('[data-share]').addEventListener('click', async () => shareStatus(status, await shareText({ text, url })));
   app.querySelector('[data-copy]').addEventListener('click', async () => shareStatus(status, (await copyText(`${text}\n${url}`)) ? 'copied' : 'failed'));
   app.querySelector('[data-story]').addEventListener('click', async (e) => {
@@ -2104,7 +2278,7 @@ function drawDailyResult(d, board) {
     try {
       const blob = await resultImage({
         heading: t('daily.title', { n: d.number }), score: r.score, max, squares, name: state.profile.name, avatar: state.profile.avatar,
-        lines: [t('daily.rightOf', { right: r.correct ?? 0, total: d.questionIds.length }), me ? t('daily.rank', { rank: me.rank, players: board.players }) : ''].filter(Boolean),
+        lines: [t('daily.rightOf', { right: r.correct ?? 0, total: d.count }), me ? t('daily.rank', { rank: me.rank, players: board.players }) : ''].filter(Boolean),
         footer: t('share.beatMe'), link: url.replace(/^https?:\/\//, '').replace(/\?.*$/, ''),
       });
       shareStatus(status, await shareImage(blob, { name: `smarts-daily-${d.number}.png`, text: `${text}\n${url}` }));
@@ -2123,12 +2297,11 @@ async function startDuel(category, friendId = null) {
 }
 
 async function playDuel(id) {
-  const { duel } = await api(`/api/duels/${id}/start`, { method: 'POST' });
+  const { play } = await api(`/api/duels/${id}/start`, { method: 'POST' });
   track('round_started', { mode: DEFAULT_MODE, category: 'duel' });
   playFixed({
     kind: 'duel', title: t('duel.title'), after: `#/duel/${id}`,
-    questions: duel.questionIds.map((q) => QUESTION_BY_ID.get(q)).filter(Boolean),
-    endpoint: `/api/duels/${id}/finish`, extra: {},
+    play, endpoint: `/api/duels/${id}/finish`, extra: {},
   });
 }
 
@@ -2181,6 +2354,7 @@ async function showDuel(id) {
   try {
     await pendingSave;
     ({ duel } = await api(`/api/duels/${encodeURIComponent(id)}`));
+    learn(duel.questions);
     if (nav !== navId) return;
   } catch (err) {
     if (nav !== navId) return;
@@ -2189,7 +2363,7 @@ async function showDuel(id) {
     return;
   }
 
-  const max = duel.questionIds.length * MAX_POINTS;
+  const max = duel.count * MAX_POINTS;
   const other = duelOther(duel);
   const myShareUrl = `${location.origin}/duel/${duel.id}?l=${lang()}`;
   let body;
@@ -2226,7 +2400,7 @@ async function showDuel(id) {
       <div class="panel challenge-card">
         ${avatar(state.profile?.avatar, 80)}
         <p class="result-score">${mine.score}<small>/${max}</small></p>
-        <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.questionIds.length }))}</p>
+        <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.count }))}</p>
         <p class="challenge-sub">${duel.invitedFriend?.name
           ? t('duel.waitingInvited', { name: personName(other) })
           : other?.name ? t('duel.waitingFor', { name: personName(other) }) : esc(t('duel.sendLink'))}</p>
@@ -2245,12 +2419,10 @@ async function showDuel(id) {
     <section class="screen duel has-tabbar">
       ${topbar()}
       <p class="eyebrow on-cobalt">${esc(t('duel.title'))} · ${esc(duelTopic(duel.category))}</p>
-      ${unsavedNote(`/api/duels/${duel.id}/finish`)}
       ${body}
     </section>
     ${tabbar('friends')}`;
 
-  bindRetry(() => showDuel(id));
   app.querySelector('[data-play]')?.addEventListener('click', async (e) => {
     e.currentTarget.disabled = true;
     try {
@@ -2771,7 +2943,7 @@ async function showProgress() {
   const strongest = judged[0];
   const weakest = judged.length > 1 ? judged.at(-1) : null;
 
-  const toReview = s.missed.filter((m) => QUESTION_BY_ID.has(m.id)).slice(0, 6);
+  const toReview = s.missed.filter((m) => QUESTION_BY_ID.get(m.id)?.visual).slice(0, 6);
   const topicName = (id) => esc(catName(CATEGORY_BY_ID[id]));
 
   app.innerHTML = `
@@ -3117,7 +3289,9 @@ async function showAdmin(status = 'open') {
 
   let reports;
   try {
-    ({ reports } = await api(`/api/admin/reports?status=${status}`));
+    let questions;
+    ({ reports, questions } = await api(`/api/admin/reports?status=${status}`));
+    learn(questions);
     if (nav !== navId) return;
   } catch (err) {
     if (nav !== navId) return;
@@ -3149,7 +3323,7 @@ async function showAdmin(status = 'open') {
         ${q ? `
           <div dir="ltr" lang="en">
             <h2 class="admin-q">${esc(q.prompt)}</h2>
-            <p class="admin-answers"><strong>${esc(q.answer)}</strong> · ${q.wrong.map(esc).join(' · ')}</p>
+            <p class="admin-answers"><strong>${esc(q.answer)}</strong> · ${q.options.filter((o) => o !== q.answer).map(esc).join(' · ')}</p>
           </div>
           ${photo}` : `<h2 class="admin-q">${esc(t('admin.gone'))}</h2>`}
         <ul class="admin-reasons">
