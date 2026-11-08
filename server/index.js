@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { extname, join, normalize, resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +12,8 @@ import {
   ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode,
   addFriend, removeFriend, areFriends, listFriends,
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
+  listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
+  stagePath, stageRound, openStagePlay, finishStageTry,
   createDuel, getDuel, claimDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, recentQuestionIds, roundAnswers,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
@@ -21,7 +23,7 @@ import {
 import { rateLimiter, clientIp, capacityGate } from './ratelimit.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, pointsFor, secondsFor, localDate, dailyNumber,
+  MODES, DEFAULT_MODE, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber,
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
 import { pickQuestions } from './pick.js';
@@ -91,7 +93,7 @@ const CSP = [
   "script-src 'self' https://accounts.google.com/gsi/client",
   "frame-src https://accounts.google.com/gsi/",
   "connect-src 'self' https://accounts.google.com/gsi/ https://en.wikipedia.org https://cdn.jsdelivr.net https://unpkg.com",
-  "img-src 'self' data: blob: https://flagcdn.com https://upload.wikimedia.org https://thumb.wikimedia.org https://server.arcgisonline.com https://*.googleusercontent.com",
+  `img-src 'self' data: blob: ${STAGE_PICTURE_HOSTS.map((host) => `https://${host}`).join(' ')} https://server.arcgisonline.com https://*.googleusercontent.com`,
   "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "frame-ancestors 'none'", // no other site may show Smarts inside a frame
@@ -142,6 +144,17 @@ function currentUser(req) {
 }
 
 const isAdmin = (u) => !!u && (ADMINS.has(u.id.toLowerCase()) || (!!u.email && ADMINS.has(u.email.toLowerCase())));
+
+/** A route for admins only. `act(input, ...ids)` returns the reply; errors it throws say what to fix. */
+function adminRoute(act) {
+  return async (req, res, url, ...ids) => {
+    const user = currentUser(req);
+    if (!isAdmin(user)) return json(res, user ? 403 : 401, { error: 'Only admins can change Leveling.' });
+    const input = req.method === 'GET' || req.method === 'DELETE' ? {} : await body(req, 16 * 1024);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return json(res, 400, { error: 'Send a JSON object.' });
+    json(res, 200, act(input, ...ids.map(Number)));
+  };
+}
 
 const publicUser = (u) => u && {
   id: u.id, name: u.name, email: u.email, picture: u.picture, provider: u.provider, since: u.created_at, admin: isAdmin(u),
@@ -420,6 +433,18 @@ const routes = {
     json(res, 200, { day, number, board: dailyBoard(db, date, user.id) });
   },
 
+  // ── Leveling ──
+
+  // The published stages as this player stands on them: never the questions.
+  'GET /api/stages': (req, res) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to see the stages.' });
+    json(res, 200, { stages: stagePath(db, user.id) });
+  },
+
+  'GET /api/admin/stages': adminRoute(() => ({ stages: listStages(db) })),
+  'POST /api/admin/stages': adminRoute((input) => ({ stage: createStage(db, input) })),
+
   // ── Duels ──
 
   'GET /api/duels': (req, res) => {
@@ -467,6 +492,7 @@ const routes = {
 // Routes with a value in the path: [method, pattern, handler(req, res, url, ...matches), rate limit].
 const DUEL_PATH = '([A-Z2-9]{8})';
 const PLAY_PATH = '([0-9a-f-]{36})';
+const ID_PATH = '(\\d{1,9})';
 
 /** A route for one question of a round the signed-in player owns. */
 function playRoute(act) {
@@ -551,6 +577,46 @@ const paramRoutes = [
     json(res, 200, { duel: duelView(getDuel(db, id), user.id) });
   }, 'duels'],
 
+  // Starts a try at a stage, or picks up the one this player has open.
+  ['POST', new RegExp(`^/api/stages/${ID_PATH}/start$`), (req, res, url, rawId) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    ensureProfile(db, user);
+    const id = Number(rawId);
+    const stage = stagePath(db, user.id).find((s) => s.id === id);
+    if (!stage) return json(res, 404, { error: 'That stage is not available.' });
+    if (stage.status === 'locked') return json(res, 403, { error: 'Clear the stage before this one first.' });
+    let play = openStagePlay(db, id, user.id);
+    if (!play) {
+      const round = stageRound(db, id);
+      if (!round) return json(res, 404, { error: 'That stage is not available.' });
+      play = plays.begin({ kind: 'stage', ref: `${id}:${randomUUID()}`, userId: user.id, questionIds: round.ids, content: round.content });
+    }
+    json(res, 200, { stage: { id, title: stage.title }, play: plays.view(play) });
+  }, 'stages'],
+
+  // Ends the player's open try where it stands: whatever they haven't answered counts as wrong.
+  ['POST', new RegExp(`^/api/stages/${ID_PATH}/finish$`), (req, res, url, rawId) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    const play = openStagePlay(db, Number(rawId), user.id);
+    if (!play || !plays.finish(play)) return json(res, 409, { error: 'This try has already ended.' });
+    json(res, 200, { ok: true });
+  }, 'stages'],
+
+  // The Leveling dashboard. Every one of these checks for an admin (see adminRoute).
+  ['GET', new RegExp(`^/api/admin/stages/${ID_PATH}$`), adminRoute((input, id) => stageForAdmin(db, id))],
+  ['PUT', new RegExp(`^/api/admin/stages/${ID_PATH}$`), adminRoute((input, id) => ({ stage: updateStage(db, id, input) }))],
+  ['DELETE', new RegExp(`^/api/admin/stages/${ID_PATH}$`), adminRoute((input, id) => {
+    deleteStage(db, id);
+    return { ok: true };
+  })],
+  ['POST', new RegExp(`^/api/admin/stages/${ID_PATH}/move$`), adminRoute((input, id) => ({ stages: moveStage(db, id, input.direction) }))],
+  ['POST', new RegExp(`^/api/admin/stages/${ID_PATH}/questions$`), adminRoute((input, id) => addStageQuestion(db, id, input))],
+  ['PUT', new RegExp(`^/api/admin/stages/${ID_PATH}/questions/${ID_PATH}$`), adminRoute((input, id, q) => updateStageQuestion(db, id, q, input))],
+  ['DELETE', new RegExp(`^/api/admin/stages/${ID_PATH}/questions/${ID_PATH}$`), adminRoute((input, id, q) => deleteStageQuestion(db, id, q))],
+  ['POST', new RegExp(`^/api/admin/stages/${ID_PATH}/questions/${ID_PATH}/move$`), adminRoute((input, id, q) => moveStageQuestion(db, id, q, input.direction))],
+
   // One question at a time (see server/play.js).
   ['POST', new RegExp(`^/api/plays/${PLAY_PATH}/open$`), playRoute((play, input) => plays.open(play, input.idx)), 'play'],
   ['POST', new RegExp(`^/api/plays/${PLAY_PATH}/answer$`), playRoute((play, input) => plays.answer(play, input.idx, input.choice)), 'play'],
@@ -625,8 +691,18 @@ function saveFixedRound(userId, category, graded, skippedMs) {
   return { roundId: r.roundId, score: r.score, correct: r.correct, ms: time };
 }
 
-/** A Daily or duel round has ended on the server: saves the result and tells whoever should hear. */
+/** A try at a stage has ended on the server: saves it, with the first clear's bonus. */
+function finishStage(play, graded) {
+  const stageId = Number(play.ref.split(':')[0]);
+  const r = finishStageTry(db, {
+    userId: play.userId, stageId, mode: DEFAULT_MODE, graded, total: play.questionIds.length, played: play.answers.some((a) => !a.skipped),
+  });
+  if (r.round) logEvent(db, play.userId, 'round_finished', { mode: DEFAULT_MODE, category: 'stage', stage: stageId, correct: r.correct, total: r.total, score: r.score, cleared: r.cleared, firstClear: r.firstClear });
+}
+
+/** A Daily, duel or Leveling round has ended on the server: saves the result and tells whoever should hear. */
 function finishFixedRound(play, graded, skippedMs) {
+  if (play.kind === 'stage') return finishStage(play, graded);
   const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs);
   if (play.kind === 'daily') {
     finishDaily(db, play.ref, play.userId, { ...saved, total: play.questionIds.length });
@@ -751,6 +827,7 @@ const LIMITS = {
   questions: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // Quick rounds' questions, per browser
   duels: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // duel starts and finishes
   duelCreate: rateLimiter({ limit: 30, windowMs: 60 * MINUTE }), // new duels and rematches
+  stages: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // starts and early finishes of Leveling tries
   static: rateLimiter({ limit: 600, windowMs: MINUTE }), // pages, scripts and pictures from one IP
 };
 

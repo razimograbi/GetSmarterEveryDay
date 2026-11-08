@@ -75,6 +75,7 @@ public/
   js/app.js      screens: sign in, home, play, results, progress
   js/visuals.js  picture renderers (flag, photo, satellite map, sign, code)
   js/signs.js    road signs drawn in SVG
+  js/covers.js   the level covers around avatars
 scripts/
   validate.js      checks the question bank
   check-images.js  checks every Wikipedia photo resolves (needs internet)
@@ -96,7 +97,7 @@ scripts/
 | GET | `/api/stats` | Totals, per-topic mastery, streaks, last 14 days, recent rounds |
 | POST | `/api/events` | `{ name, props? }` → logs an event the browser may report (see Events below) |
 | GET | `/api/admin/retention` | Admins only: daily and monthly players, returns after 1, 7 and 30 days, event counts |
-| PUT | `/api/profile` | `{ name?, avatar?, country?, hidden? }` → the player's public profile |
+| PUT | `/api/profile` | `{ name?, avatar?, country?, hidden? }` → the player's public profile (an avatar above their level is refused) |
 | GET | `/api/friends?tz=` | Your friend code, friends (with streaks and today's Daily score) and duels |
 | POST | `/api/friends` | `{ code }` → adds the player with that friend code (both ways) |
 | DELETE | `/api/friends/:id` | Removes a friend (both ways) |
@@ -104,12 +105,18 @@ scripts/
 | GET | `/api/daily?date=` | The Daily for the player's date: number, how many questions, and their result (the questions only once finished) |
 | POST | `/api/daily/start` | `{ date }` → starts the one try, or picks up one still open (`started: false` once played) |
 | POST | `/api/daily/finish` | `{ date }` → ends the try now: anything unanswered counts as wrong |
-| GET | `/api/daily/board?date=` | Top 50, the player's own place, and their friends |
+| GET | `/api/daily/board?date=` | Top 50, the player's own place with the 2 players above and below, and their friends |
 | GET/POST | `/api/duels` | List your duels / `{ category, friendId? }` → a new duel |
 | GET | `/api/duels/:id` | One duel as you see it (questions and answers once you've played) |
 | GET | `/api/duels/:id/preview` | Who sent a duel link and their score (no sign-in needed) |
 | POST | `/api/duels/:id/start`, `/finish`, `/rematch` | Take the seat and start your side, end your side now, start a rematch |
-| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily or duel question at a time (see Fair play) |
+| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily, duel or Leveling question at a time (see Fair play) |
+| GET | `/api/stages` | The published Leveling stages as this player stands on them (never the questions) |
+| POST | `/api/stages/:id/start`, `/finish` | Start or pick up a try at an open stage, end the open try now |
+| GET/POST | `/api/admin/stages` | Admins only: list the stages / `{ title }` → a new draft |
+| GET/PUT/DELETE | `/api/admin/stages/:id` | Admins only: a stage with its questions / `{ title?, published? }` / delete it |
+| POST | `/api/admin/stages/:id/move` | Admins only: `{ direction: 'up' \| 'down' }` |
+| POST, PUT, DELETE | `/api/admin/stages/:id/questions[/:qid]` | Admins only: `{ prompt, answer, wrong: [4], picture? }`; `POST .../:qid/move` reorders |
 | POST | `/api/push/subscribe`, `/unsubscribe` | A browser's push subscription for reminders |
 | GET | `/api/account/export` | Everything stored about the user, as a JSON download |
 | DELETE | `/api/account` | Deletes the user and all their data |
@@ -334,7 +341,7 @@ create `public/lang/<id>/`, add its Google Fonts link to `FONTS` in `i18n.js` an
 
 Everything is stored in one SQLite file, `data/smarts.db` (or `$DATA_DIR/smarts.db`):
 users, sessions, settings, rounds, answers, question reports, events, profiles, friends,
-the Daily's questions and results, duels and push subscriptions. Schema changes that need
+the Daily's questions and results, duels, Leveling stages and push subscriptions. Schema changes that need
 more than a new table run once, in order, from `MIGRATIONS` in `server/db.js`
 (`PRAGMA user_version` remembers which have run).
 
@@ -392,10 +399,39 @@ haven't signed in are counted by IP address; signing in keeps the same slot.
 ### Profiles and avatars
 
 Each player has a public profile: a display name (their Google first name to start with), an
-avatar and, if they choose, a country. Avatars are illustrated animals drawn in SVG by
-`shared/avatars.js`: 12 animals, 3 faces, 11 background colours and 9 accessories, stored as a
-code such as `fox-happy-lilac-crown`. Every new player starts with a random one picked from
-their id. Google profile photos are never shown to other players.
+avatar and, if they choose, a country. Avatars are drawn in SVG by `shared/avatars.js`: 26 skins
+(animals and creatures), 9 faces, 21 backgrounds and 27 accessories, stored as a code such as
+`fox-happy-lilac-crown`. Every skin is free to choose. Add-ons are what levels unlock: 3 faces, 11
+backgrounds and 9 accessories are open to everyone, the rest unlock with levels, and every add-on
+works on every skin. Every new player starts with a random open avatar picked from their id. Google
+profile photos are never shown to other players.
+
+The profile screen shows one list at a time (Skin, Face, Colour, Add-ons, Details). The avatar and
+the tabs stay in view while a list scrolls, and Save stays above the tab bar.
+
+### Levels
+
+A finished round earns XP: 1 for each point, 10 for finishing it, 20 more for the Daily and 10 more
+for a duel (`XP` in `shared/config.js`). A round quit halfway earns nothing. Level L takes
+5 × L × (L − 1) XP in total, up to level 99:
+
+| Level | 2 | 3 | 5 | 10 | 20 | 30 | 50 |
+|---|---|---|---|---|---|---|---|
+| Total XP | 10 | 30 | 100 | 450 | 1900 | 4350 | 12250 |
+
+One finished round always reaches level 2. XP is stored on the profile, added in the same
+transaction that saves the round, and players started with what their earlier rounds earned.
+
+Each level from 2 to 20 unlocks an add-on (a face, a background or an accessory), then every 2
+levels up to Ascended at 50. The ladder is `LADDER` in `shared/avatars.js`. A locked add-on can be
+tried on in the picker but not saved, and the server refuses it too. Save then says which level it
+needs, and **Take it off** puts back what was saved. An avatar a player already wears is never
+taken away.
+
+The level shows as a cover around the avatar with the number on it (`public/js/covers.js`), on the
+Home header, the Daily boards, the Friends list and duels. The cover changes with the tier:
+Rookie, Bronze (5), Silver (10), Gold (20), Platinum (30), Diamond (40) and Legend (50). Hidden
+players' levels stay hidden on public boards. Levels never affect a board's ranking.
 
 **Show me on public boards** (on the profile page) turns a player into a "Hidden player" on the
 Daily board for everyone except their friends; friends and duel partners still see them.
@@ -420,6 +456,11 @@ rest as wrong (see Fair play).
 The board ranks by points, then by less time taken. A Daily round also counts in the player's
 statistics and streak.
 
+Boards stay short however many people play (`BOARD` in `shared/config.js`). Each tab starts with
+10 rows, and a player further down also sees themselves with the 2 players above and below.
+**Show more** adds 20 rows at a time, up to the top 50 on the Everyone tab and all friends on the
+Friends tab. Only the open tab is drawn.
+
 ### Duels
 
 Players take turns and never need to be online together. A player picks mixed topics or one
@@ -434,6 +475,29 @@ wins; on equal points, less time, and the screen then shows both times. A player
 New duels stay away from questions the players met in their last 30 rounds (for a duel sent to a
 friend or a rematch, both players'; for a link, only the sender's, because the other player isn't
 known yet). A rematch never repeats the duel it follows unless the topic is too small.
+
+### Leveling
+
+A path of **stages** that admins write on the dashboard (**Progress → Leveling stages**,
+`#/admin/stages`). Smarts ships with none: until a stage is published, players see no sign of it.
+
+A stage has a name and 5 to 20 questions (`STAGE` in `shared/config.js`). A question has a prompt,
+one right answer, four wrong ones and, if wanted, a picture at an address the Content Security Policy
+allows. New stages start as drafts, and only a stage with at least 5 questions can be published. They
+live in the database (`stages`, `stage_questions`), not in `shared/questions.js`, and the text is
+shown exactly as typed in whichever language it's written.
+
+Stages open in order: clearing one opens the next, and a cleared stage can be played again. **Clearing
+takes at least 70% right**, counted out of every question in the stage, so skipping can't make it
+easier. A round earns its usual XP (points + 10) and the first clear of each stage earns **50 XP more**
+(`XP.stageClear`), so a first clear is always worth more than a Daily. Later tries earn only the usual
+XP. Trying a stage and answering nothing earns nothing.
+
+Stages are played on the server like the Daily and duels. Each try keeps its own copy of the questions
+(`plays.content`), so editing or deleting a stage can't disturb a round in progress. Results are in
+`stage_results`, where setting `cleared_at` is what pays the bonus, so it can only happen once.
+Stage answers count in a player's totals and day streak, but stay out of "the questions you miss most"
+and the mistakes that come back in Quick rounds, and can't be reported (that's for the bank).
 
 ### Sharing
 

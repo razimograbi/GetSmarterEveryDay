@@ -350,7 +350,7 @@ export function render(q) {
             box.innerHTML = `
               ${v.logo ? '' : `<div class="photo-backdrop" style="background-image:url('${shown.replace(/'/g, '%27')}')"></div>`}
               <img class="photo-img" alt="${esc(t(v.logo ? 'vis.logoAlt' : 'vis.photoAlt'))}" src="${esc(shown)}">
-              <small class="photo-credit">Wikipedia</small>`;
+              ${v.credit === false ? '' : '<small class="photo-credit">Wikipedia</small>'}`;
             if (canvas) box.querySelector('.photo-img').replaceWith(Object.assign(canvas, { className: 'photo-img' }));
           } catch {
             forgetWikiImage(v.title); // try a fresh lookup next time

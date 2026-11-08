@@ -1,4 +1,4 @@
-// Daily and duel rounds, played on the server, because other players see those scores.
+// Daily, duel and Leveling rounds, played on the server, because other players see the results.
 //
 // The browser asks to open one question at a time, and only then gets its text and options. The
 // server starts that question's clock when it opens it, grades the answer when it arrives and
@@ -39,7 +39,10 @@ const DOWNLOADED = new Set(['wiki', 'flag', 'country', 'image', 'map']);
 const conflict = (message, extra = {}) => Object.assign(new Error(message), { status: 409, ...extra });
 
 export function createPlays(db, { onFinish }) {
-  const questionAt = (play, idx) => QUESTION_BY_ID.get(play.questionIds[idx]);
+  // A Leveling round carries its own copy of its questions (they're written on the admin
+  // dashboard and can change or go away while someone is playing). The others use the bank.
+  const questionOf = (play, id) => play.content?.[id] ?? QUESTION_BY_ID.get(id);
+  const questionAt = (play, idx) => questionOf(play, play.questionIds[idx]);
 
   /** A question's picture as the player's browser may see it: no Wikipedia title, flag code or sign name. */
   function visualFor(play, idx) {
@@ -77,8 +80,8 @@ export function createPlays(db, { onFinish }) {
   }
 
   /** Starts `userId`'s one go at this round, or returns the one already started. */
-  function begin({ kind, ref, side = null, userId, questionIds }) {
-    return findPlay(db, kind, ref, userId) ?? createPlay(db, { kind, ref, side, userId, questionIds });
+  function begin({ kind, ref, side = null, userId, questionIds, content = null }) {
+    return findPlay(db, kind, ref, userId) ?? createPlay(db, { kind, ref, side, userId, questionIds, content });
   }
 
   /** Ends a round: every question not reached is wrong, at full time. Does nothing if it has ended. */
@@ -87,12 +90,12 @@ export function createPlays(db, { onFinish }) {
     const skipped = play.answers.filter((a) => a.skipped);
     const graded = play.answers.filter((a) => !a.skipped);
     for (const id of play.questionIds.slice(play.answers.length)) {
-      const q = QUESTION_BY_ID.get(id);
+      const q = questionOf(play, id);
       graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
     }
     // A question skipped because its picture failed scores nothing and is left out of the answers,
     // but costs its full time: skipping the hard ones must not win ties.
-    const skippedMs = skipped.reduce((sum, a) => sum + secondsFor(QUESTION_BY_ID.get(a.id)) * 1000, 0);
+    const skippedMs = skipped.reduce((sum, a) => sum + secondsFor(questionOf(play, a.id)) * 1000, 0);
     onFinish(play, graded, skippedMs);
     return true;
   }
@@ -116,7 +119,7 @@ export function createPlays(db, { onFinish }) {
 
   /** What the browser is told once a question is over. */
   function outcome(play, idx, a) {
-    const q = QUESTION_BY_ID.get(a.id);
+    const q = questionOf(play, a.id);
     return {
       idx, correct: a.correct, points: a.points, ms: a.ms, answer: q.answer, question: questionContent(q),
       finished: !!play.finishedAt || play.idx >= play.questionIds.length, previews: previews(play),

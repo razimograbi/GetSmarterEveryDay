@@ -1,14 +1,15 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, inQuickRounds, pointsFor, secondsFor, localDate,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, BOARD, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, XP, STAGE, STAGE_PICTURE_HOSTS, inQuickRounds, pointsFor, secondsFor, localDate, levelFor, levelProgress, tierFor, xpForRound,
 } from '/shared/config.js';
-import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
+import { avatarUrl, avatarCode, backgroundCss, nextUnlock, parseAvatar, randomAvatar, unlockLevel, ANIMALS, EYES, BACKGROUNDS, EXTRAS, UNLOCKS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
 import { pickLevel, subjectOf } from '/shared/levels.js';
 import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
 import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages, thumb } from './visuals.js';
 import { signSvg } from './signs.js';
 import { ICONS } from './icons.js';
+import { coverUrl } from './covers.js';
 import { api, esc, shuffle, reduceMotion } from './util.js';
 import {
   LANGUAGES, lang, setLang, savedLang, rememberLang, deviceLang, isLang, locale, t, tn, qt, catName, catBlurb, reasonLabel, timeAgo, fmtDate,
@@ -19,11 +20,13 @@ const state = {
   config: null, user: null, settings: null, profile: null, stats: null, lastRound: null,
   daily: null, // today's Daily and the player's result, for the home screen
   duels: null, // the player's duels, for the home screen
+  stages: null, // the published Leveling stages as this player stands on them
   fixedRound: null, // a Daily or duel about to be played
   duelFriend: null, // the friend a new duel is for
   played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
   justUnlocked: false, // the first round was just finished: say once what the home screen gained
   newFriend: null, // a new player who added a friend from an invite link: offered as a duel at home
+  levelUp: null, // { from, to }: levels gained that haven't been celebrated yet
 };
 
 /**
@@ -303,17 +306,20 @@ async function route() {
   cleanup();
   cleanup = () => {};
   document.querySelector('.lang-sheet')?.parentElement.remove();
+  document.querySelector('.levelup-sheet')?.parentElement.remove();
   if (!rerendering) window.scrollTo(0, 0);
   if (!state.user) return showSignIn();
+  showLevelUp();
 
-  const [, page, arg] = (location.hash || '#/').split('/');
-  if (page === 'play' && (arg === 'daily' || arg === 'duel')) {
+  const [, page, arg, sub] = (location.hash || '#/').split('/');
+  if (page === 'play' && (arg === 'daily' || arg === 'duel' || arg === 'stage')) {
     const fixed = state.fixedRound;
     state.fixedRound = null;
     return fixed?.kind === arg ? startRound(arg, fixed) : go('#/', { replace: true });
   }
   if (page === 'play' && (arg === 'mixed' || arg === 'review' || CATEGORY_BY_ID[arg])) return startRound(arg);
   if (page === 'daily') return showDaily();
+  if (page === 'leveling') return arg ? showStageResult(Number(arg)) : showLeveling();
   if (page === 'duel' && arg === 'new') return showDuelNew();
   if (page === 'duel' && arg) return showDuel(arg);
   if (page === 'friends') return showFriends();
@@ -321,7 +327,7 @@ async function route() {
   if (page === 'profile') return showProfile();
   if (page === 'results' && state.lastRound) return showResults();
   if (page === 'progress') return showProgress();
-  if (page === 'admin' && state.user.admin) return showAdmin(arg);
+  if (page === 'admin' && state.user.admin) return showAdmin(arg, sub);
   return showHome();
 }
 
@@ -355,7 +361,63 @@ async function loadStats(force = false) {
   s.masteredIds = known(s.masteredIds);
   if (s.rounds > state.played) state.played = s.rounds; // e.g. a round finished on another device
   state.stats = s;
+  applyXp(s.xp);
   return s;
+}
+
+/** Takes in the player's XP from the server. A higher level is celebrated (see showLevelUp). */
+function applyXp(xp) {
+  const p = state.profile;
+  if (!p || typeof xp !== 'number') return;
+  const level = levelFor(xp);
+  if (level > p.level) state.levelUp = { from: state.levelUp?.from ?? p.level, to: level };
+  p.xp = xp;
+  p.level = level;
+  showLevelUp();
+}
+
+/** "Level up!" with what it unlocked, once the player isn't in the middle of a round. */
+function showLevelUp() {
+  const up = state.levelUp;
+  if (!up || location.hash.startsWith('#/play') || document.querySelector('.levelup-sheet')) return;
+  state.levelUp = null;
+  const p = state.profile;
+  const tier = tierFor(up.to);
+  const newTier = tierFor(up.from).id !== tier.id;
+  const unlocked = UNLOCKS.filter((u) => u.level > up.from && u.level <= up.to);
+  const next = nextUnlock(up.to);
+  const opener = document.activeElement;
+  const scrim = document.createElement('div');
+  scrim.className = 'sheet-scrim';
+  scrim.innerHTML = `
+    <div class="sheet levelup-sheet" role="dialog" aria-modal="true" aria-labelledby="levelup-title">
+      ${coveredAvatar(p, 96)}
+      <h2 id="levelup-title">${esc(t('level.up'))}</h2>
+      <p>${esc(t(newTier ? 'level.reachedTier' : 'level.reached', { n: up.to, tier: t(`level.tier.${tier.id}`) }))}</p>
+      ${unlocked.length ? `
+        <h3 class="levelup-new">${esc(t('level.unlocked'))}</h3>
+        <ul class="levelup-items">${unlocked.map((u) => `
+          <li>${unlockPreview(u, 64)}<span>${esc(t(`avatar.${u.part}.${u.value}`))}</span></li>`).join('')}</ul>` : `
+        <p>${esc(next ? t('level.nextAt', { n: next.level }) : t('level.allUnlocked'))}</p>`}
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-ghost-ink" data-levelup-close>${esc(t('level.nice'))}</button>
+        <a class="btn btn-marigold" href="#/profile">${esc(t('level.tryOn'))}</a>
+      </div>
+    </div>`;
+  document.body.append(scrim);
+  const close = () => {
+    scrim.remove();
+    opener?.focus?.({ preventScroll: true });
+  };
+  scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  scrim.addEventListener('click', (e) => {
+    if (e.target === scrim || e.target.closest('[data-levelup-close]')) close();
+    else if (e.target.closest('a')) {
+      if (unlocked.length) profileTab = unlocked[0].part;
+      scrim.remove();
+    }
+  });
+  scrim.querySelector('[data-levelup-close]').focus({ preventScroll: true });
 }
 
 // ── Sign in ────────────────────────────────────────────────────
@@ -565,6 +627,7 @@ function signedOut() {
   state.settings = null;
   state.profile = null;
   state.stats = null;
+  state.stages = null;
   state.daily = null;
   state.duels = null;
   state.played = 0;
@@ -665,7 +728,7 @@ function openReportSheet(q) {
   });
 }
 
-const reportBtn = () => `<button class="icon-btn report-btn" data-report aria-label="${esc(t('report.button'))}" title="${esc(t('report.button'))}">${ICONS.report}</button>`;
+const reportBtn = (q) => (q?.cat === 'stage' ? '' : `<button class="icon-btn report-btn" data-report aria-label="${esc(t('report.button'))}" title="${esc(t('report.button'))}">${ICONS.report}</button>`);
 
 const reportedIds = new Set(); // questions reported during this visit
 
@@ -681,7 +744,7 @@ function markReported(btn, q) {
 // ── Shared chrome ──────────────────────────────────────────────
 
 /** The signed-in player's own avatar (or any avatar code). */
-const avatar = (code = state.profile?.avatar, size = 36) => avatarImg(code, size);
+const avatar = (code = state.profile?.avatar, size = 36) => coveredAvatar({ avatar: code, level: state.profile?.level }, size);
 
 /** The tab bar. New players don't get one until their first round (see isNew); the logo leads home. */
 function tabbar(active) {
@@ -803,14 +866,14 @@ function topicRows(stats) {
   }).join('');
 }
 
-function homeTopbar() {
+function homeTopbar({ withAvatar = true } = {}) {
   const current = LANGUAGES.find((l) => l.id === lang());
   return `
     <header class="topbar">
       <span class="logo">Smarts</span>
       <span class="topbar-end">
         <button type="button" class="lang-btn" data-lang-open aria-haspopup="dialog" aria-label="${esc(t('lang.change'))}">${ICONS.globe}<span lang="${current.id}">${esc(current.name)}</span></button>
-        <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
+        ${withAvatar ? `<a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>` : ''}
       </span>
     </header>`;
 }
@@ -857,18 +920,45 @@ function drawNewHome(firstName) {
   });
 }
 
+/** What's up next on the level ladder, under the level bar. */
+function nextUnlockLine() {
+  const next = nextUnlock(state.profile.level);
+  if (!next) return `<span class="level-next">${esc(t('level.allUnlocked'))}</span>`;
+  return `
+    <span class="level-next">
+      ${unlockPreview(next, 30)}
+      <span>${esc(t('level.next', { n: next.level, item: t(`avatar.${next.part}.${next.value}`) }))}</span>
+    </span>`;
+}
+
+/** The returning player's header: their avatar in its cover, the greeting and the level bar. */
+function playerHero(firstName, streak) {
+  return `
+    <a class="player-hero" href="#/profile" aria-label="${esc(t('profile.edit'))}">
+      <span class="player-hero-top">
+        ${avatar(state.profile?.avatar, 76)}
+        <span class="player-hero-hello">
+          <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
+          ${streak ? `<span class="sub">${ICONS.fire}${esc(tn('home.streak', streak))}</span>` : ''}
+        </span>
+      </span>
+      ${levelBar()}
+      ${nextUnlockLine()}
+    </a>`;
+}
+
 function drawHome(firstName, stats, unlocked) {
   const streak = stats?.dayStreak || 0;
   app.innerHTML = `
     <section class="screen home has-tabbar">
-      ${homeTopbar()}
+      ${homeTopbar({ withAvatar: false })}
       ${unlocked ? `<p class="unlocked">${esc(t('home.unlocked'))}</p>` : ''}
-      <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
-      <p class="sub">${streak ? `${ICONS.fire}${esc(tn('home.streak', streak))}` : '&nbsp;'}</p>
+      ${playerHero(firstName, streak)}
       ${duelAlerts()}
       ${playCta(t('home.quickPlay'), t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
       <div class="home-rows">
         ${dailyRow(state.daily)}
+        ${levelingRow()}
         ${homeRow({ href: '#/duel/new', icon: ICONS.duel, title: esc(t('duel.cardTitle')), sub: esc(t('duel.cardDesc')) })}
       </div>
       <h2 class="section-title">${esc(t('home.topics'))}</h2>
@@ -914,6 +1004,7 @@ async function showHome() {
       loadStats(true),
       state.daily?.day === today() ? null : loadDaily().catch(() => null),
       api('/api/duels').then((r) => (state.duels = r.duels)).catch(() => null),
+      loadStages().catch(() => null),
     ]);
     if (nav === navId) draw(stats);
   } catch (err) {
@@ -924,7 +1015,7 @@ async function showHome() {
 // ── Round ──────────────────────────────────────────────────────
 
 const roundTitle = (cat) =>
-  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : cat === 'daily' ? t('round.daily') : cat === 'duel' ? t('round.duel')
+  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : cat === 'daily' ? t('round.daily') : cat === 'duel' ? t('round.duel') : cat === 'stage' ? t('round.stage')
     : CATEGORY_BY_ID[cat] ? catName(CATEGORY_BY_ID[cat]) : cat;
 
 const diffLevel = (d) => (d <= 3 ? 'easy' : d <= 6 ? 'medium' : 'hard');
@@ -1294,14 +1385,16 @@ async function startRound(cat, fixed = null) {
 
     const vis = renderVisual(q);
     const topic = CATEGORY_BY_ID[q.cat];
+    const typed = round.fixed?.kind === 'stage';
+    const bidi = typed ? ' dir="auto"' : '';
     const head =
       q.visual.type === 'text'
-        ? `<div class="qcard" style="--hue:${topic.hue}">
-             <p class="qcard-source">${esc(topic.book ? t('q.byAuthor', { topic: catName(topic), author: catBlurb(topic) }) : catName(topic))}</p>
-             <p class="qcard-text" id="prompt">${esc(qt(q, q.prompt))}</p>
+        ? `<div class="qcard" style="--hue:${typed ? 'var(--cobalt)' : topic.hue}">
+             <p class="qcard-source"${bidi}>${esc(typed ? round.fixed.title : topic.book ? t('q.byAuthor', { topic: catName(topic), author: catBlurb(topic) }) : catName(topic))}</p>
+             <p class="qcard-text" id="prompt"${bidi}>${esc(qt(q, q.prompt))}</p>
            </div>`
         : `<figure class="pic pic-${q.visual.type}">${vis.html}<p class="pic-loading" hidden>${esc(t('q.loading'))}</p></figure>
-           <p class="prompt" id="prompt">${esc(qt(q, q.prompt))}</p>`;
+           <p class="prompt" id="prompt"${bidi}>${esc(qt(q, q.prompt))}</p>`;
     // Options are kept in English (that's what is graded) and shown translated.
     // A new player's very first question says what to do. The clock isn't paused for it,
     // so a first Daily or duel scores the same as anyone's.
@@ -1312,7 +1405,7 @@ async function startRound(cat, fixed = null) {
       ${head}
       ${firstHint}
       <div class="answers is-waiting" role="group" aria-labelledby="prompt">
-        ${(token.options.length ? token.options : Array(5).fill('')).map((o, i) => `<button class="answer" data-i="${i}" disabled><kbd>${i + 1}</kbd><span>${esc(qt(q, o))}</span></button>`).join('')}
+        ${(token.options.length ? token.options : Array(5).fill('')).map((o, i) => `<button class="answer" data-i="${i}" disabled><kbd>${i + 1}</kbd><span${bidi}>${esc(qt(q, o))}</span></button>`).join('')}
       </div>`;
     stage.classList.remove('enter');
     void stage.offsetWidth;
@@ -1375,7 +1468,7 @@ async function startRound(cat, fixed = null) {
       round.results.push({ q: token.q, choice: null, correct: false, ms: 0, points: 0, skipped: true });
       keepOpenRound();
       pips[round.idx].classList.add('is-skipped');
-      showDock(`<p class="dock-msg">${esc(t('q.noPicture'))}</p>${reportBtn()}<button class="btn btn-marigold btn-next" data-next><span>${esc(t('q.skip'))}</span></button>`);
+      showDock(`<p class="dock-msg">${esc(t('q.noPicture'))}</p>${reportBtn(token.q)}<button class="btn btn-marigold btn-next" data-next><span>${esc(t('q.skip'))}</span></button>`);
       scheduleAutoNext();
       return;
     }
@@ -1468,7 +1561,7 @@ async function startRound(cat, fixed = null) {
     // Short answers stay on one line ("No U-turn" shouldn't split); long ones wrap.
     const shown = qt(q, q.answer);
     const long = shown.length > 22;
-    const ans = `<b class="${long ? 'is-long' : ''}">${esc(shown)}</b>`;
+    const ans = `<b class="${long ? 'is-long' : ''}"${q.cat === 'stage' ? ' dir="auto"' : ''}>${esc(shown)}</b>`;
     const reveal = t(long ? 'q.answerIs' : 'q.its', { answer: ans });
     const msg = correct
       ? `<p class="dock-msg is-right">${ICONS.check}<span>${t('q.right', { points })}</span></p>`
@@ -1478,7 +1571,7 @@ async function startRound(cat, fixed = null) {
         ? `<p class="dock-msg is-wrong">${ICONS.clock}<span>${esc(t('q.outOfTime'))} ${reveal}</span></p>`
         : `<p class="dock-msg is-wrong">${ICONS.cross}<span>${reveal}</span></p>`;
     const last = round.idx === round.questions.length - 1;
-    showDock(`${msg}${reportBtn()}<button class="btn btn-marigold btn-next" data-next><span>${esc(t(last ? 'q.seeResults' : 'q.next'))}</span></button>`);
+    showDock(`${msg}${reportBtn(q)}<button class="btn btn-marigold btn-next" data-next><span>${esc(t(last ? 'q.seeResults' : 'q.next'))}</span></button>`);
 
     // Keep the right answer visible above the result bar on short screens.
     const rightBtn = stage.querySelector('.answer.is-correct');
@@ -1676,7 +1769,7 @@ async function startRound(cat, fixed = null) {
     const answered = new Set(round.results.map((r) => r.q.id));
     const left = round.questions.filter((q) => !answered.has(q.id)).length;
     $('[data-quit-note]').textContent = round.fixed
-      ? tn(round.fixed.kind === 'daily' ? 'quit.daily' : 'quit.duel', left)
+      ? tn({ daily: 'quit.daily', stage: 'quit.stage' }[round.fixed.kind] ?? 'quit.duel', left)
       : tn('quit.note', left);
     pause({ hide: true }); // the clock stops, so the question can't be read meanwhile
     quitSheet.hidden = false;
@@ -1910,6 +2003,7 @@ async function saveRecord(record) {
   pendingSave = saving.catch(() => {});
   try {
     record.saved = await saving;
+    applyXp(record.saved.xp);
     forgetUnsent(record);
     loadStats(true).catch(() => {});
   } catch (err) {
@@ -2001,6 +2095,11 @@ function showResults() {
           </dl>
           <p class="score-how">${esc(t('res.howPoints', { max: MAX_POINTS - 1 }))}</p>
           ${r.bestStreak >= 3 ? `<p class="score-how">${esc(t('res.streak', { n: r.bestStreak }))}</p>` : ''}` : ''}
+        ${r.saved?.xpGained ? `
+          <div class="xp-row">
+            <p class="xp-earned" dir="ltr">+${r.saved.xpGained} XP</p>
+            ${levelBar()}
+          </div>` : ''}
         <p class="save-state ${r.error ? 'is-error' : ''}">
           ${esc(r.error ? t('res.notSaved', { error: r.error }) : r.saved ? t('res.saved') : counted.length ? t('res.saving') : '')}
         </p>
@@ -2053,6 +2152,36 @@ function showResults() {
 /** A player's avatar picture (their animal; hidden players get a plain silhouette). */
 const avatarImg = (code, size = 40, cls = '') =>
   `<img class="avatar ${cls}" src="${avatarUrl(code)}" alt="" width="${size}" height="${size}">`;
+
+/**
+ * A player's avatar in the cover of their level, with the number on it. The cover hangs around
+ * the avatar without taking up room beside it, so hidden players (no level) still line up.
+ */
+function coveredAvatar(player, size = 40) {
+  const level = player?.level;
+  if (!level) return avatarImg(player?.avatar, size);
+  const tier = tierFor(level).id;
+  return `<span class="cover is-${tier}" style="--s:${size}px" role="img" aria-label="${esc(t('level.label', { n: level }))}">${avatarImg(player.avatar, size)}<img class="cover-art" src="${coverUrl(tier)}" alt=""><span class="cover-num" aria-hidden="true">${level}</span></span>`;
+}
+
+/** The player's own avatar with an unlockable part swapped in: a creature, a face, a colour or an extra. */
+const unlockPreview = (u, size) => avatarImg(avatarCode({ ...parseAvatar(state.profile.avatar), [u.part]: u.value }), size);
+
+/** "Level 12 · Silver", the player's XP through that level, and a bar. */
+function levelBar() {
+  const { level, into, need } = levelProgress(state.profile.xp);
+  return `
+    <span class="level-bar">
+      <span class="level-bar-top">
+        <strong>${esc(t('level.label', { n: level }))} · ${esc(t(`level.tier.${tierFor(level).id}`))}</strong>
+        ${need ? `<span dir="ltr">${into}/${need} XP</span>` : ''}
+      </span>
+      <span class="meter" role="progressbar" aria-valuemin="0" aria-valuemax="${need || 1}" aria-valuenow="${need ? into : 1}" aria-label="${esc(t('level.label', { n: level }))}"><span style="width:${need ? (into / need) * 100 : 100}%"></span></span>
+    </span>`;
+}
+
+/** "+48 XP", for result screens of Daily and duel rounds. */
+const xpEarned = (category, score) => (score > 0 ? `<p class="xp-earned xp-earned-ink" dir="ltr">+${xpForRound(category, score)} XP</p>` : '');
 
 function countryName(cc) {
   try {
@@ -2197,15 +2326,43 @@ function drawDailyIntro(d) {
   });
 }
 
-function boardList(entries, emptyHtml) {
-  if (!entries.length) return `<p class="board-empty">${emptyHtml}</p>`;
-  return `<ol class="board">${entries.map((e) => `
+const boardRows = (entries) => `<ol class="board">${entries.map((e) => `
     <li class="${e.me ? 'is-me' : ''}">
-      <span class="board-rank">${e.rank}</span>
-      ${avatarImg(e.avatar, 40)}
+      <span class="board-rank ${e.rank >= 1000 ? 'is-long' : ''}">${e.rank}</span>
+      ${coveredAvatar(e, 40)}
       <span class="board-who">${personName(e)}<small>${esc(t('board.right', { c: e.correct, t: e.total }))}</small></span>
       <span class="board-pts">${e.score}</span>
     </li>`).join('')}</ol>`;
+
+/** What a board shows with `limit` rows open: those rows, the viewer's neighbours below them, and whether any row is still out of sight. */
+function boardView({ entries, around, limit }) {
+  const open = entries.slice(0, limit);
+  const lastRank = open.at(-1)?.rank ?? 0;
+  const below = around.filter((e) => e.rank > lastRank);
+  const belowRanks = new Set(below.map((e) => e.rank));
+  return { open, below, more: entries.slice(limit).some((e) => !belowRanks.has(e.rank)) };
+}
+
+/** One board: its first rows, then the viewer and their neighbours if they're further down, then a button. `total` is how many players the rows came from. */
+function boardHtml(board) {
+  const { entries, limit, total, emptyHtml } = board;
+  if (!entries.length) return `<p class="board-empty">${emptyHtml}</p>`;
+  const { open, below, more } = boardView(board);
+  const nextRank = entries[limit]?.rank ?? open.at(-1).rank + 1;
+  const skipped = below.length > 0 && below[0].rank !== nextRank;
+  const button = more ? 'board.more' : limit > BOARD.first ? 'board.fewer' : '';
+  return `
+    ${boardRows(open)}
+    ${skipped ? '<p class="board-gap">…</p>' : ''}
+    ${below.length ? boardRows(below) : ''}
+    ${total > open.length ? `<p class="board-note">${esc(t('board.topOf', { shown: open.length, players: total }))}</p>` : ''}
+    ${button ? `<button type="button" class="btn btn-ghost-ink btn-block board-more" data-board-more>${esc(t(button))}</button>` : ''}`;
+}
+
+/** The player and the friends just above and below them. */
+function aroundMe(entries) {
+  const i = entries.findIndex((e) => e.me);
+  return i < 0 ? [] : entries.slice(Math.max(0, i - BOARD.around), i + BOARD.around + 1);
 }
 
 let boardTab = 'all';
@@ -2226,6 +2383,7 @@ function drawDailyResult(d, board) {
           ${avatar(state.profile?.avatar, 64)}
           <p class="result-score">${r.score}<small>/${max}</small></p>
           <p class="result-line">${esc(t('daily.rightOf', { right: r.correct ?? 0, total: d.count }))}${me ? ` · ${esc(t('daily.rank', { rank: me.rank, players: board.players }))}` : ''}</p>
+          ${xpEarned('daily', r.score)}
           ${squaresHtml(squares)}
           <div class="share-row">
             <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('share.share'))}</span></button>
@@ -2242,9 +2400,7 @@ function drawDailyResult(d, board) {
           <button role="tab" data-tab="all" aria-selected="${boardTab === 'all'}">${esc(t('board.today', { n: board?.players ?? 0 }))}</button>
           <button role="tab" data-tab="friends" aria-selected="${boardTab === 'friends'}">${esc(t('board.friends'))}</button>
         </div>
-        <div data-board-all ${boardTab === 'all' ? '' : 'hidden'}>${boardList(board?.top || [], esc(t('board.noneYet')))}
-          ${me && !board.top.some((e) => e.me) ? `<p class="board-gap">…</p>${boardList([me], '')}` : ''}</div>
-        <div data-board-friends ${boardTab === 'friends' ? '' : 'hidden'}>${boardList(board?.friends || [], `${esc(t('board.noFriends'))} <a href="#/friends">${esc(t('board.invite'))}</a>`)}</div>
+        <div data-board></div>
       </div>
 
       ${finished ? `
@@ -2259,12 +2415,28 @@ function drawDailyResult(d, board) {
     ${tabbar('home')}`;
 
   bindThumbs();
+  // Only the open tab is drawn, and only as many rows as the player asked to see.
+  const boards = {
+    all: { entries: board?.top || [], around: board?.around || [], total: board?.players ?? 0, emptyHtml: esc(t('board.noneYet')) },
+    friends: { entries: board?.friends || [], around: aroundMe(board?.friends || []), total: 0, emptyHtml: `${esc(t('board.noFriends'))} <a href="#/friends">${esc(t('board.invite'))}</a>` },
+  };
+  const limits = { all: BOARD.first, friends: BOARD.first };
+  const boardEl = app.querySelector('[data-board]');
+  const drawBoard = () => { boardEl.innerHTML = boardHtml({ ...boards[boardTab], limit: limits[boardTab] }); };
+  drawBoard();
   app.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
     boardTab = b.dataset.tab;
     app.querySelectorAll('[data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
-    app.querySelector('[data-board-all]').hidden = boardTab !== 'all';
-    app.querySelector('[data-board-friends]').hidden = boardTab !== 'friends';
+    drawBoard();
   }));
+  boardEl.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-board-more]')) return;
+    const growing = boardView({ ...boards[boardTab], limit: limits[boardTab] }).more;
+    limits[boardTab] = growing ? limits[boardTab] + BOARD.step : BOARD.first;
+    drawBoard();
+    boardEl.querySelector('[data-board-more]')?.focus({ preventScroll: true });
+    if (!growing) boardEl.closest('.panel').scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+  });
   if (!finished) return;
 
   const status = app.querySelector('[data-share-status]');
@@ -2401,6 +2573,7 @@ async function showDuel(id) {
         ${avatar(state.profile?.avatar, 80)}
         <p class="result-score">${mine.score}<small>/${max}</small></p>
         <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.count }))}</p>
+        ${xpEarned('duel', mine.score)}
         <p class="challenge-sub">${duel.invitedFriend?.name
           ? t('duel.waitingInvited', { name: personName(other) })
           : other?.name ? t('duel.waitingFor', { name: personName(other) }) : esc(t('duel.sendLink'))}</p>
@@ -2468,18 +2641,19 @@ function duelResultHtml(duel, max) {
       <p class="verdict">${verdict}</p>
       <div class="versus-row">
         <div class="versus-side ${duel.winner === (meSide || 'challenger') ? 'is-winner' : ''}">
-          ${avatarImg(me.avatar, 84)}
+          ${coveredAvatar(me, 84)}
           <span class="versus-name">${meSide ? esc(t('duel.you')) : personName(me)}</span>
           <span class="versus-score">${me.score}</span>
         </div>
         <span class="versus-vs">${esc(t('duel.vs'))}</span>
         <div class="versus-side ${duel.winner === (meSide ? themSide : 'opponent') ? 'is-winner' : ''}">
-          ${avatarImg(them?.avatar, 84)}
+          ${coveredAvatar(them, 84)}
           <span class="versus-name">${personName(them)}</span>
           <span class="versus-score">${them?.score ?? '–'}</span>
         </div>
       </div>
       <p class="result-line">${esc(t('duel.outOf', { max }))}</p>
+      ${meSide ? xpEarned('duel', me.score) : ''}
       ${decidedByTime ? `<p class="result-line">${t('duel.tieTime', { me: meSide ? esc(t('duel.you')) : personName(me), myTime: esc(secs(me.ms)), them: personName(them), theirTime: esc(secs(them.ms)) })}</p>` : ''}
       ${meSide ? `
         <div class="share-row">
@@ -2501,6 +2675,150 @@ function duelResultHtml(duel, max) {
       </ol>`}`;
 }
 
+// ── Leveling ───────────────────────────────────────────────────
+// Stages an admin writes on the dashboard, played in order on the server. "Level" is the player's
+// own level; a step on this path is a stage.
+
+async function loadStages() {
+  state.stages = (await api('/api/stages')).stages;
+  return state.stages;
+}
+
+const xpLabel = (xp) => `<bdi dir="ltr">+${xp} XP</bdi>`;
+
+/** Leveling on the home screen. It isn't there until an admin publishes a stage. */
+function levelingRow() {
+  const stages = state.stages;
+  if (!stages?.length) return '';
+  const next = stages.find((s) => s.status === 'open');
+  return homeRow({
+    href: '#/leveling',
+    icon: ICONS.leveling,
+    title: esc(t('leveling.title')),
+    sub: next ? t('leveling.rowNext', { n: stages.indexOf(next) + 1, total: stages.length, xp: xpLabel(XP.stageClear) }) : esc(t('leveling.rowDone')),
+  });
+}
+
+/** Starts a try at a stage, or picks up the one still open. */
+async function playStage(id) {
+  const { play, stage } = await api(`/api/stages/${id}/start`, { method: 'POST' });
+  track('round_started', { mode: DEFAULT_MODE, category: 'stage' });
+  playFixed({ kind: 'stage', title: stage.title, after: `#/leveling/${id}`, play, endpoint: `/api/stages/${id}/finish`, extra: {} });
+}
+
+/** Wires up the buttons that start a stage. */
+function bindStageButtons() {
+  app.querySelectorAll('[data-play-stage]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      await playStage(Number(b.dataset.playStage));
+    } catch (err) {
+      if (err.status === 401) return signOut();
+      if (err.status === 403 || err.status === 404) return route(); // an admin changed the path meanwhile
+      b.disabled = false;
+      window.alert(errMsg(err));
+    }
+  }));
+}
+
+function stageNode(s, i) {
+  const locked = s.status === 'locked';
+  const cleared = s.status === 'cleared';
+  const mark = cleared ? ICONS.check : locked ? ICONS.lock : `<span dir="ltr">${i + 1}</span>`;
+  const line = locked
+    ? t('leveling.locked')
+    : [tn('leveling.questions', s.count), s.best ? t('leveling.best', { c: s.best.correct, t: s.best.total }) : ''].filter(Boolean).join(' · ');
+  return `
+    <li class="stage-node is-${s.status}">
+      <button type="button" class="stage-card" ${locked ? 'disabled' : `data-play-stage="${s.id}"`}>
+        <span class="stage-mark">${mark}</span>
+        <span class="stage-text">
+          <small>${esc(t('leveling.stage', { n: i + 1 }))}</small>
+          <strong dir="auto">${esc(s.title)}</strong>
+          <span>${esc(line)}</span>
+        </span>
+        ${s.status === 'open' ? `<span class="stage-xp" dir="ltr">+${XP.stageClear} XP</span>` : cleared ? `<span class="stage-again">${esc(t('leveling.replay'))}</span>` : ''}
+      </button>
+    </li>`;
+}
+
+/** Loads the stages for a Leveling screen. Null when the screen has already dealt with it. */
+async function stagesForScreen(nav) {
+  try {
+    await pendingSave;
+    const stages = await loadStages();
+    return nav === navId ? stages : null;
+  } catch (err) {
+    if (nav !== navId) return null;
+    if (err.status === 401) signOut();
+    else app.querySelector('.sub').textContent = t('leveling.loadFailed', { error: errMsg(err) });
+    return null;
+  }
+}
+
+const levelingLoading = () => `
+  <section class="screen leveling has-tabbar">${topbar()}<h1 class="greeting">${esc(t('leveling.title'))}</h1><p class="sub">${esc(t('leveling.loading'))}</p></section>
+  ${tabbar('home')}`;
+
+async function showLeveling() {
+  const nav = navId;
+  app.innerHTML = levelingLoading();
+  const stages = await stagesForScreen(nav);
+  if (!stages) return;
+  if (!stages.length) return go('#/', { replace: true });
+  const cleared = stages.filter((s) => s.status === 'cleared').length;
+  app.innerHTML = `
+    <section class="screen leveling has-tabbar">
+      ${topbar()}
+      <h1 class="greeting">${esc(t('leveling.title'))}</h1>
+      <p class="sub">${t('leveling.intro', { percent: STAGE.clearPercent, xp: xpLabel(XP.stageClear) })}</p>
+      <p class="stage-progress">${esc(t('leveling.progress', { c: cleared, t: stages.length }))}</p>
+      <ol class="stage-path">${stages.map(stageNode).join('')}</ol>
+    </section>
+    ${tabbar('home')}`;
+  bindStageButtons();
+}
+
+/** How the last try at a stage went. */
+async function showStageResult(id) {
+  const nav = navId;
+  app.innerHTML = levelingLoading();
+  const stages = await stagesForScreen(nav);
+  if (!stages) return;
+  const at = stages.findIndex((s) => s.id === id);
+  const stage = stages[at];
+  if (!stage?.last) return go('#/leveling', { replace: true }); // not played, or an admin removed it
+  const r = stage.last;
+  const need = Math.ceil((r.total * STAGE.clearPercent) / 100);
+  const next = stages[at + 1];
+  const nextOpen = r.cleared && next && next.status !== 'locked';
+  const primary = nextOpen
+    ? `<button class="btn btn-marigold btn-block" data-play-stage="${next.id}">${esc(t('leveling.next'))}</button>`
+    : r.cleared
+      ? `<button class="btn btn-marigold btn-block" data-play-stage="${id}">${esc(t('leveling.replay'))}</button>`
+      : `<button class="btn btn-marigold btn-block" data-play-stage="${id}">${esc(t('leveling.again'))}</button>`;
+  app.innerHTML = `
+    <section class="screen leveling has-tabbar">
+      ${topbar()}
+      <div class="panel stage-result ${r.cleared ? 'is-cleared' : ''}">
+        <p class="eyebrow" dir="auto">${esc(stage.title)}</p>
+        <h1 class="stage-verdict">${esc(t(r.cleared ? 'leveling.resCleared' : 'leveling.resFailed'))}</h1>
+        <p class="result-score" dir="ltr">${r.correct}<small>/${r.total}</small></p>
+        <p class="result-line">${esc(t('leveling.resRight', { score: r.score }))}</p>
+        ${r.cleared ? '' : `<p class="challenge-sub">${esc(t('leveling.resNeed', { need, t: r.total }))}</p>`}
+        <dl class="stage-xp-sum">
+          <div><dt>${esc(t('leveling.xpRound'))}</dt><dd dir="ltr">+${r.xp} XP</dd></div>
+          ${r.bonus ? `<div class="is-bonus"><dt>${esc(t('leveling.xpBonus'))}</dt><dd dir="ltr">+${r.bonus} XP</dd></div>` : ''}
+        </dl>
+        ${r.cleared && !r.bonus ? `<p class="challenge-sub">${esc(t('leveling.noBonus'))}</p>` : ''}
+        ${primary}
+        <a class="btn btn-ghost-ink btn-block" href="#/leveling">${esc(t('leveling.all'))}</a>
+      </div>
+    </section>
+    ${tabbar('home')}`;
+  bindStageButtons();
+}
+
 // ── Friends ────────────────────────────────────────────────────
 
 const DUEL_STATUS_KEY = { yourTurn: 'duel.st.yourTurn', invited: 'duel.st.invited', waiting: 'duel.st.waiting', open: 'duel.st.waiting', done: 'duel.st.done', taken: 'duel.st.done' };
@@ -2515,7 +2833,7 @@ function duelRow(d) {
     : t(DUEL_STATUS_KEY[d.status] || 'duel.st.waiting');
   return `
     <li><a class="person-row duel-row is-${d.status}" href="#/duel/${d.id}">
-      ${avatarImg(other?.avatar, 44)}
+      ${coveredAvatar(other, 44)}
       <span class="person-text">${other?.name ? personName(other) : `<span class="is-hidden">${esc(t('duel.anyone'))}</span>`}<small>${esc(duelTopic(d.category))} · ${esc(result)}</small></span>
       <span class="duel-score">${mine ?? '–'}<small>:</small>${theirs ?? '–'}</span>
     </a></li>`;
@@ -2576,7 +2894,7 @@ async function showFriends() {
         <h2 class="panel-title">${esc(tn('friends.count', data.friends.length))}</h2>
         ${data.friends.length ? `<ul class="people">${data.friends.map((f) => `
           <li class="person-row">
-            ${avatarImg(f.avatar, 44)}
+            ${coveredAvatar(f, 44)}
             <span class="person-text">${personName(f)}<small>${f.streak ? `<span class="streak">${ICONS.fire}${esc(tn('friends.streak', f.streak))}</span>` : esc(t('friends.noStreak'))}${f.daily !== null ? ` · ${esc(t('friends.dailyScore', { score: f.daily }))}` : ''}</small></span>
             <button class="btn btn-small btn-marigold" data-duel="${esc(f.id)}" data-name="${esc(f.name)}">${esc(t('friends.challenge'))}</button>
             <button class="icon-btn icon-btn-ink" data-remove="${esc(f.id)}" data-name="${esc(f.name)}" aria-label="${esc(t('friends.remove', { name: f.name }))}" title="${esc(t('friends.remove', { name: f.name }))}">${ICONS.close}</button>
@@ -2661,86 +2979,191 @@ async function showAddFriend(code) {
 
 // ── Profile ────────────────────────────────────────────────────
 
+// The profile screen shows one thing at a time: a part of the avatar, or the name and country.
+const PROFILE_TABS = [
+  { id: 'animal', label: 'profile.animal', values: ANIMALS },
+  { id: 'eyes', label: 'profile.face', values: EYES },
+  { id: 'bg', label: 'profile.color', values: Object.keys(BACKGROUNDS) },
+  { id: 'extra', label: 'profile.extra', values: EXTRAS },
+  { id: 'details', label: 'profile.details' },
+];
+// Stays put between visits. "Try it on" in the level-up sheet opens the tab of what was unlocked.
+let profileTab = 'animal';
+
 function showProfile() {
   const p = state.profile;
-  let draft = { ...parseAvatar(p.avatar) || parseAvatar(randomAvatar(state.user.id)) };
+  const level = p.level;
+  const saved = parseAvatar(p.avatar) || parseAvatar(randomAvatar(state.user.id));
+  let draft = { ...saved };
   const code = () => avatarCode(draft);
+  const itemName = (part, value) => t(`avatar.${part}.${value}`);
+
+  /** What stops this avatar being saved: its most demanding locked part. An avatar already worn always can be. */
+  function blocker() {
+    if (code() === p.avatar) return null;
+    const locked = Object.keys(draft).filter((part) => unlockLevel(part, draft[part]) > level)
+      .sort((a, b) => unlockLevel(b, draft[b]) - unlockLevel(a, draft[a]));
+    return locked.length ? { part: locked[0], value: draft[locked[0]], need: unlockLevel(locked[0], draft[locked[0]]) } : null;
+  }
+
+  function tile(part, value) {
+    const need = unlockLevel(part, value);
+    const locked = need > level;
+    const label = esc(locked ? `${itemName(part, value)} · ${t('profile.unlocksAt', { n: need })}` : itemName(part, value));
+    const picture = part === 'bg'
+      ? `<span class="swatch" style="background:${backgroundCss(value)}"></span>`
+      : avatarImg(avatarCode({ ...draft, [part]: value }), 64);
+    return `<button type="button" class="avatar-choice ${locked ? 'is-locked' : ''}" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${label}" title="${label}">${picture}${locked ? `<span class="lock-chip" dir="ltr" aria-hidden="true">${ICONS.lock}${need}</span>` : ''}</button>`;
+  }
+
+  /** The line above a list: skins are free; add-ons say how many are open and what's next. */
+  function tabProgress(tab) {
+    if (tab.id === 'animal') return `<span>${esc(t('profile.skinsFree'))}</span>`;
+    const open = tab.values.filter((v) => unlockLevel(tab.id, v) <= level).length;
+    const next = UNLOCKS.find((u) => u.part === tab.id && u.level > level);
+    return `<strong>${esc(t('profile.unlockedCount', { n: open, total: tab.values.length }))}</strong><span>${esc(next ? t('profile.nextHere', { item: itemName(next.part, next.value), n: next.level }) : t('profile.allHere'))}</span>`;
+  }
+
+  function panelHtml() {
+    const tab = PROFILE_TABS.find((x) => x.id === profileTab);
+    return `
+      <p class="studio-progress">${tabProgress(tab)}</p>
+      <div class="${tab.id === 'bg' ? 'swatch-grid' : 'avatar-grid'}">${tab.values.map((v) => tile(tab.id, v)).join('')}</div>`;
+  }
+
   const countries = [...COUNTRIES].sort((a, b) => countryName(a).localeCompare(countryName(b), locale()));
-  const choice = (part, value, preview) =>
-    `<button type="button" class="avatar-choice" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${esc(t(`avatar.${part}.${value}`))}" title="${esc(t(`avatar.${part}.${value}`))}">${preview}</button>`;
-  const groups = () => `
-    <h2 class="picker-title">${esc(t('profile.animal'))}</h2>
-    <div class="avatar-grid">${ANIMALS.map((a) => choice('animal', a, avatarImg(avatarCode({ ...draft, animal: a }), 64))).join('')}</div>
-    <h2 class="picker-title">${esc(t('profile.face'))}</h2>
-    <div class="avatar-grid">${EYES.map((e) => choice('eyes', e, avatarImg(avatarCode({ ...draft, eyes: e }), 64))).join('')}</div>
-    <h2 class="picker-title">${esc(t('profile.color'))}</h2>
-    <div class="swatch-grid">${Object.entries(BACKGROUNDS).map(([id, hex]) => choice('bg', id, `<span class="swatch" style="background:${hex}"></span>`)).join('')}</div>
-    <h2 class="picker-title">${esc(t('profile.extra'))}</h2>
-    <div class="avatar-grid">${EXTRAS.map((x) => choice('extra', x, avatarImg(avatarCode({ ...draft, extra: x }), 64))).join('')}</div>`;
 
   app.innerHTML = `
     <section class="screen profile has-tabbar">
       ${topbar()}
-      <h1 class="greeting">${esc(t('profile.title'))}</h1>
-      <div class="profile-preview">
-        <span data-preview>${avatarImg(code(), 140, 'avatar-xl')}</span>
-        <button type="button" class="btn btn-small btn-ghost" data-random>${ICONS.dice}<span>${esc(t('profile.random'))}</span></button>
-      </div>
-      <form class="panel profile-form" data-form novalidate>
-        <label class="field">
-          <span>${esc(t('profile.name'))}</span>
-          <input name="name" maxlength="20" value="${esc(p.name)}" autocomplete="nickname" required>
-        </label>
-        <div data-groups>${groups()}</div>
-        <label class="field">
-          <span>${esc(t('profile.country'))}</span>
-          <span class="country-row">
-            <span data-flag>${flagImg(p.country)}</span>
-            <select name="country">
-              <option value="">${esc(t('profile.noCountry'))}</option>
-              ${countries.map((c) => `<option value="${c}" ${c === p.country ? 'selected' : ''}>${esc(countryName(c))}</option>`).join('')}
-            </select>
-          </span>
-        </label>
-        <label class="setting">
-          <span><strong>${esc(t('profile.showOnBoards'))}</strong><span>${esc(t('profile.showHint'))}</span></span>
-          <input type="checkbox" class="switch" name="shown" ${p.hidden ? '' : 'checked'}>
-        </label>
-        <p class="form-msg" data-msg role="status"></p>
-        <button class="btn btn-marigold btn-block" type="submit">${esc(t('profile.save'))}</button>
+      <form class="studio" data-form novalidate>
+        <div class="studio-top">
+          <div class="studio-head">
+            <span class="studio-avatar" data-preview></span>
+            <div class="studio-side">
+              <h1 class="studio-title">${esc(t('profile.title'))}</h1>
+              ${levelBar()}
+              <div class="studio-status" data-status></div>
+            </div>
+          </div>
+          <div class="seg studio-tabs" role="tablist" aria-label="${esc(t('profile.tabsAria'))}">
+            ${PROFILE_TABS.map((tab) => `<button type="button" role="tab" data-tab="${tab.id}" aria-controls="${tab.id === 'details' ? 'studio-details' : 'studio-panel'}" aria-selected="${tab.id === profileTab}">${esc(t(tab.label))}</button>`).join('')}
+          </div>
+        </div>
+        <div class="panel studio-panel" id="studio-panel" role="tabpanel" data-panel></div>
+        <p class="level-how" data-how>${esc(t('level.how', { finished: XP.finished, daily: XP.bonus.daily, duel: XP.bonus.duel, stage: XP.stageClear }))}</p>
+        <div class="panel profile-details" id="studio-details" role="tabpanel" data-details hidden>
+          <label class="field">
+            <span>${esc(t('profile.name'))}</span>
+            <input name="name" maxlength="20" value="${esc(p.name)}" autocomplete="nickname" required>
+          </label>
+          <label class="field">
+            <span>${esc(t('profile.country'))}</span>
+            <span class="country-row">
+              <span data-flag>${flagImg(p.country)}</span>
+              <select name="country">
+                <option value="">${esc(t('profile.noCountry'))}</option>
+                ${countries.map((c) => `<option value="${c}" ${c === p.country ? 'selected' : ''}>${esc(countryName(c))}</option>`).join('')}
+              </select>
+            </span>
+          </label>
+          <label class="setting">
+            <span><strong>${esc(t('profile.showOnBoards'))}</strong><span>${esc(t('profile.showHint'))}</span></span>
+            <input type="checkbox" class="switch" name="shown" ${p.hidden ? '' : 'checked'}>
+          </label>
+        </div>
+        <div class="studio-save">
+          <p class="form-msg" data-msg role="status"></p>
+          <button class="btn btn-marigold btn-block" type="submit" data-save>${esc(t('profile.save'))}</button>
+        </div>
       </form>
     </section>
     ${tabbar('progress')}`;
 
-  const redraw = () => {
-    app.querySelector('[data-preview]').innerHTML = avatarImg(code(), 140, 'avatar-xl');
-    app.querySelector('[data-groups]').innerHTML = groups();
-  };
-  app.querySelector('[data-groups]').addEventListener('click', (e) => {
+  const form = app.querySelector('[data-form]');
+  const preview = app.querySelector('[data-preview]');
+  const status = app.querySelector('[data-status]');
+  const panel = app.querySelector('[data-panel]');
+  const how = app.querySelector('[data-how]');
+  const details = app.querySelector('[data-details]');
+  const msg = app.querySelector('[data-msg]');
+  const save = app.querySelector('[data-save]');
+
+  let statusKey = null;
+  /** The note beside the avatar and the save button: both say so when a locked part is on. */
+  function drawStatus() {
+    const b = blocker();
+    save.disabled = !!b;
+    save.textContent = b ? t('profile.saveLocked', { n: b.need }) : t('profile.save');
+    const key = b ? `${b.part}:${b.value}` : '';
+    if (key === statusKey) return; // keeps the button under the player's finger and focus
+    statusKey = key;
+    status.innerHTML = b
+      ? `<p class="studio-lock" role="status">${ICONS.lock}<span>${esc(t('profile.lockedItem', { item: itemName(b.part, b.value), n: b.need }))}</span></p>
+         <button type="button" class="btn btn-small btn-ghost" data-take-off>${esc(t('profile.takeOff'))}</button>`
+      : `<button type="button" class="btn btn-small btn-ghost" data-random>${ICONS.dice}<span>${esc(t('profile.random'))}</span></button>`;
+  }
+
+  function draw() {
+    preview.innerHTML = coveredAvatar({ avatar: code(), level }, 72);
+    msg.textContent = '';
+    drawStatus();
+    if (profileTab !== 'details') panel.innerHTML = panelHtml();
+  }
+
+  function openTab(id) {
+    profileTab = id;
+    const isDetails = id === 'details';
+    form.classList.toggle('is-details', isDetails);
+    app.querySelectorAll('[data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === id)));
+    panel.hidden = isDetails;
+    how.hidden = isDetails;
+    details.hidden = !isDetails;
+    if (!isDetails) panel.innerHTML = panelHtml();
+    // The new list starts right under the avatar, however far down the last one was.
+    const formTop = form.getBoundingClientRect().top + window.scrollY;
+    if (window.scrollY > formTop) window.scrollTo(0, formTop);
+  }
+
+  app.querySelector('.studio-tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-tab]');
+    if (tab) openTab(tab.dataset.tab);
+  });
+  panel.addEventListener('click', (e) => {
     const b = e.target.closest('[data-part]');
     if (!b) return;
     draft = { ...draft, [b.dataset.part]: b.dataset.value };
-    redraw();
-    app.querySelector(`[data-part="${b.dataset.part}"][data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
+    draw();
+    panel.querySelector(`[data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
   });
-  app.querySelector('[data-random]').addEventListener('click', () => {
-    draft = parseAvatar(randomAvatar());
-    redraw();
+  status.addEventListener('click', (e) => {
+    if (e.target.closest('[data-random]')) {
+      draft = parseAvatar(randomAvatar(undefined, level));
+      draw();
+    } else if (e.target.closest('[data-take-off]')) {
+      for (const part of Object.keys(draft)) {
+        if (unlockLevel(part, draft[part]) <= level) continue;
+        // Back to what's saved, or the first free choice if that's locked too (a part worn since before its unlock moved).
+        draft[part] = unlockLevel(part, saved[part]) <= level ? saved[part] : PROFILE_TABS.find((x) => x.id === part).values[0];
+      }
+      draw();
+      status.querySelector('[data-random]')?.focus({ preventScroll: true });
+    }
   });
-  const form = app.querySelector('[data-form]');
   form.elements.country.addEventListener('change', () => {
     app.querySelector('[data-flag]').innerHTML = flagImg(form.elements.country.value || null);
   });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const msg = app.querySelector('[data-msg]');
+    if (blocker()) return;
     const name = form.elements.name.value.trim();
     if (!name) {
+      openTab('details');
       msg.textContent = t('profile.needName');
+      form.elements.name.focus();
       return;
     }
-    const btn = form.querySelector('[type="submit"]');
-    btn.disabled = true;
+    save.disabled = true;
     try {
       const { profile } = await api('/api/profile', {
         method: 'PUT',
@@ -2749,10 +3172,14 @@ function showProfile() {
       state.profile = profile;
       go('#/progress');
     } catch (err) {
-      btn.disabled = false;
+      save.disabled = false;
       msg.textContent = errMsg(err);
     }
   });
+
+  openTab(profileTab);
+  preview.innerHTML = coveredAvatar({ avatar: code(), level }, 72);
+  drawStatus();
 }
 
 // ── Reminders (push notifications) ─────────────────────────────
@@ -3101,7 +3528,7 @@ async function showProgress() {
         <p>${t('acc.signedInAs', { name: esc(user.name) })}${user.email ? ` <span dir="ltr">(${esc(user.email)})</span>` : user.provider === 'dev' ? ` ${esc(t('acc.localName'))}` : ''}</p>
         <button class="btn btn-ghost" data-signout>${esc(t('acc.signOut'))}</button>
         <div class="account-links">
-          ${user.admin ? `<a class="link-btn" href="#/admin/players">${esc(t('acc.players'))}</a><a class="link-btn" href="#/admin">${esc(t('acc.reports'))}</a>` : ''}
+          ${user.admin ? `<a class="link-btn" href="#/admin/players">${esc(t('acc.players'))}</a><a class="link-btn" href="#/admin">${esc(t('acc.reports'))}</a><a class="link-btn" href="#/admin/stages">${esc(t('acc.stages'))}</a>` : ''}
           <button class="link-btn" data-signout-all>${esc(t('acc.signOutAll'))}</button>
           <a class="link-btn" href="/api/account/export" download>${esc(t('acc.download'))}</a>
           <button class="link-btn link-danger" data-delete-account>${esc(t('acc.delete'))}</button>
@@ -3144,7 +3571,7 @@ function adminFrame(section, body) {
   return `
     <section class="screen admin has-tabbar">
       <header class="topbar">${topbarStart()}</header>
-      <nav class="admin-sections" aria-label="${esc(t('admin.nav.aria'))}">${link('players', '#/admin/players')}${link('reports', '#/admin')}</nav>
+      <nav class="admin-sections" aria-label="${esc(t('admin.nav.aria'))}">${link('players', '#/admin/players')}${link('reports', '#/admin')}${link('stages', '#/admin/stages')}</nav>
       ${body}
     </section>
     ${tabbar('progress')}`;
@@ -3270,13 +3697,322 @@ async function showPlayers() {
     <p class="sub admin-note">${esc(t('players.note'))}</p>`);
 }
 
+// ── Admin: Leveling stages ─────────────────────────────────────
+
+/** The server's own words for a form to show, since they say exactly what to fix. */
+const adminError = (err) => ([400, 404, 409].includes(err.status) ? err.message : errMsg(err));
+
+/** A small round button that moves a row up or down the list. */
+const moveButton = (direction, disabled, attrs) =>
+  `<button type="button" class="icon-btn icon-btn-ink stage-move is-${direction}" ${attrs} data-move="${direction}" ${disabled ? 'disabled' : ''} aria-label="${esc(t(`stages.${direction}`))}" title="${esc(t(`stages.${direction}`))}">${ICONS.chevron}</button>`;
+
+async function showAdminStages() {
+  const nav = navId;
+  const frame = (body) => adminFrame('stages', `<h1 class="section-title">${esc(t('stages.title'))}</h1>${body}`);
+  app.innerHTML = frame(`<p class="sub">${esc(t('stages.loading'))}</p>`);
+  let stages;
+  try {
+    ({ stages } = await api('/api/admin/stages'));
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    app.querySelector('.sub').textContent = t('stages.loadFailed', { error: errMsg(err) });
+    return;
+  }
+
+  const row = (s, i) => `
+    <li class="stage-admin-row">
+      <span class="stage-admin-n" dir="ltr">${i + 1}</span>
+      <a class="stage-admin-link" href="#/admin/stages/${s.id}">
+        <strong dir="auto">${esc(s.title)}</strong>
+        <span><span class="stage-chip ${s.published ? 'is-live' : ''}">${esc(t(s.published ? 'stages.live' : 'stages.draft'))}</span> ${esc(tn('leveling.questions', s.count))}</span>
+      </a>
+      ${moveButton('up', i === 0, `data-id="${s.id}"`)}
+      ${moveButton('down', i === stages.length - 1, `data-id="${s.id}"`)}
+    </li>`;
+  const first = !stages.length;
+
+  const draw = () => {
+    app.querySelector('[data-stage-list]').innerHTML = stages.map(row).join('');
+  };
+
+  app.innerHTML = frame(`
+    ${first ? `
+      <div class="panel stage-empty">
+        <span class="daily-badge">${ICONS.leveling}</span>
+        <h2>${esc(t('stages.emptyTitle'))}</h2>
+        <p>${esc(t('stages.emptyHint'))}</p>
+      </div>` : `
+      <div class="panel"><ol class="stage-admin-list" data-stage-list></ol></div>`}
+    <form class="panel stage-form" data-new-stage novalidate>
+      <label class="field">
+        <span>${esc(t(first ? 'stages.firstName' : 'stages.newName'))}</span>
+        <input name="title" maxlength="${STAGE.titleMax}" dir="auto" autocomplete="off">
+      </label>
+      <p class="form-msg is-error" data-msg role="status"></p>
+      <button class="btn btn-marigold btn-block" type="submit">${esc(t(first ? 'stages.createFirst' : 'stages.create'))}</button>
+    </form>`);
+  if (!first) draw();
+
+  app.querySelector('[data-stage-list]')?.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-move]');
+    if (!b) return;
+    b.disabled = true;
+    try {
+      ({ stages } = await api(`/api/admin/stages/${b.dataset.id}/move`, { method: 'POST', body: { direction: b.dataset.move } }));
+      draw();
+    } catch (err) {
+      window.alert(adminError(err));
+      showAdminStages();
+    }
+  });
+  app.querySelector('[data-new-stage]').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('[type="submit"]');
+    const msg = e.target.querySelector('[data-msg]');
+    btn.disabled = true;
+    msg.textContent = '';
+    try {
+      const { stage } = await api('/api/admin/stages', { method: 'POST', body: { title: e.target.elements.title.value } });
+      go(`#/admin/stages/${stage.id}`);
+    } catch (err) {
+      btn.disabled = false;
+      msg.textContent = adminError(err);
+    }
+  });
+}
+
+async function showAdminStage(id) {
+  const nav = navId;
+  const frame = (body) => adminFrame('stages', body);
+  app.innerHTML = frame(`<p class="sub">${esc(t('stages.loading'))}</p>`);
+  let stage;
+  let questions;
+  try {
+    ({ stage, questions } = await api(`/api/admin/stages/${id}`));
+    if (nav !== navId) return;
+  } catch (err) {
+    if (nav !== navId) return;
+    if (err.status === 401) return signOut();
+    if (err.status === 404) return go('#/admin/stages', { replace: true });
+    app.querySelector('.sub').textContent = t('stages.loadFailed', { error: errMsg(err) });
+    return;
+  }
+  let editing = null; // the question being changed in the form, or null when adding one
+
+  const headHtml = () => `
+    <form class="panel stage-form" data-rename novalidate>
+      <label class="field">
+        <span>${esc(t('stages.name'))}</span>
+        <input name="title" maxlength="${STAGE.titleMax}" dir="auto" autocomplete="off" value="${esc(stage.title)}">
+      </label>
+      <p class="form-msg is-error" data-msg role="status"></p>
+      <div class="stage-form-actions">
+        <button class="btn btn-ghost-ink" type="submit">${esc(t('stages.saveName'))}</button>
+        <button class="btn ${stage.published ? 'btn-ghost-ink' : 'btn-marigold'}" type="button" data-publish ${!stage.published && stage.count < STAGE.minQuestions ? 'disabled' : ''}>${esc(t(stage.published ? 'stages.unpublish' : 'stages.publish'))}</button>
+      </div>
+      <p class="stage-hint"><span class="stage-chip ${stage.published ? 'is-live' : ''}">${esc(t(stage.published ? 'stages.live' : 'stages.draft'))}</span> ${esc(
+        stage.published ? t('stages.publishedNote') : stage.count < STAGE.minQuestions ? t('stages.needMore', { n: STAGE.minQuestions, have: stage.count }) : t('stages.draftNote'),
+      )}</p>
+    </form>`;
+
+  const questionRow = (q, i) => `
+    <li class="stage-q-row" data-qid="${q.id}">
+      <div class="stage-q-top">
+        <span class="stage-admin-n" dir="ltr">${i + 1}</span>
+        <div class="stage-q-text">
+          <h3 class="admin-q" dir="auto">${esc(q.prompt)}</h3>
+          <p class="admin-answers"><strong dir="auto">${esc(q.answer)}</strong> · ${q.wrong.map((w) => `<span dir="auto">${esc(w)}</span>`).join(' · ')}</p>
+        </div>
+        ${q.picture ? `<img class="stage-thumb" src="${esc(q.picture)}" alt="" loading="lazy">` : ''}
+      </div>
+      <div class="stage-q-actions">
+        ${moveButton('up', i === 0, '')}
+        ${moveButton('down', i === questions.length - 1, '')}
+        <button type="button" class="btn btn-small btn-ghost-ink" data-edit>${esc(t('stages.edit'))}</button>
+        <button type="button" class="btn btn-small btn-ghost-ink" data-delete>${esc(t('stages.deleteQuestion'))}</button>
+      </div>
+    </li>`;
+
+  const listHtml = () => (questions.length
+    ? `<ol class="stage-q-list">${questions.map(questionRow).join('')}</ol>`
+    : `<p class="board-empty">${esc(t('stages.noQuestions'))}</p>`);
+
+  const optionField = (name, label) => `
+    <label class="field">
+      <span>${esc(label)}</span>
+      <input name="${name}" maxlength="${STAGE.optionMax}" dir="auto" autocomplete="off">
+    </label>`;
+
+  app.innerHTML = frame(`
+    <a class="stage-back" href="#/admin/stages">${ICONS.back}<span>${esc(t('stages.back'))}</span></a>
+    <div data-head>${headHtml()}</div>
+    <div class="panel">
+      <h2 class="panel-title">${esc(t('stages.questionsTitle'))} <span class="stage-count" dir="ltr">${stage.count}/${STAGE.maxQuestions}</span></h2>
+      <div data-questions>${listHtml()}</div>
+    </div>
+    <form class="panel stage-form" data-question novalidate>
+      <h2 class="panel-title" data-form-title>${esc(t('stages.addQuestion'))}</h2>
+      <label class="field">
+        <span>${esc(t('stages.prompt'))}</span>
+        <textarea name="prompt" rows="3" maxlength="${STAGE.promptMax}" dir="auto"></textarea>
+      </label>
+      ${optionField('answer', t('stages.answer'))}
+      ${Array.from({ length: STAGE.wrongOptions }, (_, i) => optionField(`wrong${i}`, t('stages.wrong', { n: i + 1 }))).join('')}
+      <label class="field">
+        <span>${esc(t('stages.picture'))}</span>
+        <input name="picture" maxlength="${STAGE.pictureMax}" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="stage-hint">${esc(t('stages.pictureHint', { hosts: STAGE_PICTURE_HOSTS.join(', ') }))}</p>
+      <img class="stage-pic" data-pic alt="" hidden>
+      <p class="form-msg is-error" data-pic-msg role="status"></p>
+      <p class="form-msg is-error" data-msg role="status"></p>
+      <div class="stage-form-actions">
+        <button class="btn btn-ghost-ink" type="button" data-cancel hidden>${esc(t('common.cancel'))}</button>
+        <button class="btn btn-marigold" type="submit" data-submit>${esc(t('stages.saveQuestion'))}</button>
+      </div>
+    </form>
+    <button type="button" class="btn btn-ghost btn-block stage-delete" data-delete-stage>${esc(t('stages.delete'))}</button>`);
+
+  const form = app.querySelector('[data-question]');
+  const pic = form.querySelector('[data-pic]');
+  const picMsg = form.querySelector('[data-pic-msg]');
+  const formMsg = form.querySelector('[data-msg]');
+
+  const showPicture = () => {
+    const src = form.elements.picture.value.trim();
+    picMsg.textContent = '';
+    pic.hidden = true;
+    if (src) pic.src = src;
+    else pic.removeAttribute('src');
+  };
+  pic.addEventListener('load', () => { pic.hidden = false; picMsg.textContent = ''; });
+  pic.addEventListener('error', () => {
+    pic.hidden = true;
+    if (form.elements.picture.value.trim()) picMsg.textContent = t('stages.pictureFailed');
+  });
+  form.elements.picture.addEventListener('change', showPicture);
+
+  /** Draws what depends on the stage and its questions, after anything changes on the server. */
+  const redraw = (data) => {
+    if (data) ({ stage, questions } = data);
+    app.querySelector('[data-head]').innerHTML = headHtml();
+    app.querySelector('[data-questions]').innerHTML = listHtml();
+    app.querySelector('.stage-count').textContent = `${stage.count}/${STAGE.maxQuestions}`;
+    bindHead();
+  };
+
+  const resetForm = () => {
+    editing = null;
+    form.reset();
+    formMsg.textContent = '';
+    showPicture();
+    form.querySelector('[data-form-title]').textContent = t('stages.addQuestion');
+    form.querySelector('[data-submit]').textContent = t('stages.saveQuestion');
+    form.querySelector('[data-cancel]').hidden = true;
+  };
+
+  function bindHead() {
+    const head = app.querySelector('[data-rename]');
+    const msg = head.querySelector('[data-msg]');
+    head.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      try {
+        ({ stage } = await api(`/api/admin/stages/${id}`, { method: 'PUT', body: { title: head.elements.title.value } }));
+        redraw();
+      } catch (err) {
+        msg.textContent = adminError(err);
+      }
+    });
+    head.querySelector('[data-publish]').addEventListener('click', async (e) => {
+      e.currentTarget.disabled = true;
+      msg.textContent = '';
+      try {
+        ({ stage } = await api(`/api/admin/stages/${id}`, { method: 'PUT', body: { published: !stage.published } }));
+        redraw();
+      } catch (err) {
+        e.target.disabled = false;
+        msg.textContent = adminError(err);
+      }
+    });
+  }
+  bindHead();
+
+  app.querySelector('[data-questions]').addEventListener('click', async (e) => {
+    const row = e.target.closest('[data-qid]');
+    if (!row) return;
+    const qid = Number(row.dataset.qid);
+    const url = `/api/admin/stages/${id}/questions/${qid}`;
+    try {
+      if (e.target.closest('[data-move]')) {
+        redraw(await api(`${url}/move`, { method: 'POST', body: { direction: e.target.closest('[data-move]').dataset.move } }));
+      } else if (e.target.closest('[data-edit]')) {
+        const q = questions.find((x) => x.id === qid);
+        editing = q.id;
+        form.elements.prompt.value = q.prompt;
+        form.elements.answer.value = q.answer;
+        q.wrong.forEach((w, i) => { form.elements[`wrong${i}`].value = w; });
+        form.elements.picture.value = q.picture ?? '';
+        showPicture();
+        formMsg.textContent = '';
+        form.querySelector('[data-form-title]').textContent = t('stages.editQuestion');
+        form.querySelector('[data-submit]').textContent = t('stages.saveChanges');
+        form.querySelector('[data-cancel]').hidden = false;
+        form.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
+      } else if (e.target.closest('[data-delete]')) {
+        if (!window.confirm(t('stages.deleteQuestionConfirm'))) return;
+        redraw(await api(url, { method: 'DELETE' }));
+        if (editing === qid) resetForm();
+      }
+    } catch (err) {
+      window.alert(adminError(err));
+    }
+  });
+
+  form.querySelector('[data-cancel]').addEventListener('click', resetForm);
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const submit = form.querySelector('[data-submit]');
+    submit.disabled = true;
+    formMsg.textContent = '';
+    const el = form.elements;
+    const body = {
+      prompt: el.prompt.value, answer: el.answer.value, picture: el.picture.value,
+      wrong: Array.from({ length: STAGE.wrongOptions }, (_, i) => el[`wrong${i}`].value),
+    };
+    try {
+      const url = `/api/admin/stages/${id}/questions`;
+      redraw(await api(editing ? `${url}/${editing}` : url, { method: editing ? 'PUT' : 'POST', body }));
+      resetForm();
+      el.prompt.focus({ preventScroll: true });
+    } catch (err) {
+      formMsg.textContent = adminError(err);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  app.querySelector('[data-delete-stage]').addEventListener('click', async () => {
+    if (!window.confirm(t('stages.deleteConfirm', { title: stage.title }))) return;
+    try {
+      await api(`/api/admin/stages/${id}`, { method: 'DELETE' });
+      go('#/admin/stages', { replace: true });
+    } catch (err) {
+      window.alert(adminError(err));
+    }
+  });
+}
+
 // ── Admin: question reports ────────────────────────────────────
 
 const REASON_BY_ID = Object.fromEntries(REPORT_REASONS.map((r) => [r.id, r]));
 const STATUS_TABS = ['open', 'fixed', 'dismissed'];
 
-async function showAdmin(status = 'open') {
+async function showAdmin(status = 'open', sub = null) {
   if (status === 'players') return showPlayers();
+  if (status === 'stages') return sub ? showAdminStage(Number(sub)) : showAdminStages();
   if (!STATUS_TABS.includes(status)) status = 'open';
   const nav = navId;
   const tabs = STATUS_TABS.map((s) =>
