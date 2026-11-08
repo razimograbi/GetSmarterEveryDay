@@ -6,7 +6,7 @@
 // online. API calls and question pictures are left to the browser and its own cache.
 
 const CACHE = 'smarts-v2';
-const SKIP = /^\/(api|img|signs)\//;
+const SKIP = /^\/(api|img|signs|pic)\//;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));

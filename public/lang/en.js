@@ -262,7 +262,6 @@ export default {
   'link.invited': '{name} invited you to be friends on Smarts',
   'link.signInToPlay': 'Sign in to play. It takes a few seconds.',
   'link.signInToAdd': 'Sign in to add them as a friend.',
-  'fixed.notSaved': 'Your answers weren\'t saved: {error}',
   'daily.title': 'Daily #{n}',
   'daily.titlePlain': 'Daily Challenge',
   'daily.seeBoard': 'Board',

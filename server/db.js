@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { AUTO_DELAY, BACK_BUTTON, LANGUAGES, PROFILE, inQuickRounds, pointsFor, secondsFor } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { parseAvatar, randomAvatar } from '../shared/avatars.js';
@@ -153,6 +153,23 @@ export function openDb(file) {
       finished_at         INTEGER
     );
 
+    -- A player's one go at a Daily or a side of a duel, played on the server, question by question.
+    CREATE TABLE IF NOT EXISTS plays (
+      id            TEXT PRIMARY KEY,
+      user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind          TEXT NOT NULL,
+      ref           TEXT NOT NULL,
+      side          TEXT,
+      question_ids  TEXT NOT NULL,
+      idx           INTEGER NOT NULL DEFAULT 0,
+      opened_at     INTEGER,
+      answers       TEXT NOT NULL DEFAULT '[]',
+      started_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL,
+      finished_at   INTEGER,
+      UNIQUE (kind, ref, user_id)
+    );
+
     -- Browsers that agreed to receive reminders (Web Push).
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       endpoint    TEXT PRIMARY KEY,
@@ -180,6 +197,7 @@ export function openDb(file) {
     CREATE INDEX IF NOT EXISTS duels_challenger ON duels(challenger_id, created_at);
     CREATE INDEX IF NOT EXISTS duels_opponent ON duels(opponent_id, created_at);
     CREATE INDEX IF NOT EXISTS duels_invited ON duels(invited_id, created_at);
+    CREATE INDEX IF NOT EXISTS plays_open ON plays(updated_at) WHERE finished_at IS NULL;
     CREATE INDEX IF NOT EXISTS push_user ON push_subscriptions(user_id);
     CREATE INDEX IF NOT EXISTS events_name ON events(name, created_at);
     CREATE INDEX IF NOT EXISTS events_user ON events(user_id, created_at);
@@ -605,6 +623,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
              COUNT(*) AS answered,
              SUM(correct) AS correct,
              COUNT(DISTINCT question_id) AS seen,
+             COUNT(DISTINCT CASE WHEN correct = 1 THEN question_id END) AS gotRight,
              COALESCE(AVG(CASE WHEN correct = 1 THEN ms END), 0) AS avgMs
       FROM answers WHERE user_id = ? GROUP BY category
     `)
@@ -976,6 +995,49 @@ export function roundAnswers(db, roundId) {
   if (!roundId) return [];
   return db.prepare('SELECT question_id AS id, choice, correct, ms FROM answers WHERE round_id = ? ORDER BY id').all(roundId)
     .map((a) => ({ ...a, correct: a.correct === 1 }));
+}
+
+// ── Rounds played on the server (see server/play.js) ───────────
+
+const toPlay = (r) => r && ({
+  id: r.id, userId: r.user_id, kind: r.kind, ref: r.ref, side: r.side, questionIds: JSON.parse(r.question_ids), idx: r.idx,
+  openedAt: r.opened_at, answers: JSON.parse(r.answers), startedAt: r.started_at, updatedAt: r.updated_at, finishedAt: r.finished_at,
+});
+
+export const getPlay = (db, id) => toPlay(db.prepare('SELECT * FROM plays WHERE id = ?').get(id)) ?? null;
+
+export const findPlay = (db, kind, ref, userId) =>
+  toPlay(db.prepare('SELECT * FROM plays WHERE kind = ? AND ref = ? AND user_id = ?').get(kind, ref, userId)) ?? null;
+
+export function createPlay(db, { kind, ref, side, userId, questionIds }) {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare('INSERT INTO plays (id, user_id, kind, ref, side, question_ids, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, userId, kind, ref, side, JSON.stringify(questionIds), now, now);
+  return getPlay(db, id);
+}
+
+/** Starts the question's clock. Only the first opening counts. */
+export function openPlayQuestion(db, id, idx, now) {
+  db.prepare('UPDATE plays SET opened_at = ?, updated_at = ? WHERE id = ? AND idx = ? AND opened_at IS NULL AND finished_at IS NULL').run(now, now, id, idx);
+}
+
+export function recordPlayAnswer(db, id, idx, answers, now) {
+  db.prepare('UPDATE plays SET idx = ?, opened_at = NULL, answers = ?, updated_at = ? WHERE id = ? AND finished_at IS NULL')
+    .run(idx, JSON.stringify(answers), now, id);
+}
+
+/** Marks a round as ended. False if it already had: what ended it has counted it. */
+export function closePlay(db, id) {
+  return db.prepare('UPDATE plays SET finished_at = ? WHERE id = ? AND finished_at IS NULL').run(Date.now(), id).changes > 0;
+}
+
+export const stalePlays = (db, before) =>
+  db.prepare('SELECT * FROM plays WHERE finished_at IS NULL AND updated_at < ?').all(before).map(toPlay);
+
+/** Finished rounds are only useful while their result is fresh; the Daily and duel tables keep what matters. */
+export function purgeOldPlays(db) {
+  db.prepare('DELETE FROM plays WHERE finished_at IS NOT NULL AND finished_at < ?').run(Date.now() - 3 * DAY_MS);
 }
 
 // ── Push reminders ─────────────────────────────────────────────

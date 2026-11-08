@@ -38,6 +38,14 @@ export const DAILY = { start: '2026-11-01', questions: 10 };
 // Duels: two players answer the same questions, each when they like.
 export const DUEL = { questions: 10, maxOpen: 20 };
 
+// How the server plays and times Daily and duel questions (see server/play.js).
+export const PLAY = {
+  networkAllowanceMs: 400, // taken off each measured time: the trip to the player and back
+  lateAllowanceMs: 1500, // how far past the limit an answer may arrive and still count
+  idleMs: 15 * 60_000, // a round nobody has touched for this long ends, with the rest counted wrong
+  lookahead: 2, // how many upcoming pictures a player may download ahead of their question
+};
+
 // Profiles shown to other players.
 export const PROFILE = { nameMax: 20, maxFriends: 200 };
 

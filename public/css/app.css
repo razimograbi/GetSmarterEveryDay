@@ -818,6 +818,7 @@ a.logo { text-decoration: none; }
   .answer kbd { display: grid; }
   .answer:not(:disabled):hover { background: #fff; }
 }
+.answer.is-picked { box-shadow: 0 0 0 3px var(--marigold, #ffc53d), var(--ledge-pressed); transform: translateY(4px); }
 .answer.is-correct { background: var(--mint); color: #fff; box-shadow: 0 5px 0 var(--mint-deep); animation: pop 260ms ease; }
 .answer.is-wrong { background: var(--coral); color: #fff; box-shadow: 0 5px 0 var(--coral-deep); animation: shake 300ms ease; }
 .answer.is-correct kbd, .answer.is-wrong kbd { background: rgba(255, 255, 255, 0.22); color: #fff; }
@@ -1632,7 +1633,6 @@ button.quick, button.topic { width: 100%; border: 0; font: inherit; text-align: 
 .share-row svg { width: 19px; height: 19px; }
 .share-status { min-height: 1.4em; margin: 2px 0 0; font-size: 14px; font-weight: 650; color: var(--mint-deep); }
 .next-daily { margin: 14px 0 0; text-align: center; color: var(--on-cobalt-2); font-weight: 650; }
-.unsaved p { margin: 0 0 12px; font-weight: 650; color: var(--coral-deep); }
 
 .seg { display: flex; gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: 999px; background: var(--paper-2); }
 .seg button { flex: 1; min-height: 40px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-2); font: inherit; font-weight: 750; cursor: pointer; }
