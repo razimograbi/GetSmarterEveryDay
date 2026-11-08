@@ -166,12 +166,25 @@ Satellite map tiles are always loaded live from Esri.
 - The next question's picture starts downloading as soon as the current question is on
   screen. It's requested again after you answer and when 2 seconds are left, in case the
   first try failed (the browser cache makes repeats free).
-- Rounds prefer questions you haven't seen, then ones you got wrong, then ones you
+- Topic rounds prefer questions you haven't seen, then ones you got wrong, then ones you
   already know. Questions from the round you just played come last, so they don't
-  come straight back. Quick rounds take at most 2 questions per topic, bring back 3–5
-  questions you got wrong in your last 10 rounds (never from the round just played),
-  and leave out the three book topics and programming (`book: true` or `quick: false`
-  in `shared/config.js`), which are only played from their own tiles.
+  come straight back.
+- Quick rounds are built as a level with a set shape (`LEVEL_SLOTS` in `shared/levels.js`):
+  easy openers, harder questions in the middle, a boss at question 9 and an easy closer.
+  Each slot picks a topic first and then a question in its difficulty band, so big topics
+  don't crowd out small ones. A level has at most 2 questions per topic, never the same topic
+  twice in a row, and never two about the same country. The easy slots (1, 7 and 10) reuse
+  questions you already know once there are at least 20 to choose from, starting with ones
+  you haven't mastered yet. Quick rounds leave out the three book topics, programming and
+  football players (`book: true` or `quick: false` in `shared/config.js`), which are only
+  played from their own tiles.
+- Mistakes come back in Quick rounds, marked "Back for another try", on a schedule
+  (`server/review.js`). Question 8 gives a second chance at a mistake from the round you just
+  played. Question 4 brings back older ones: after each right answer the next return waits at
+  least 3, then 10, then 30 levels, and one more right answer ends it. A wrong answer starts
+  over. A level only has these two places, so with many mistakes the returns run later: most
+  of the list is mistakes on their schedule, plus the one that has waited longest. A question
+  is **mastered** once it's been answered right on two different days.
 - On a laptop, press **1–5** to answer, **Enter** for next and **Esc** to quit.
 
 ### How hard each question is
@@ -372,12 +385,18 @@ statistics and streak.
 
 ### Duels
 
-A player picks mixed topics or one topic, plays 10 questions first, then sends the link,
-`/duel/ID`. Whoever opens it first (or the friend it was sent to, when started from the Friends
-tab) plays the same questions. Someone who isn't signed in sees who challenged them, signs in and
-goes straight into the game. The result screen compares both players question by question, with
-a **Rematch** button that sends a new duel back. More points wins; on equal points, less time.
-A player can have up to 20 unfinished duels they started (`DUEL` in `shared/config.js`).
+Players take turns and never need to be online together. A player picks mixed topics or one
+topic, plays 10 questions first, then sends the link, `/duel/ID`. Whoever opens it first (or the
+friend it was sent to, when started from the Friends tab) plays the same questions. Everyone who
+opens a link sees who challenged them and their score before the clock starts. The Home screen
+shows a card when it's your turn or when a result is ready. The result screen compares both
+players question by question, with a **Rematch** button that sends a new duel back. More points
+wins; on equal points, less time, and the screen then shows both times. A player can have up to
+20 unfinished duels they started (`DUEL` in `shared/config.js`).
+
+New duels stay away from questions the players met in their last 30 rounds (for a duel sent to a
+friend or a rematch, both players'; for a link, only the sender's, because the other player isn't
+known yet). A rematch never repeats the duel it follows unless the topic is too small.
 
 ### Sharing
 
@@ -404,8 +423,8 @@ set `PUBLIC_URL` to it.
 
 Players can turn on two push notifications under **Progress → Reminders**: "Today's Daily is
 ready" (once a day at 9:00 in their time zone, if they haven't played yet, never after 21:00) and
-"A friend beats you" (when a friend beats their Daily score or wins a duel against them; at most
-once per friend per day). They're sent with the standard Web Push protocol, using only Node's
+"Friends and duels" (when a friend beats their Daily score, at most once per friend per day; when
+a friend sends them a duel; and when the other player finishes a duel with them). They're sent with the standard Web Push protocol, using only Node's
 built-in crypto (`server/push.js`). The server makes its push key pair once and keeps it in
 `DATA_DIR/vapid.json`; keep that file (and back it up), or every player has to turn reminders on
 again. Set `VAPID_SUBJECT` to a contact address. Reminders need HTTPS. On iPhone they work only

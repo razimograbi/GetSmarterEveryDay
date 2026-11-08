@@ -1,9 +1,10 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, pointsFor, secondsFor, localDate,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, inQuickRounds, pointsFor, secondsFor, localDate,
 } from '/shared/config.js';
 import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
+import { pickLevel, subjectOf } from '/shared/levels.js';
 import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
 import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages, thumb } from './visuals.js';
 import { signSvg } from './signs.js';
@@ -17,6 +18,7 @@ const app = document.getElementById('app');
 const state = {
   config: null, user: null, settings: null, profile: null, stats: null, lastRound: null,
   daily: null, // today's Daily and the player's result, for the home screen
+  duels: null, // the player's duels, for the home screen
   fixedRound: null, // a Daily or duel about to be played
   duelFriend: null, // the friend a new duel is for
   unsaved: null, // a Daily or duel result that failed to save
@@ -80,11 +82,8 @@ function takeSharedLink() {
   const path = location.pathname;
   let m;
   let hash = null;
-  if ((m = /^\/duel\/([A-Z2-9]{8})\/?$/.exec(path))) {
-    hash = `#/duel/${m[1]}`;
-    // Someone who opens a duel link and signs in goes straight into the game.
-    try { sessionStorage.setItem('smarts:autoplay', m[1]); } catch { /* storage blocked */ }
-  } else if ((m = /^\/f\/([A-Za-z2-9]{6})\/?$/.exec(path))) hash = `#/add/${m[1].toUpperCase()}`;
+  if ((m = /^\/duel\/([A-Z2-9]{8})\/?$/.exec(path))) hash = `#/duel/${m[1]}`;
+  else if ((m = /^\/f\/([A-Za-z2-9]{6})\/?$/.exec(path))) hash = `#/add/${m[1].toUpperCase()}`;
   else if (/^\/daily\/?$/.test(path)) hash = '#/daily';
   if (hash) history.replaceState(null, '', `/${hash}`);
 }
@@ -547,6 +546,7 @@ function signedOut() {
   state.profile = null;
   state.stats = null;
   state.daily = null;
+  state.duels = null;
   state.played = 0;
   state.justUnlocked = false;
   state.newFriend = null;
@@ -692,15 +692,16 @@ function orderTopics(stats) {
   return (topicOrder = [...CATEGORIES].sort((a, b) => (answered[b.id] || 0) - (answered[a.id] || 0)));
 }
 
+/** A title and three numbered steps. `steps` are already safe HTML. */
+const stepsCard = (title, steps) => `
+  <div class="how">
+    <h2 class="how-title">${esc(title)}</h2>
+    <ol>${steps.map((s, i) => `<li><span class="how-n">${i + 1}</span><span>${s}</span></li>`).join('')}</ol>
+  </div>`;
+
 /** "See a picture · Tap the right answer · Beat the clock": shown wherever a new player's first round starts. */
-function howItWorks() {
-  const steps = [t('how.see'), t('how.tap'), t('how.clock', { secs: MODES[DEFAULT_MODE].secondsPerQuestion })];
-  return `
-    <div class="how">
-      <h2 class="how-title">${esc(t('how.title'))}</h2>
-      <ol>${steps.map((s, i) => `<li><span class="how-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('')}</ol>
-    </div>`;
-}
+const howItWorks = () =>
+  stepsCard(t('how.title'), [t('how.see'), t('how.tap'), t('how.clock', { secs: MODES[DEFAULT_MODE].secondsPerQuestion })].map(esc));
 
 /** The one big button on the home screen: a label that says what happens, and what it is. */
 const playCta = (label, sub) => `
@@ -729,6 +730,35 @@ function dailyRow(d) {
     sub: esc(played ? `${t('daily.youScored', { score: d.result.score, max: d.questionIds.length * MAX_POINTS })} · ${t('daily.seeBoard')}` : t('daily.rowDesc')),
     badge: played ? '' : t('daily.newToday'),
   });
+}
+
+/** Rows for duels that need the player: a result to see, or a turn to take. */
+function duelAlerts() {
+  const duels = state.duels || [];
+  const ready = duels.filter((d) => d.resultReady);
+  const turn = duels.filter((d) => d.status === 'yourTurn' || d.status === 'invited');
+  const rows = [];
+  if (ready.length) {
+    rows.push(homeRow({
+      href: ready.length > 1 ? '#/friends' : `#/duel/${ready[0].id}`,
+      icon: ICONS.duel,
+      title: ready.length > 1 ? esc(tn('duel.homeReadyMany', ready.length)) : t('duel.homeReady', { name: personName(duelOther(ready[0])) }),
+      sub: esc(t('duel.homeReadySub')),
+      badge: t('duel.badgeReady'),
+    }));
+  }
+  if (turn.length) {
+    const other = duelOther(turn[0]);
+    const challenger = turn[0].role !== 'challenger' && other?.name;
+    rows.push(homeRow({
+      href: turn.length > 1 ? '#/friends' : `#/duel/${turn[0].id}`,
+      icon: ICONS.duel,
+      title: turn.length > 1 ? esc(tn('duel.homeTurns', turn.length)) : challenger ? t('duel.challengedYou', { name: personName(other) }) : esc(t('duel.title')),
+      sub: turn.length > 1 ? '' : esc(t('duel.homeTurnSub', { topic: duelTopic(turn[0].category) })),
+      badge: t('duel.yourTurn'),
+    }));
+  }
+  return rows.length ? `<div class="home-rows">${rows.join('')}</div>` : '';
 }
 
 function topicRows(stats) {
@@ -776,6 +806,7 @@ function drawNewHome(firstName) {
     <section class="screen home home-new">
       ${homeTopbar()}
       <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
+      ${duelAlerts()}
       ${howItWorks()}
       ${playCta(t('home.firstPlay'), t('home.firstPlaySub', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
       ${friend ? homeRow({
@@ -814,6 +845,7 @@ function drawHome(firstName, stats, unlocked) {
       ${unlocked ? `<p class="unlocked">${esc(t('home.unlocked'))}</p>` : ''}
       <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
       <p class="sub">${streak ? `${ICONS.fire}${esc(tn('home.streak', streak))}` : '&nbsp;'}</p>
+      ${duelAlerts()}
       ${playCta(t('home.quickPlay'), t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
       <div class="home-rows">
         ${dailyRow(state.daily)}
@@ -856,7 +888,11 @@ async function showHome() {
   const nav = navId;
   draw(state.stats);
   try {
-    const [stats] = await Promise.all([loadStats(), state.daily?.day === today() ? null : loadDaily().catch(() => null)]);
+    const [stats] = await Promise.all([
+      loadStats(),
+      state.daily?.day === today() ? null : loadDaily().catch(() => null),
+      api('/api/duels').then((r) => (state.duels = r.duels)).catch(() => null),
+    ]);
     if (nav === navId) draw(stats);
   } catch (err) {
     if (err.status === 401) return signOut();
@@ -879,19 +915,17 @@ const reviewLabel = (q) => (q.visual.type === 'text' || q.ownPrompt ? qt(q, q.pr
 // Questions of the round played last in this visit, in case the server's stats lag behind.
 let lastPlayedIds = new Set();
 
-// Quick rounds bring back this many questions you recently got wrong (fewer if there aren't enough).
-const RETRY_MIN = 3;
-const RETRY_MAX = 5;
+const recentIds = (stats) => new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
 
 /**
- * Orders a pool for picking: new questions first, then ones you've missed, then ones you
- * already know. Questions from the round just played always go last, so they only come
- * back when nothing else is left.
+ * Orders a pool for picking: new questions first, then ones you haven't mastered yet, then
+ * mastered ones. Questions from the round just played always go last, so they only come back
+ * when nothing else is left.
  */
 function orderForPlay(pool, stats) {
   const seen = new Set(stats?.seenIds || []);
   const mastered = new Set(stats?.masteredIds || []);
-  const recent = new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
+  const recent = recentIds(stats);
   const fresh = pool.filter((q) => !recent.has(q.id));
   return [
     ...shuffle(fresh.filter((q) => !seen.has(q.id))),
@@ -907,40 +941,28 @@ function pickQuestions(cat, n, stats) {
     const ids = (stats?.missed || []).map((m) => m.id).filter((id) => QUESTION_BY_ID.has(id));
     return shuffle(ids.slice(0, n).map((id) => QUESTION_BY_ID.get(id)));
   }
-  // Book topics and Programming are only played from their own tile, never in a Quick round.
-  const inQuick = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_ID[q.cat]?.quick !== false;
-  const pool = (cat === 'mixed' ? QUESTIONS.filter(inQuick) : QUESTIONS.filter((q) => q.cat === cat))
+  const pool = (cat === 'mixed' ? QUESTIONS.filter(inQuickRounds) : QUESTIONS.filter((q) => q.cat === cat))
     .filter((q) => !failedPictures.has(q.id));
-  const inPool = new Set(pool.map((q) => q.id));
-
-  // Never two questions about the same country in one round: "What's the capital of
-  // Japan?" shows Japan's flag and names Japan, giving away its flag and shape questions.
-  const pictureKey = (q) => (q.about ? `country:${q.about.toLowerCase()}` : q.id);
-  const perCatLimit = cat === 'mixed' ? 2 : Infinity;
-  const perCat = {};
-  const usedPictures = new Set();
-  const picked = [];
-  const take = (q, { limitTopic = true } = {}) => {
-    if (picked.length === n || picked.includes(q)) return;
-    if (limitTopic && (perCat[q.cat] || 0) >= perCatLimit) return;
-    if (usedPictures.has(pictureKey(q))) return;
-    perCat[q.cat] = (perCat[q.cat] || 0) + 1;
-    usedPictures.add(pictureKey(q));
-    picked.push(q);
-  };
 
   if (cat === 'mixed') {
-    // A few recent mistakes come back for another try, but never ones from the round just played.
-    const recent = new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
-    const retries = shuffle((stats?.recentMissed || []).filter((id) => inPool.has(id) && !recent.has(id)).map((id) => QUESTION_BY_ID.get(id)));
-    const want = RETRY_MIN + Math.floor(Math.random() * (RETRY_MAX - RETRY_MIN + 1));
-    for (const q of retries) {
-      if (picked.length >= want) break;
-      take(q);
-    }
+    return pickLevel(pool, n, {
+      seen: new Set(stats?.seenIds),
+      known: new Set(stats?.knownIds),
+      mastered: new Set(stats?.masteredIds),
+      missed: new Set(stats?.dueMistakes),
+      recent: recentIds(stats),
+    });
   }
-  for (const q of orderForPlay(pool, stats)) take(q);
-  return cat === 'mixed' ? shuffle(picked) : picked;
+
+  const subjects = new Set();
+  const picked = [];
+  for (const q of orderForPlay(pool, stats)) {
+    if (picked.length === n) break;
+    if (subjects.has(subjectOf(q))) continue;
+    subjects.add(subjectOf(q));
+    picked.push(q);
+  }
+  return picked;
 }
 
 const PICTURE_RETRIES = 3;
@@ -1007,6 +1029,7 @@ async function startRound(cat, fixed = null) {
   const round = {
     cat, mode, cfg, fixed,
     questions: fixed ? [...fixed.questions] : pickQuestions(cat, cfg.questionsPerRound, stats),
+    comingBack: new Set(cat === 'mixed' ? stats?.dueMistakes : []), // past mistakes a Quick round may bring back
     idx: 0,
     results: [], // { q, choice, correct, ms, points, skipped }
     score: 0,
@@ -1174,7 +1197,9 @@ async function startRound(cat, fixed = null) {
     // A new player's very first question says what to do. The clock isn't paused for it,
     // so a first Daily or duel scores the same as anyone's.
     const firstHint = isNew() && round.idx === 0 ? `<p class="first-hint">${esc(t('play.firstHint'))}</p>` : '';
+    const retryChip = round.comingBack.has(q.id) ? `<p class="retry-chip">${esc(t('play.retry'))}</p>` : '';
     stage.innerHTML = `
+      ${retryChip}
       ${head}
       ${firstHint}
       <div class="answers is-waiting" role="group" aria-labelledby="prompt">
@@ -2065,11 +2090,13 @@ const duelOther = (d) => (d.role === 'challenger' ? d.opponent || d.invitedFrien
 /** Pick the questions for a new duel: a mix, or one topic. */
 function showDuelNew() {
   const friend = state.duelFriend;
+  const friendName = friend && `<bdi>${esc(friend.name)}</bdi>`;
   app.innerHTML = `
     <section class="screen duel-new has-tabbar">
       ${topbar()}
       <h1 class="greeting">${esc(t('duel.newTitle'))}</h1>
-      <p class="sub">${friend ? t('duel.newFor', { name: `<bdi>${esc(friend.name)}</bdi>` }) : esc(t('duel.newSub'))}</p>
+      <p class="sub">${friend ? t('duel.newFor', { name: friendName }) : esc(t('duel.newSub'))}</p>
+      ${stepsCard(t('duel.stepsTitle'), [esc(t('duel.step1')), friend ? t('duel.step2For', { name: friendName }) : esc(t('duel.step2')), esc(t('duel.step3'))])}
       <button class="quick" data-cat="mixed">
         <span class="quick-text"><strong>${esc(t('duel.mixed'))}</strong><span>${esc(t('duel.mixedDesc'))}</span></span>
         <span class="quick-go" aria-hidden="true">${ICONS.duel}</span>
@@ -2098,6 +2125,7 @@ function showDuelNew() {
 
 async function showDuel(id) {
   const nav = navId;
+  state.duels = null; // this screen can answer what the home screen was asking for
   app.innerHTML = `<section class="screen duel has-tabbar">${topbar()}<p class="sub">${esc(t('duel.loading'))}</p></section>${tabbar('friends')}`;
   let duel;
   try {
@@ -2111,12 +2139,6 @@ async function showDuel(id) {
     return;
   }
 
-  // Arrived from a duel link and just signed in: straight into the game. A new player first
-  // sees how the game works, on the card below.
-  let autoplay = null;
-  try { autoplay = sessionStorage.getItem('smarts:autoplay'); sessionStorage.removeItem('smarts:autoplay'); } catch { /* storage blocked */ }
-  if (autoplay === id && !isNew() && (duel.status === 'open' || duel.status === 'invited')) return playDuel(id).catch((err) => window.alert(errMsg(err)));
-
   const max = duel.questionIds.length * MAX_POINTS;
   const other = duelOther(duel);
   const myShareUrl = `${location.origin}/duel/${duel.id}?l=${lang()}`;
@@ -2128,6 +2150,7 @@ async function showDuel(id) {
         ${avatarImg(c.avatar, 112, 'avatar-xl')}
         <h1 class="challenge-title">${t('duel.challengedYou', { name: personName(c) })}</h1>
         <p class="challenge-sub">${esc(c.score === null ? t('duel.notPlayedYet', { topic: duelTopic(duel.category) }) : t('duel.theyScored', { score: c.score, max, topic: duelTopic(duel.category) }))}</p>
+        <p class="challenge-sub">${esc(t('duel.howToPlay'))}${duel.isFriend ? '' : ` ${t('duel.willFriend', { name: personName(c) })}`}</p>
         ${isNew() ? howItWorks() : ''}
         <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.playNow'))}</button>
       </div>`;
@@ -2144,6 +2167,7 @@ async function showDuel(id) {
         ${other ? avatarImg(other.avatar, 112, 'avatar-xl') : avatar(state.profile?.avatar, 112)}
         <h1 class="challenge-title">${esc(t('duel.yourTurn'))}</h1>
         <p class="challenge-sub">${esc(duelTopic(duel.category))}</p>
+        <p class="challenge-sub">${esc(t('duel.howToPlay'))}</p>
         <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.play'))}</button>
       </div>`;
   } else if (duel.status === 'waiting') {
@@ -2153,14 +2177,15 @@ async function showDuel(id) {
         ${avatar(state.profile?.avatar, 80)}
         <p class="result-score">${mine.score}<small>/${max}</small></p>
         <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.questionIds.length }))}</p>
-        ${other?.name
-          ? `<p class="challenge-sub">${t('duel.waitingFor', { name: personName(other) })}</p>`
-          : `<p class="challenge-sub">${esc(t('duel.sendLink'))}</p>`}
-        <div class="share-row">
-          <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('duel.sendButton'))}</span></button>
-          <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copyLink'))}</span></button>
-        </div>
-        <p class="share-status" data-share-status aria-live="polite"></p>
+        <p class="challenge-sub">${duel.invitedFriend?.name
+          ? t('duel.waitingInvited', { name: personName(other) })
+          : other?.name ? t('duel.waitingFor', { name: personName(other) }) : esc(t('duel.sendLink'))}</p>
+        ${duel.opponent ? '' : `
+          <div class="share-row">
+            <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('duel.sendButton'))}</span></button>
+            <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copyLink'))}</span></button>
+          </div>
+          <p class="share-status" data-share-status aria-live="polite"></p>`}
       </div>`;
   } else {
     body = duelResultHtml(duel, max);
@@ -2188,7 +2213,7 @@ async function showDuel(id) {
   });
   const status = app.querySelector('[data-share-status]');
   const mine = duel.role && duel[duel.role];
-  const shareMsg = duel.status === 'done'
+  const shareMsg = !mine ? '' : duel.status === 'done'
     ? t('duel.shareResult', { me: mine.score, them: duel[duel.role === 'challenger' ? 'opponent' : 'challenger'].score, max, name: other?.name || '' })
     : t('duel.shareInvite', { score: mine?.score ?? 0, max });
   app.querySelector('[data-share]')?.addEventListener('click', async () => shareStatus(status, await shareText({ text: shareMsg, url: myShareUrl })));
@@ -2214,6 +2239,8 @@ function duelResultHtml(duel, max) {
   const mine = new Map((duel.answers?.[meSide || 'challenger'] || []).map((a) => [a.id, a]));
   const theirs = new Map((duel.answers?.[meSide ? themSide : 'opponent'] || []).map((a) => [a.id, a]));
   const pill = (a) => (a ? `<span class="pts-pill ${a.correct ? (pointsOf(a) >= MAX_POINTS ? 'is-fast' : 'is-right') : 'is-wrong'}">${a.correct ? `+${pointsOf(a)}` : '0'}</span>` : '<span class="pts-pill is-none">–</span>');
+  const secs = (ms) => t('unit.seconds', { s: (ms / 1000).toFixed(1) });
+  const decidedByTime = them && duel.winner && duel.winner !== 'draw' && me.score === them.score;
   return `
     <div class="panel versus ${duel.winner === meSide ? 'is-win' : ''}">
       <p class="verdict">${verdict}</p>
@@ -2231,6 +2258,7 @@ function duelResultHtml(duel, max) {
         </div>
       </div>
       <p class="result-line">${esc(t('duel.outOf', { max }))}</p>
+      ${decidedByTime ? `<p class="result-line">${t('duel.tieTime', { me: meSide ? esc(t('duel.you')) : personName(me), myTime: esc(secs(me.ms)), them: personName(them), theirTime: esc(secs(them.ms)) })}</p>` : ''}
       ${meSide ? `
         <div class="share-row">
           <button class="btn btn-marigold" data-rematch>${ICONS.duel}<span>${esc(t('duel.rematch'))}</span></button>
@@ -2238,16 +2266,17 @@ function duelResultHtml(duel, max) {
         </div>
         <p class="share-status" data-share-status aria-live="polite"></p>` : ''}
     </div>
-    <h2 class="section-title">${esc(t('duel.byQuestion'))}</h2>
-    <ol class="compare">
-      <li class="compare-head"><span></span><span>${esc(meSide ? t('duel.you') : t('duel.first'))}</span><span>${them?.name ? `<bdi>${esc(them.name)}</bdi>` : '–'}</span></li>
-      ${duel.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean).map((q) => `
-        <li>
-          <span class="compare-q"><strong>${esc(qt(q, q.answer))}</strong>${diffChip(q)}</span>
-          ${pill(mine.get(q.id))}
-          ${pill(theirs.get(q.id))}
-        </li>`).join('')}
-    </ol>`;
+    ${!meSide ? `<a class="btn btn-marigold btn-block" href="#/duel/new">${esc(t('duel.startOwn'))}</a>` : `
+      <h2 class="section-title">${esc(t('duel.byQuestion'))}</h2>
+      <ol class="compare">
+        <li class="compare-head"><span></span><span>${esc(t('duel.you'))}</span><span>${them?.name ? `<bdi>${esc(them.name)}</bdi>` : '–'}</span></li>
+        ${duel.questionIds.map((id) => QUESTION_BY_ID.get(id)).filter(Boolean).map((q) => `
+          <li>
+            <span class="compare-q"><strong>${esc(qt(q, q.answer))}</strong>${diffChip(q)}</span>
+            ${pill(mine.get(q.id))}
+            ${pill(theirs.get(q.id))}
+          </li>`).join('')}
+      </ol>`}`;
 }
 
 // ── Friends ────────────────────────────────────────────────────
@@ -2293,6 +2322,8 @@ async function showFriends() {
       ${topbar()}
       <h1 class="greeting">${esc(t('friends.title'))}</h1>
 
+      ${turn.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.yourTurn'))}</h2><ul class="people">${turn.map(duelRow).join('')}</ul></div>` : ''}
+
       <div class="panel invite-panel">
         <h2 class="panel-title">${esc(t('friends.invite'))}</h2>
         <p class="invite-hint">${esc(t('friends.inviteHint'))}</p>
@@ -2317,7 +2348,6 @@ async function showFriends() {
         <span class="quick-text"><strong>${esc(t('duel.cardTitle'))}</strong><span>${esc(t('duel.cardDesc'))}</span></span>
       </a>
 
-      ${turn.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.yourTurn'))}</h2><ul class="people">${turn.map(duelRow).join('')}</ul></div>` : ''}
       ${waiting.length ? `<div class="panel"><h2 class="panel-title">${esc(t('friends.waiting'))}</h2><ul class="people">${waiting.map(duelRow).join('')}</ul></div>` : ''}
 
       <div class="panel">
@@ -2722,7 +2752,7 @@ async function showProgress() {
 
         <dl class="facts">
           <div><dt>${esc(t('prog.dayStreak'))}</dt><dd>${s.dayStreak}<small> ${esc(tn('prog.days', s.dayStreak))}</small></dd><p>${esc(t('prog.bestN', { n: s.bestDayStreak }))}</p></div>
-          <div><dt>${esc(t('prog.mastered'))}</dt><dd>${s.masteredIds.length}<small>/${QUESTIONS.length}</small></dd><p>${esc(t('prog.ofAll', { p: Math.round((s.masteredIds.length / QUESTIONS.length) * 100) }))}</p></div>
+          <div><dt>${esc(t('prog.mastered'))}</dt><dd>${s.masteredIds.length}<small>/${QUESTIONS.length}</small></dd><p>${esc(t('prog.masteredHint'))}</p></div>
           <div><dt>${esc(t('prog.rounds'))}</dt><dd>${s.rounds}</dd><p>${esc(t('prog.perfect', { n: s.perfectRounds }))}</p></div>
           <div><dt>${esc(t('prog.bestRound'))}</dt><dd>${s.bestScore}</dd><p>${esc(t('prog.average', { n: s.avgScore }))}</p></div>
           <div><dt>${esc(t('prog.inARow'))}</dt><dd>${s.bestStreak}</dd><p>${esc(t('prog.now', { n: s.currentStreak }))}</p></div>

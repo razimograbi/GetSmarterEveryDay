@@ -117,6 +117,9 @@ export const CATEGORIES = [
 
 export const CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 
+/** Book topics and any topic with `quick: false` are only played from their own tile. */
+export const inQuickRounds = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_ID[q.cat]?.quick !== false;
+
 /** Seconds allowed for a question: its topic's own limit if it has one, else the mode's. */
 export function secondsFor(q, mode = MODES[DEFAULT_MODE]) {
   return CATEGORY_BY_ID[q.cat]?.seconds ?? mode.secondsPerQuestion;

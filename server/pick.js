@@ -2,7 +2,7 @@
 // topic in a mix, never two about the same country, played easiest first.
 
 import { QUESTIONS } from '../shared/questions.js';
-import { CATEGORY_BY_ID } from '../shared/config.js';
+import { inQuickRounds } from '../shared/config.js';
 
 // For a round of 10: 3 easy (0–3), 4 medium (4–6) and 3 hard (7–10). Longer rounds stretch it.
 const BANDS = [[0, 3], [4, 6], [7, 10]];
@@ -22,38 +22,36 @@ function seeded(seed) {
 
 /**
  * Question ids for a round. `category` is 'mixed' (every topic that plays in Quick rounds) or a
- * topic id. The same `seed` always gives the same questions; `avoid` lists ids to leave out
- * while there are enough others.
+ * topic id. The same `seed` and sets always give the same questions.
+ *
+ * Each slot takes the lowest-cost questions, so the rules give way only when they must:
+ * `avoid` (ids that shouldn't come back, like the duel a rematch follows) matters most, then the
+ * slot's difficulty, then `seenRecently` (ids the players met lately), then one question per topic.
  */
-export function pickQuestions({ count, category = 'mixed', seed = String(Math.random()), avoid = new Set() }) {
+export function pickQuestions({ count, category = 'mixed', seed = String(Math.random()), avoid = new Set(), seenRecently = new Set() }) {
   const random = seeded(seed);
-  const inMix = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_ID[q.cat]?.quick !== false;
-  const all = QUESTIONS.filter(category === 'mixed' ? inMix : (q) => q.cat === category);
-  const fresh = all.filter((q) => !avoid.has(q.id));
-  const pool = fresh.length >= count * 3 ? fresh : all;
+  const mixed = category === 'mixed';
+  const pool = QUESTIONS.filter(mixed ? inQuickRounds : (q) => q.cat === category);
 
   const picked = [];
   const topics = new Set();
   const about = new Set();
-  const ok = (q, { band, oneTopic }) =>
-    !picked.includes(q)
-    && !(q.about && about.has(q.about.toLowerCase()))
-    && (!oneTopic || !topics.has(q.cat))
-    && (!band || (q.difficulty >= band[0] && q.difficulty <= band[1]));
+  const cost = (q, band) =>
+    (avoid.has(q.id) ? 100 : 0)
+    + (q.difficulty < band[0] || q.difficulty > band[1] ? 10 : 0)
+    + (seenRecently.has(q.id) ? 2 : 0)
+    + (mixed && topics.has(q.cat) ? 1 : 0);
 
   for (let slot = 0; slot < count; slot++) {
     const band = bandFor(slot, count);
-    // Loosen the rules only when needed: first the topic limit, then the difficulty band.
-    const tries = [{ band, oneTopic: category === 'mixed' }, { band, oneTopic: false }, { band: null, oneTopic: false }];
-    for (const rule of tries) {
-      const options = pool.filter((q) => ok(q, rule));
-      if (!options.length) continue;
-      const q = options[Math.floor(random() * options.length)];
-      picked.push(q);
-      topics.add(q.cat);
-      if (q.about) about.add(q.about.toLowerCase());
-      break;
-    }
+    const options = pool.filter((q) => !picked.includes(q) && !(q.about && about.has(q.about.toLowerCase())));
+    if (!options.length) break;
+    const lowest = Math.min(...options.map((q) => cost(q, band)));
+    const best = options.filter((q) => cost(q, band) === lowest);
+    const q = best[Math.floor(random() * best.length)];
+    picked.push(q);
+    topics.add(q.cat);
+    if (q.about) about.add(q.about.toLowerCase());
   }
   return picked.sort((a, b) => a.difficulty - b.difficulty).map((q) => q.id);
 }

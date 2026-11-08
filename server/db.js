@@ -2,10 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { AUTO_DELAY, BACK_BUTTON, LANGUAGES, PROFILE, pointsFor, secondsFor } from '../shared/config.js';
+import { AUTO_DELAY, BACK_BUTTON, LANGUAGES, PROFILE, inQuickRounds, pointsFor, secondsFor } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { parseAvatar, randomAvatar } from '../shared/avatars.js';
 import { isCountry } from '../shared/countries.js';
+import { reviewState } from './review.js';
 
 export function openDb(file) {
   mkdirSync(dirname(file), { recursive: true });
@@ -222,6 +223,8 @@ const MIGRATIONS = [
   // 4: the default wait before the next question went from 4 seconds to 2. Players on 4 had the
   // old default (a chosen 4 can't be told apart from it), so they move to the new one.
   (db) => db.exec('UPDATE settings SET auto_next_delay = 2 WHERE auto_next_delay = 4'),
+  // 5: who hasn't seen a finished duel's result yet (the player who finished first).
+  (db) => db.exec('ALTER TABLE duels ADD COLUMN result_unseen_by TEXT'),
 ];
 
 /** Lets SQLite refresh its statistics for the query planner. Cheap; run now and then. */
@@ -602,7 +605,6 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
              COUNT(*) AS answered,
              SUM(correct) AS correct,
              COUNT(DISTINCT question_id) AS seen,
-             COUNT(DISTINCT CASE WHEN correct = 1 THEN question_id END) AS mastered,
              COALESCE(AVG(CASE WHEN correct = 1 THEN ms END), 0) AS avgMs
       FROM answers WHERE user_id = ? GROUP BY category
     `)
@@ -664,16 +666,18 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
       ORDER BY wrong DESC, last DESC LIMIT 12`)
     .all(userId);
 
-  // Questions answered wrong in the last 10 rounds and not answered right since:
-  // Quick rounds bring a few of them back for another try.
-  const recentMissed = db
+  // What's known, what's mastered and which mistakes Quick rounds should bring back.
+  const history = db
     .prepare(`
-      SELECT a.question_id AS id FROM answers a
-      WHERE a.user_id = ? AND a.correct = 0
-        AND a.round_id IN (SELECT id FROM rounds WHERE user_id = ? ORDER BY id DESC LIMIT 10)
-        AND a.id = (SELECT MAX(b.id) FROM answers b WHERE b.user_id = a.user_id AND b.question_id = a.question_id)`)
-    .all(userId, userId)
-    .map((r) => r.id);
+      SELECT a.question_id AS id, a.correct, a.created_at AS at, a.round_id AS roundId, a.category AS topic, r.category AS roundKind
+      FROM answers a JOIN rounds r ON r.id = a.round_id
+      WHERE a.user_id = ? ORDER BY a.id`)
+    .all(userId);
+  const playsInQuick = (id) => QUESTION_BY_ID.has(id) && inQuickRounds(QUESTION_BY_ID.get(id));
+  const { knownIds, masteredIds, dueMistakes } = reviewState(history, (at) => Math.floor((at + shift) / dayMs), playsInQuick);
+  const topicOf = new Map(history.map((a) => [a.id, a.topic]));
+  const masteredByTopic = {};
+  for (const id of masteredIds) masteredByTopic[topicOf.get(id)] = (masteredByTopic[topicOf.get(id)] || 0) + 1;
 
   // The round just played, so the next one doesn't open with the same questions.
   const lastRoundIds = db
@@ -682,10 +686,6 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     .map((r) => r.id);
 
   const seenIds = db.prepare('SELECT DISTINCT question_id AS id FROM answers WHERE user_id = ?').all(userId).map((r) => r.id);
-  const masteredIds = db
-    .prepare('SELECT DISTINCT question_id AS id FROM answers WHERE user_id = ? AND correct = 1')
-    .all(userId)
-    .map((r) => r.id);
 
   return {
     answered: totals.answered,
@@ -705,12 +705,13 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     missed,
     bestStreak: best,
     currentStreak: run,
-    byCategory,
+    byCategory: byCategory.map((c) => ({ ...c, mastered: masteredByTopic[c.category] || 0 })),
     recent,
     days,
     seenIds,
+    knownIds,
     masteredIds,
-    recentMissed,
+    dueMistakes,
     lastRoundIds,
   };
 }
@@ -918,7 +919,7 @@ export function getDuel(db, id) {
     id: r.id, category: r.category, questionIds: JSON.parse(r.question_ids), rematchOf: r.rematch_of,
     challengerId: r.challenger_id, opponentId: r.opponent_id, invitedId: r.invited_id,
     challenger: side('challenger'), opponent: side('opponent'),
-    createdAt: r.created_at, acceptedAt: r.accepted_at, finishedAt: r.finished_at,
+    createdAt: r.created_at, acceptedAt: r.accepted_at, finishedAt: r.finished_at, resultUnseenBy: r.result_unseen_by,
   };
 }
 
@@ -932,15 +933,29 @@ export function claimDuel(db, id, userId) {
   return duel?.opponentId === userId ? duel : null;
 }
 
-/** Records one side's result. The duel is finished once both have played. */
+/** Records one side's result. The duel is finished once both have played, and the first to play has a result to see. */
 export function finishDuelSide(db, id, side, { roundId, score, correct, ms }) {
   const col = side === 'challenger' ? 'challenger' : 'opponent';
+  const other = side === 'challenger' ? 'opponent' : 'challenger';
   const changed = db.prepare(`
     UPDATE duels SET ${col}_score = ?, ${col}_correct = ?, ${col}_ms = ?, ${col}_round = ? WHERE id = ? AND ${col}_score IS NULL
   `).run(score, correct, ms, roundId, id).changes > 0;
-  db.prepare('UPDATE duels SET finished_at = ? WHERE id = ? AND finished_at IS NULL AND challenger_score IS NOT NULL AND opponent_score IS NOT NULL')
-    .run(Date.now(), id);
+  db.prepare(`
+    UPDATE duels SET finished_at = ?, result_unseen_by = ${other}_id
+    WHERE id = ? AND finished_at IS NULL AND challenger_score IS NOT NULL AND opponent_score IS NOT NULL
+  `).run(Date.now(), id);
   return changed;
+}
+
+/** The player has now seen this duel's result. */
+export function markDuelResultSeen(db, id, userId) {
+  db.prepare('UPDATE duels SET result_unseen_by = NULL WHERE id = ? AND result_unseen_by = ?').run(id, userId);
+}
+
+/** Questions the player met in their last few rounds. */
+export function recentQuestionIds(db, userId, rounds = 30) {
+  return db.prepare('SELECT DISTINCT question_id AS id FROM answers WHERE round_id IN (SELECT id FROM rounds WHERE user_id = ? ORDER BY id DESC LIMIT ?)')
+    .all(userId, rounds).map((r) => r.id);
 }
 
 /** The player's duels, newest first: ones they're in, and ones sent to them that nobody has taken. */
