@@ -40,6 +40,7 @@ function countFinished() {
 }
 let cleanup = () => {};
 let navId = 0; // bumps on every screen change; async screens check it before drawing
+let pendingSave = Promise.resolve(); // the last round's answers still on their way to the server; never rejects
 
 const CAT_COUNT = Object.fromEntries(CATEGORIES.map((c) => [c.id, QUESTIONS.filter((q) => q.cat === c.id).length]));
 
@@ -327,6 +328,7 @@ async function route() {
 
 async function loadStats(force = false) {
   if (state.stats && !force) return state.stats;
+  await pendingSave; // otherwise the numbers would miss the round just played
   const s = await api(`/api/stats?tz=${new Date().getTimezoneOffset()}`);
   // Answers to questions that were removed (e.g. the old Islands topic) stay in the
   // history but don't count toward "x of 400".
@@ -762,9 +764,9 @@ function duelAlerts() {
 }
 
 function topicRows(stats) {
-  const mastered = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.mastered]));
+  const gotRight = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.gotRight]));
   return orderTopics(stats).map((c) => {
-    const m = mastered[c.id] || 0;
+    const m = gotRight[c.id] || 0;
     const total = CAT_COUNT[c.id];
     return `
       <li>
@@ -888,8 +890,10 @@ async function showHome() {
   const nav = navId;
   draw(state.stats);
   try {
+    await pendingSave; // the duels list below must include a duel just finished, too
+    // Always fresh: the numbers shown here change with every round, on any device.
     const [stats] = await Promise.all([
-      loadStats(),
+      loadStats(true),
       state.daily?.day === today() ? null : loadDaily().catch(() => null),
       api('/api/duels').then((r) => (state.duels = r.duels)).catch(() => null),
     ]);
@@ -1449,6 +1453,7 @@ async function startRound(cat, fixed = null) {
   // A copy of the round on this device while it's on, so a round the phone closed without
   // warning (no pagehide, e.g. killed in the background) is finished on the next visit.
   function keepOpenRound() {
+    if (round.saved) return; // already ended (closing the page can still fire the "left the app" answer)
     storeOpenRound({
       cat: round.cat, mode: round.mode,
       fixed: round.fixed && { endpoint: round.fixed.endpoint, extra: round.fixed.extra },
@@ -1635,11 +1640,56 @@ function forgetOpenRound() {
   try { localStorage.removeItem(openRoundKey()); } catch { /* storage blocked */ }
 }
 
+// Quick and topic rounds whose save failed, kept apart from the open round so playing on can't
+// replace them. Never the Daily or duels: other players see those scores, and a copy kept on the
+// device can be edited.
+const MAX_UNSENT = 20;
+const unsentKey = () => `smarts:${state.user.id}:unsentRounds`;
+
+function unsentRounds() {
+  try { return JSON.parse(localStorage.getItem(unsentKey()) || '[]'); } catch { return []; }
+}
+
+function storeUnsent(list) {
+  try { localStorage.setItem(unsentKey(), JSON.stringify(list)); } catch { /* storage blocked: Retry on screen still works */ }
+}
+
+/** No connection, a server hiccup or an expired session. Anything else is a refusal, and sending it again won't help. */
+const mightSaveLater = (err) => !err.status || err.status >= 500 || err.status === 429 || err.status === 401;
+
+function keepUnsent(record, body) {
+  record.unsentId ??= String(Date.now());
+  storeUnsent([...unsentRounds().filter((u) => u.id !== record.unsentId), { id: record.unsentId, body }].slice(-MAX_UNSENT));
+}
+
+function forgetUnsent(record) {
+  if (record.unsentId) storeUnsent(unsentRounds().filter((u) => u.id !== record.unsentId));
+}
+
+/** Sends rounds that failed to save earlier. */
+async function sendUnsent() {
+  const rounds = unsentRounds();
+  if (!rounds.length) return;
+  storeUnsent([]);
+  const kept = [];
+  for (const r of rounds) {
+    try {
+      await api('/api/rounds', { method: 'POST', body: r.body });
+      state.stats = null;
+    } catch (err) {
+      if (mightSaveLater(err)) kept.push(r);
+    }
+  }
+  if (kept.length) storeUnsent(kept);
+}
+
 /**
- * A round this device still has open (the phone closed the app before it could finish it):
- * finish it now, with the questions never answered counted wrong. Runs when the app opens.
+ * Runs when the app opens: sends rounds that failed to save, then finishes a round this device
+ * still has open (the phone closed the app before it could end it), with the questions never
+ * answered counted wrong.
  */
 async function finishLeftRound() {
+  await sendUnsent();
   let r = null;
   try { r = JSON.parse(localStorage.getItem(openRoundKey()) || 'null'); } catch { /* unreadable: drop it */ }
   forgetOpenRound();
@@ -1666,15 +1716,16 @@ async function finishLeftRound() {
 async function saveRecord(record) {
   if (!record.payload.length) return;
   record.error = null;
+  const body = { mode: record.mode, category: record.cat, answers: record.payload };
+  const saving = api('/api/rounds', { method: 'POST', body });
+  pendingSave = saving.catch(() => {});
   try {
-    record.saved = await api('/api/rounds', {
-      method: 'POST',
-      body: { mode: record.mode, category: record.cat, answers: record.payload },
-    });
-    state.stats = null;
+    record.saved = await saving;
+    forgetUnsent(record);
     loadStats(true).catch(() => {});
   } catch (err) {
     record.error = err.status === 401 ? t('save.signedOut') : errMsg(err);
+    if (mightSaveLater(err)) keepUnsent(record, body);
   }
   if (location.hash === '#/results' && state.lastRound === record) showResults();
 }
@@ -1857,8 +1908,6 @@ function shareStatus(el, result) {
 
 // ── Fixed rounds (the Daily and duels) ─────────────────────────
 
-let pendingSave = Promise.resolve(); // a Daily or duel result still on its way to the server
-
 /** Plays set questions: { kind: 'daily'|'duel', questions, title, after, endpoint, extra }. */
 function playFixed(fixed) {
   state.fixedRound = fixed;
@@ -1868,13 +1917,14 @@ function playFixed(fixed) {
 /** Sends a fixed round's answers. A failed save is kept so the next screen can offer a retry. */
 function saveFixed(record, { partial = false, beacon = false } = {}) {
   const body = { ...record.fixed.extra, answers: record.payload, partial };
-  state.stats = null;
   if (beacon && navigator.sendBeacon) {
+    state.stats = null;
     navigator.sendBeacon(record.fixed.endpoint, new Blob([JSON.stringify(body)], { type: 'application/json' }));
     return Promise.resolve();
   }
   state.unsaved = null;
   pendingSave = api(record.fixed.endpoint, { method: 'POST', body })
+    .then(() => void loadStats(true).catch(() => {}))
     .catch((err) => {
       if (err.status !== 409) state.unsaved = { record, partial, error: errMsg(err) }; // 409: already saved
     });

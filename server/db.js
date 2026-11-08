@@ -605,6 +605,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
              COUNT(*) AS answered,
              SUM(correct) AS correct,
              COUNT(DISTINCT question_id) AS seen,
+             COUNT(DISTINCT CASE WHEN correct = 1 THEN question_id END) AS gotRight,
              COALESCE(AVG(CASE WHEN correct = 1 THEN ms END), 0) AS avgMs
       FROM answers WHERE user_id = ? GROUP BY category
     `)
