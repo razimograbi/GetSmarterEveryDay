@@ -91,7 +91,7 @@ export function tn(key, n, vars = {}) {
 
 /** A question's prompt, answer or option in the current language. */
 export function qt(q, text) {
-  if (current === 'en' || text == null) return text;
+  if (current === 'en' || text == null || q?.cat === 'stage') return text; // Leveling shows what the admin typed
   const d = pack.questions;
   return d[`${q.cat}|${text}`] ?? d[text] ?? text;
 }

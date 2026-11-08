@@ -35,6 +35,10 @@ export const REPORT_NOTE_MAX = 500;
 // day, like Wordle). Daily #1 was played on `start`. Picked from easy to hard.
 export const DAILY = { start: '2026-11-01', questions: 10 };
 
+// The Daily's boards: rows shown at first, rows added by "Show more", and how many players
+// above and below you stay in view when you're further down the board.
+export const BOARD = { first: 10, step: 20, around: 2 };
+
 // Duels: two players answer the same questions, each when they like.
 export const DUEL = { questions: 10, maxOpen: 20 };
 
@@ -87,6 +91,54 @@ export function pointsFor(correct, ms, seconds) {
 /** The most points one question can give. */
 export const MAX_POINTS = SCORING.base + SCORING.speedBonus;
 
+// Player levels. A finished round earns its points as XP, plus `finished`, plus a bonus for the
+// modes the server plays (a round quit halfway earns nothing). Reaching level L takes
+// 5 × L × (L − 1) XP in total, so each level costs 10 XP more than the one before. One finished
+// round always reaches level 2. Levels unlock avatar parts (see UNLOCKS in shared/avatars.js).
+export const XP = { finished: 10, bonus: { daily: 20, duel: 10 }, stageClear: 50 };
+export const MAX_LEVEL = 99;
+
+// Leveling: stages an admin writes on the dashboard and players clear in order. A stage is cleared
+// with at least `clearPercent` of its questions right. The first clear of each stage earns
+// XP.stageClear on top of the round's usual XP; a later try earns only the usual XP.
+export const STAGE = { clearPercent: 70, minQuestions: 5, maxQuestions: 20, wrongOptions: 4, seconds: 20, titleMax: 60, promptMax: 300, optionMax: 120, pictureMax: 500 };
+
+// Where a stage's picture may come from. These hosts are also in the Content Security Policy
+// (server/index.js builds it from this list), so anything allowed here loads in the browser.
+export const STAGE_PICTURE_HOSTS = ['flagcdn.com', 'upload.wikimedia.org', 'thumb.wikimedia.org'];
+
+/** Whether this many right answers clear a stage of `total` questions. */
+export const stageCleared = (correct, total) => total > 0 && correct * 100 >= total * STAGE.clearPercent;
+
+// A level's tier sets the cover around the player's avatar (public/js/covers.js).
+export const LEVEL_TIERS = [
+  { id: 'rookie', from: 1 },
+  { id: 'bronze', from: 5 },
+  { id: 'silver', from: 10 },
+  { id: 'gold', from: 20 },
+  { id: 'platinum', from: 30 },
+  { id: 'diamond', from: 40 },
+  { id: 'legend', from: 50 },
+];
+
+/** The XP a finished round earns. */
+export const xpForRound = (category, score) => score + XP.finished + (XP.bonus[category] || 0);
+
+/** The total XP it takes to reach a level. */
+export const xpForLevel = (level) => 5 * level * (level - 1);
+
+/** The level a total of XP puts a player on. */
+export const levelFor = (xp) => Math.min(MAX_LEVEL, Math.floor((1 + Math.sqrt(1 + (4 * xp) / 5)) / 2));
+
+export const tierFor = (level) => LEVEL_TIERS.findLast((tier) => level >= tier.from);
+
+/** How far a player is through their level: XP earned in it, and what the whole level takes (0 at the top). */
+export function levelProgress(xp) {
+  const level = levelFor(xp);
+  const start = xpForLevel(level);
+  return { level, into: level < MAX_LEVEL ? xp - start : 0, need: level < MAX_LEVEL ? xpForLevel(level + 1) - start : 0 };
+}
+
 export const CATEGORIES = [
   { id: 'flags', name: 'Flags', blurb: 'Tell the tricolours apart', hue: '#E8414F' },
   { id: 'capitals', name: 'Capitals', blurb: 'Not always the biggest city', hue: '#2A3BD1' },
@@ -130,5 +182,5 @@ export const inQuickRounds = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_
 
 /** Seconds allowed for a question: its topic's own limit if it has one, else the mode's. */
 export function secondsFor(q, mode = MODES[DEFAULT_MODE]) {
-  return CATEGORY_BY_ID[q.cat]?.seconds ?? mode.secondsPerQuestion;
+  return q.seconds ?? CATEGORY_BY_ID[q.cat]?.seconds ?? mode.secondsPerQuestion;
 }

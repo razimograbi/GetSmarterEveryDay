@@ -2,9 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { AUTO_DELAY, BACK_BUTTON, LANGUAGES, PROFILE, inQuickRounds, pointsFor, secondsFor } from '../shared/config.js';
+import {
+  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, levelFor, pointsFor, secondsFor, stageCleared, xpForRound,
+} from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
-import { parseAvatar, randomAvatar } from '../shared/avatars.js';
+import { avatarLevel, parseAvatar, randomAvatar } from '../shared/avatars.js';
 import { isCountry } from '../shared/countries.js';
 import { reviewState } from './review.js';
 
@@ -243,7 +245,61 @@ const MIGRATIONS = [
   (db) => db.exec('UPDATE settings SET auto_next_delay = 2 WHERE auto_next_delay = 4'),
   // 5: who hasn't seen a finished duel's result yet (the player who finished first).
   (db) => db.exec('ALTER TABLE duels ADD COLUMN result_unseen_by TEXT'),
+  // 6: player levels. XP is kept on the profile so boards don't have to add up every player's
+  // rounds. Players start with what the rounds they've already finished earn.
+  (db) => {
+    db.exec('ALTER TABLE profiles ADD COLUMN xp INTEGER NOT NULL DEFAULT 0');
+    const set = db.prepare('UPDATE profiles SET xp = ? WHERE user_id = ?');
+    for (const { user_id: id } of db.prepare('SELECT user_id FROM profiles').all()) set.run(earnedXp(db, id), id);
+  },
+  // 7: Leveling. Stages and their questions are only ever written on the admin dashboard.
+  (db) => db.exec(`
+    CREATE TABLE stages (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      title       TEXT NOT NULL,
+      position    INTEGER NOT NULL,
+      published   INTEGER NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
+    CREATE TABLE stage_questions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      stage_id    INTEGER NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
+      position    INTEGER NOT NULL,
+      prompt      TEXT NOT NULL,
+      answer      TEXT NOT NULL,
+      wrong       TEXT NOT NULL, -- JSON list of the wrong answers
+      picture     TEXT,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
+    CREATE INDEX stage_questions_stage ON stage_questions(stage_id, position);
+    -- One row per player and stage. cleared_at is set once, by the try that earns the bonus.
+    CREATE TABLE stage_results (
+      user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      stage_id      INTEGER NOT NULL REFERENCES stages(id) ON DELETE CASCADE,
+      attempts      INTEGER NOT NULL DEFAULT 0,
+      best_correct  INTEGER NOT NULL DEFAULT 0,
+      best_total    INTEGER NOT NULL DEFAULT 0,
+      best_score    INTEGER NOT NULL DEFAULT 0,
+      cleared_at    INTEGER,
+      last_correct  INTEGER NOT NULL DEFAULT 0,
+      last_total    INTEGER NOT NULL DEFAULT 0,
+      last_score    INTEGER NOT NULL DEFAULT 0,
+      last_xp       INTEGER NOT NULL DEFAULT 0,
+      last_bonus    INTEGER NOT NULL DEFAULT 0,
+      last_at       INTEGER,
+      PRIMARY KEY (user_id, stage_id)
+    ) WITHOUT ROWID;
+    CREATE INDEX stage_results_stage ON stage_results(stage_id);
+    ALTER TABLE plays ADD COLUMN content TEXT; -- a Leveling round's own copy of its questions
+  `),
 ];
+
+/** The XP all of a player's finished rounds add up to. */
+const earnedXp = (db, userId) =>
+  db.prepare('SELECT category, score FROM rounds WHERE user_id = ? AND complete = 1').all(userId)
+    .reduce((sum, r) => sum + xpForRound(r.category, r.score), 0);
 
 /** Lets SQLite refresh its statistics for the query planner. Cheap; run now and then. */
 export function optimizeDb(db) {
@@ -419,11 +475,14 @@ export function exportUser(db, userId) {
     reports: db.prepare('SELECT question_id, reason, note, status, created_at FROM question_reports WHERE user_id = ? ORDER BY id').all(userId),
     events: db.prepare('SELECT name, props, created_at FROM events WHERE user_id = ? ORDER BY id').all(userId)
       .map((e) => ({ ...e, props: e.props ? JSON.parse(e.props) : null })),
-    profile: db.prepare('SELECT name, avatar, country, hidden, friend_code, updated_at FROM profiles WHERE user_id = ?').get(userId) ?? null,
+    profile: db.prepare('SELECT name, avatar, country, hidden, friend_code, xp, updated_at FROM profiles WHERE user_id = ?').get(userId) ?? null,
     friends: db.prepare('SELECT p.name, f.created_at FROM friends f JOIN profiles p ON p.user_id = f.friend_id WHERE f.user_id = ? ORDER BY f.created_at').all(userId),
     daily: db.prepare('SELECT day, score, correct, total, ms, started_at, finished_at FROM daily_results WHERE user_id = ? ORDER BY day').all(userId),
     duels: db.prepare('SELECT id, category, challenger_id = ? AS you_challenged, challenger_score, opponent_score, created_at, finished_at FROM duels WHERE challenger_id = ? OR opponent_id = ? ORDER BY created_at')
       .all(userId, userId, userId),
+    leveling: db.prepare(`
+      SELECT s.title, r.attempts, r.best_correct, r.best_total, r.best_score, r.cleared_at, r.last_at
+      FROM stage_results r JOIN stages s ON s.id = r.stage_id WHERE r.user_id = ? ORDER BY s.position`).all(userId),
     reminderDevices: db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId).n,
   };
 }
@@ -563,26 +622,37 @@ export function backupDb(db, file) {
   db.prepare('VACUUM INTO ?').run(file);
 }
 
-export function saveRound(db, userId, { mode, category, graded, complete = true }) {
+/** Writes a round and its answers and adds its XP. Runs inside the caller's transaction. */
+function insertRound(db, userId, { mode, category, graded, complete = true, bonusXp = 0 }) {
   const now = Date.now();
   const score = graded.reduce((s, a) => s + a.points, 0);
   const correct = graded.filter((a) => a.correct).length;
+  const { lastInsertRowid: roundId } = db
+    .prepare('INSERT INTO rounds (user_id, mode, category, score, correct, total, created_at, complete) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(userId, mode, category, score, correct, graded.length, now, complete ? 1 : 0);
+  const ins = db.prepare(
+    'INSERT INTO answers (round_id, user_id, question_id, category, choice, correct, ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  );
+  for (const a of graded) ins.run(roundId, userId, a.id, a.cat, a.choice, a.correct ? 1 : 0, a.ms, now);
+  const xpGained = complete ? xpForRound(category, score) + bonusXp : 0;
+  const xp = db.prepare('UPDATE profiles SET xp = xp + ? WHERE user_id = ? RETURNING xp').get(xpGained, userId)?.xp ?? 0;
+  return { roundId: Number(roundId), score, correct, total: graded.length, xpGained, xp };
+}
+
+/** Runs `work` in one transaction: all of it is saved, or none. */
+function inTransaction(db, work) {
   db.exec('BEGIN');
   try {
-    const { lastInsertRowid: roundId } = db
-      .prepare('INSERT INTO rounds (user_id, mode, category, score, correct, total, created_at, complete) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(userId, mode, category, score, correct, graded.length, now, complete ? 1 : 0);
-    const ins = db.prepare(
-      'INSERT INTO answers (round_id, user_id, question_id, category, choice, correct, ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-    for (const a of graded) ins.run(roundId, userId, a.id, a.cat, a.choice, a.correct ? 1 : 0, a.ms, now);
+    const result = work();
     db.exec('COMMIT');
-    return { roundId: Number(roundId), score, correct, total: graded.length };
+    return result;
   } catch (err) {
     db.exec('ROLLBACK');
     throw err;
   }
 }
+
+export const saveRound = (db, userId, round) => inTransaction(db, () => insertRound(db, userId, round));
 
 /**
  * Day streaks: runs of consecutive local days with at least one answer. The current one is
@@ -680,7 +750,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
   const missed = db
     .prepare(`
       SELECT question_id AS id, SUM(1 - correct) AS wrong, SUM(correct) AS right, MAX(created_at) AS last
-      FROM answers WHERE user_id = ?
+      FROM answers WHERE user_id = ? AND category != 'stage'
       GROUP BY question_id HAVING wrong > 0
       ORDER BY wrong DESC, last DESC LIMIT 12`)
     .all(userId);
@@ -732,6 +802,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     masteredIds,
     dueMistakes,
     lastRoundIds,
+    xp: getProfile(db, userId)?.xp ?? 0,
   };
 }
 
@@ -741,15 +812,15 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const randomCode = (n) => Array.from(randomBytes(n), (b) => CODE_CHARS[b % CODE_CHARS.length]).join('');
 
-/** The player's profile, made on first use: their first name, an avatar picked from their id, and a friend code. */
+/** The player's profile, made on first use: their first name, an avatar picked from their id, a friend code, and the XP of any rounds they played before profiles existed. */
 export function ensureProfile(db, user) {
   const have = getProfile(db, user.id);
   if (have) return have;
   const name = cleanName(String(user.name || '').split(' ')[0]) || 'Player';
   for (let tries = 0; ; tries++) {
     try {
-      db.prepare('INSERT INTO profiles (user_id, name, avatar, friend_code, updated_at) VALUES (?, ?, ?, ?, ?)')
-        .run(user.id, name, randomAvatar(user.id), randomCode(6), Date.now());
+      db.prepare('INSERT INTO profiles (user_id, name, avatar, friend_code, updated_at, xp) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(user.id, name, randomAvatar(user.id), randomCode(6), Date.now(), earnedXp(db, user.id));
       return getProfile(db, user.id);
     } catch (err) {
       if (tries > 5 || !/UNIQUE/.test(err.message)) throw err; // a clashing friend code: try another
@@ -758,17 +829,17 @@ export function ensureProfile(db, user) {
 }
 
 export function getProfile(db, userId) {
-  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset FROM profiles WHERE user_id = ?').get(userId);
+  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset, xp FROM profiles WHERE user_id = ?').get(userId);
   return row ? toProfile(row) : null;
 }
 
 const toProfile = (r) => ({
-  id: r.user_id, name: r.name, avatar: r.avatar, country: r.country ?? null, hidden: r.hidden === 1, code: r.friend_code, tz: r.tz_offset,
+  id: r.user_id, name: r.name, avatar: r.avatar, country: r.country ?? null, hidden: r.hidden === 1, code: r.friend_code, tz: r.tz_offset, xp: r.xp, level: levelFor(r.xp),
 });
 
 /** How a player shows up to someone else: hidden players are anonymous on public boards. */
 export const shownProfile = (p, { anonymous = false } = {}) =>
-  anonymous && p.hidden ? { id: null, name: null, avatar: null, country: null, hidden: true } : { id: p.id, name: p.name, avatar: p.avatar, country: p.country };
+  anonymous && p.hidden ? { id: null, name: null, avatar: null, country: null, level: null, hidden: true } : { id: p.id, name: p.name, avatar: p.avatar, country: p.country, level: p.level };
 
 /** A display name: printable characters only, spaces tidied, at most PROFILE.nameMax long. */
 function cleanName(s) {
@@ -785,6 +856,8 @@ export function saveProfile(db, userId, changes) {
   }
   if ('avatar' in changes) {
     if (!parseAvatar(changes.avatar)) throw badRequest('Unknown avatar.');
+    const need = avatarLevel(changes.avatar);
+    if (changes.avatar !== p.avatar && need > p.level) throw badRequest(`That avatar unlocks at level ${need}.`);
     p.avatar = changes.avatar;
   }
   if ('country' in changes) {
@@ -806,7 +879,7 @@ export function setTimezone(db, userId, tzOffsetMin) {
 }
 
 export function profileByCode(db, code) {
-  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset FROM profiles WHERE friend_code = ?').get(String(code || '').toUpperCase());
+  const row = db.prepare('SELECT user_id, name, avatar, country, hidden, friend_code, tz_offset, xp FROM profiles WHERE friend_code = ?').get(String(code || '').toUpperCase());
   return row ? toProfile(row) : null;
 }
 
@@ -835,7 +908,7 @@ export const friendIds = (db, userId) => db.prepare('SELECT friend_id AS id FROM
 /** The player's friends with their day streak (in their own time zone) and today's Daily score. */
 export function listFriends(db, userId, day) {
   const rows = db.prepare(`
-    SELECT p.user_id, p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset,
+    SELECT p.user_id, p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset, p.xp,
            d.score AS daily_score, d.finished_at AS daily_done,
            (SELECT MAX(created_at) FROM rounds r WHERE r.user_id = p.user_id) AS last_played
     FROM friends f
@@ -889,14 +962,14 @@ export function finishDaily(db, day, userId, { roundId, score, correct, total, m
 }
 
 /**
- * The Daily's boards: the top `limit` players, the viewer's own place, and all their friends.
+ * The Daily's boards: the top `limit` players, the viewer's own place and neighbours, and all their friends.
  * Ranked by score, then by less time taken, then by who finished first.
  */
 export function dailyBoard(db, day, viewerId, limit = 50) {
   const ranked = db.prepare(`
     SELECT ROW_NUMBER() OVER (ORDER BY d.score DESC, d.ms ASC, d.finished_at ASC) AS rank,
            d.user_id, d.score, d.correct, d.total, d.ms,
-           p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset
+           p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset, p.xp
     FROM daily_results d JOIN profiles p ON p.user_id = d.user_id
     WHERE d.day = ? AND d.finished_at IS NOT NULL
   `).all(day);
@@ -906,10 +979,12 @@ export function dailyBoard(db, day, viewerId, limit = 50) {
     return { rank: r.rank, score: r.score, correct: r.correct, total: r.total, ms: r.ms, me: r.user_id === viewerId,
       ...shownProfile(toProfile(r), { anonymous: !known }) };
   };
+  const mine = ranked.findIndex((r) => r.user_id === viewerId);
   return {
     players: ranked.length,
     top: ranked.slice(0, limit).map(entry),
-    me: ranked.filter((r) => r.user_id === viewerId).map(entry)[0] ?? null,
+    me: mine >= 0 ? entry(ranked[mine]) : null,
+    around: mine >= 0 ? ranked.slice(Math.max(0, mine - BOARD.around), mine + BOARD.around + 1).map(entry) : [],
     friends: ranked.filter((r) => r.user_id === viewerId || friends.has(r.user_id)).map(entry),
   };
 }
@@ -1002,6 +1077,7 @@ export function roundAnswers(db, roundId) {
 const toPlay = (r) => r && ({
   id: r.id, userId: r.user_id, kind: r.kind, ref: r.ref, side: r.side, questionIds: JSON.parse(r.question_ids), idx: r.idx,
   openedAt: r.opened_at, answers: JSON.parse(r.answers), startedAt: r.started_at, updatedAt: r.updated_at, finishedAt: r.finished_at,
+  content: r.content ? JSON.parse(r.content) : null,
 });
 
 export const getPlay = (db, id) => toPlay(db.prepare('SELECT * FROM plays WHERE id = ?').get(id)) ?? null;
@@ -1009,11 +1085,11 @@ export const getPlay = (db, id) => toPlay(db.prepare('SELECT * FROM plays WHERE 
 export const findPlay = (db, kind, ref, userId) =>
   toPlay(db.prepare('SELECT * FROM plays WHERE kind = ? AND ref = ? AND user_id = ?').get(kind, ref, userId)) ?? null;
 
-export function createPlay(db, { kind, ref, side, userId, questionIds }) {
+export function createPlay(db, { kind, ref, side, userId, questionIds, content = null }) {
   const id = randomUUID();
   const now = Date.now();
-  db.prepare('INSERT INTO plays (id, user_id, kind, ref, side, question_ids, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(id, userId, kind, ref, side, JSON.stringify(questionIds), now, now);
+  db.prepare('INSERT INTO plays (id, user_id, kind, ref, side, question_ids, content, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, userId, kind, ref, side, JSON.stringify(questionIds), content ? JSON.stringify(content) : null, now, now);
   return getPlay(db, id);
 }
 
@@ -1038,6 +1114,239 @@ export const stalePlays = (db, before) =>
 /** Finished rounds are only useful while their result is fresh; the Daily and duel tables keep what matters. */
 export function purgeOldPlays(db) {
   db.prepare('DELETE FROM plays WHERE finished_at IS NOT NULL AND finished_at < ?').run(Date.now() - 3 * DAY_MS);
+}
+
+// ── Leveling stages ────────────────────────────────────────────
+// Written on the admin dashboard. Every try is played on the server (see server/play.js), with
+// `ref` "<stage id>:<random>" because a player can try a stage as often as they like.
+
+const notFound = (message) => Object.assign(new Error(message), { status: 404 });
+
+/** Text for a stage: control characters and extra spaces go, and it must fit. `label` starts with a small letter. */
+function stageText(value, max, label) {
+  if (typeof value !== 'string') throw badRequest(`Enter ${label}.`);
+  const text = value.replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) throw badRequest(`Enter ${label}.`);
+  if (text.length > max) throw badRequest(`${label[0].toUpperCase()}${label.slice(1)} can be at most ${max} characters.`);
+  return text;
+}
+
+/** A picture address the browser is allowed to load, or null for no picture. */
+function stagePicture(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const address = typeof value === 'string' ? value.trim() : null;
+  if (address === '') return null;
+  const refuse = () => badRequest(`The picture must be an https address on ${STAGE_PICTURE_HOSTS.join(' or ')}, or a file under /img/ or /signs/.`);
+  if (address === null || address.length > STAGE.pictureMax) throw refuse();
+  if (address.startsWith('/')) {
+    if (!/^\/(img|signs)\/[\w.%/-]+$/.test(address) || address.includes('..') || address.includes('//')) throw refuse();
+    return address;
+  }
+  let url;
+  try {
+    url = new URL(address);
+  } catch {
+    throw refuse();
+  }
+  if (url.protocol !== 'https:' || !STAGE_PICTURE_HOSTS.includes(url.hostname) || url.username || url.password || url.port) throw refuse();
+  return url.href;
+}
+
+/** A question as typed on the dashboard, checked. Throws a 400 error that says what to fix. */
+function cleanStageQuestion(input) {
+  const prompt = stageText(input.prompt, STAGE.promptMax, 'the question');
+  const answer = stageText(input.answer, STAGE.optionMax, 'the right answer');
+  if (!Array.isArray(input.wrong) || input.wrong.length !== STAGE.wrongOptions) throw badRequest(`Enter ${STAGE.wrongOptions} wrong answers.`);
+  const wrong = input.wrong.map((w, i) => stageText(w, STAGE.optionMax, `wrong answer ${i + 1}`));
+  const seen = new Set();
+  for (const option of [answer, ...wrong]) {
+    const key = option.toLocaleLowerCase();
+    if (seen.has(key)) throw badRequest(`"${option}" is there twice. All ${STAGE.wrongOptions + 1} answers must be different.`);
+    seen.add(key);
+  }
+  return { prompt, answer, wrong, picture: stagePicture(input.picture) };
+}
+
+const toAdminStage = (r) => ({ id: r.id, title: r.title, published: r.published === 1, count: r.count });
+const toStageQuestion = (r) => ({ id: r.id, prompt: r.prompt, answer: r.answer, wrong: JSON.parse(r.wrong), picture: r.picture ?? null });
+const STAGE_FIELDS = 's.id, s.title, s.published, (SELECT COUNT(*) FROM stage_questions q WHERE q.stage_id = s.id) AS count';
+
+export const listStages = (db) =>
+  db.prepare(`SELECT ${STAGE_FIELDS} FROM stages s ORDER BY s.position, s.id`).all().map(toAdminStage);
+
+const stageQuestions = (db, stageId) =>
+  db.prepare('SELECT * FROM stage_questions WHERE stage_id = ? ORDER BY position, id').all(stageId).map(toStageQuestion);
+
+function stageRow(db, id) {
+  const row = db.prepare(`SELECT ${STAGE_FIELDS} FROM stages s WHERE s.id = ?`).get(id);
+  if (!row) throw notFound('That stage no longer exists.');
+  return toAdminStage(row);
+}
+
+/** A stage with its questions, answers included. For the dashboard only. */
+export const stageForAdmin = (db, id) => ({ stage: stageRow(db, id), questions: stageQuestions(db, id) });
+
+/** A new stage goes last and starts as a draft. */
+export function createStage(db, { title }) {
+  const clean = stageText(title, STAGE.titleMax, 'a name for the stage');
+  const now = Date.now();
+  const { next } = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM stages').get();
+  const { lastInsertRowid: id } = db.prepare('INSERT INTO stages (title, position, created_at, updated_at) VALUES (?, ?, ?, ?)').run(clean, next, now, now);
+  return stageRow(db, Number(id));
+}
+
+/** Renames a stage or changes whether players see it. A published stage always has enough questions. */
+export function updateStage(db, id, changes) {
+  const stage = stageRow(db, id);
+  const title = 'title' in changes ? stageText(changes.title, STAGE.titleMax, 'a name for the stage') : stage.title;
+  let published = stage.published;
+  if ('published' in changes) {
+    if (typeof changes.published !== 'boolean') throw badRequest('published must be true or false.');
+    published = changes.published;
+    if (published && stage.count < STAGE.minQuestions) throw badRequest(`A stage needs at least ${STAGE.minQuestions} questions before it can be published.`);
+  }
+  db.prepare('UPDATE stages SET title = ?, published = ?, updated_at = ? WHERE id = ?').run(title, published ? 1 : 0, Date.now(), id);
+  return stageRow(db, id);
+}
+
+/** Swaps a row with its neighbour above or below. At either end it stays put. */
+function moveRow(db, table, scope, id, direction) {
+  if (direction !== 'up' && direction !== 'down') throw badRequest('direction must be up or down.');
+  const list = db.prepare(`SELECT id, position FROM ${table} ${scope.where} ORDER BY position, id`).all(...scope.args);
+  const at = list.findIndex((r) => r.id === id);
+  const other = list[at + (direction === 'up' ? -1 : 1)];
+  if (at < 0 || !other) return;
+  const here = list[at];
+  db.prepare(`UPDATE ${table} SET position = CASE id WHEN ? THEN ? WHEN ? THEN ? END WHERE id IN (?, ?)`)
+    .run(here.id, other.position, other.id, here.position, here.id, other.id);
+}
+
+export function moveStage(db, id, direction) {
+  stageRow(db, id);
+  moveRow(db, 'stages', { where: '', args: [] }, id, direction);
+  return listStages(db);
+}
+
+/** Deletes a stage, its questions and players' records of it. XP already earned stays, and rounds in progress finish from their own copy. */
+export function deleteStage(db, id) {
+  stageRow(db, id);
+  db.prepare('DELETE FROM stages WHERE id = ?').run(id);
+}
+
+function stageQuestionRow(db, stageId, questionId) {
+  const row = db.prepare('SELECT * FROM stage_questions WHERE id = ? AND stage_id = ?').get(questionId, stageId);
+  if (!row) throw notFound('That question no longer exists.');
+  return row;
+}
+
+export function addStageQuestion(db, stageId, input) {
+  const stage = stageRow(db, stageId);
+  if (stage.count >= STAGE.maxQuestions) throw badRequest(`A stage can have at most ${STAGE.maxQuestions} questions.`);
+  const q = cleanStageQuestion(input);
+  const now = Date.now();
+  const { next } = db.prepare('SELECT COALESCE(MAX(position), 0) + 1 AS next FROM stage_questions WHERE stage_id = ?').get(stageId);
+  db.prepare('INSERT INTO stage_questions (stage_id, position, prompt, answer, wrong, picture, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(stageId, next, q.prompt, q.answer, JSON.stringify(q.wrong), q.picture, now, now);
+  return stageForAdmin(db, stageId);
+}
+
+export function updateStageQuestion(db, stageId, questionId, input) {
+  stageQuestionRow(db, stageId, questionId);
+  const q = cleanStageQuestion(input);
+  db.prepare('UPDATE stage_questions SET prompt = ?, answer = ?, wrong = ?, picture = ?, updated_at = ? WHERE id = ?')
+    .run(q.prompt, q.answer, JSON.stringify(q.wrong), q.picture, Date.now(), questionId);
+  return stageForAdmin(db, stageId);
+}
+
+export function moveStageQuestion(db, stageId, questionId, direction) {
+  stageQuestionRow(db, stageId, questionId);
+  moveRow(db, 'stage_questions', { where: 'WHERE stage_id = ?', args: [stageId] }, questionId, direction);
+  return stageForAdmin(db, stageId);
+}
+
+export function deleteStageQuestion(db, stageId, questionId) {
+  const stage = stageRow(db, stageId);
+  stageQuestionRow(db, stageId, questionId);
+  if (stage.published && stage.count <= STAGE.minQuestions) throw badRequest(`A published stage needs at least ${STAGE.minQuestions} questions. Unpublish it first.`);
+  db.prepare('DELETE FROM stage_questions WHERE id = ?').run(questionId);
+  return stageForAdmin(db, stageId);
+}
+
+/**
+ * The published stages in order, as this player stands on them. A stage is open when the one
+ * before it is cleared, and stays playable once cleared even if a new stage is put before it.
+ */
+export function stagePath(db, userId) {
+  const rows = db.prepare(`
+    SELECT s.id, s.title, (SELECT COUNT(*) FROM stage_questions q WHERE q.stage_id = s.id) AS count,
+           r.attempts, r.best_correct, r.best_total, r.best_score, r.cleared_at,
+           r.last_correct, r.last_total, r.last_score, r.last_xp, r.last_bonus, r.last_at
+    FROM stages s LEFT JOIN stage_results r ON r.stage_id = s.id AND r.user_id = ?
+    WHERE s.published = 1 ORDER BY s.position, s.id
+  `).all(userId);
+  let previousCleared = true;
+  return rows.map((r) => {
+    const cleared = r.cleared_at !== null;
+    const status = cleared ? 'cleared' : previousCleared ? 'open' : 'locked';
+    previousCleared = cleared;
+    return {
+      id: r.id,
+      title: r.title,
+      count: r.count,
+      status,
+      attempts: r.attempts ?? 0,
+      best: r.last_at === null ? null : { correct: r.best_correct, total: r.best_total, score: r.best_score },
+      last: r.last_at === null ? null : { correct: r.last_correct, total: r.last_total, score: r.last_score, xp: r.last_xp, bonus: r.last_bonus, cleared: stageCleared(r.last_correct, r.last_total), at: r.last_at },
+    };
+  });
+}
+
+/** A stage's questions in the shape server/play.js plays: { ids, content }, or null if it has none. */
+export function stageRound(db, stageId) {
+  const questions = stageQuestions(db, stageId);
+  if (!questions.length) return null;
+  const toQuestion = (q) => ({
+    id: `stage:${q.id}`, cat: 'stage', prompt: q.prompt, answer: q.answer, wrong: q.wrong, seconds: STAGE.seconds, ownPrompt: true,
+    visual: q.picture ? { type: 'wiki', src: q.picture, credit: false } : { type: 'text' },
+  });
+  const content = Object.fromEntries(questions.map(toQuestion).map((q) => [q.id, q]));
+  return { ids: Object.keys(content), content };
+}
+
+/** The try this player has open on this stage, if any. */
+export const openStagePlay = (db, stageId, userId) =>
+  toPlay(db.prepare("SELECT * FROM plays WHERE kind = 'stage' AND user_id = ? AND ref LIKE ? AND finished_at IS NULL").get(userId, `${stageId}:%`)) ?? null;
+
+/**
+ * Saves a finished try in one transaction: the round, its XP and the player's record of the stage.
+ * `total` counts every question of the try, including any skipped, so skipping can't make a stage
+ * easier. The bonus goes to whichever try sets cleared_at, which only one can.
+ * `played` is false when no question was answered: such a try earns nothing.
+ */
+export function finishStageTry(db, { userId, stageId, mode, graded, total, played }) {
+  return inTransaction(db, () => {
+    const correct = graded.filter((a) => a.correct).length;
+    const cleared = played && stageCleared(correct, total);
+    const exists = !!db.prepare('SELECT 1 FROM stages WHERE id = ?').get(stageId);
+    let firstClear = false;
+    if (exists) {
+      db.prepare('INSERT OR IGNORE INTO stage_results (user_id, stage_id) VALUES (?, ?)').run(userId, stageId);
+      if (cleared) firstClear = db.prepare('UPDATE stage_results SET cleared_at = ? WHERE user_id = ? AND stage_id = ? AND cleared_at IS NULL').run(Date.now(), userId, stageId).changes > 0;
+    }
+    const bonusXp = firstClear ? XP.stageClear : 0;
+    const round = played ? insertRound(db, userId, { mode, category: 'stage', graded, complete: true, bonusXp }) : null;
+    const score = round?.score ?? 0;
+    if (exists) {
+      db.prepare(`
+        UPDATE stage_results SET attempts = attempts + 1, last_correct = ?, last_total = ?, last_score = ?, last_xp = ?, last_bonus = ?, last_at = ?,
+          best_correct = CASE WHEN ? >= best_score THEN ? ELSE best_correct END,
+          best_total = CASE WHEN ? >= best_score THEN ? ELSE best_total END,
+          best_score = MAX(best_score, ?)
+        WHERE user_id = ? AND stage_id = ?
+      `).run(correct, total, score, (round?.xpGained ?? 0) - bonusXp, bonusXp, Date.now(), score, correct, score, total, score, userId, stageId);
+    }
+    return { round, correct, total, score, cleared, firstClear, bonusXp };
+  });
 }
 
 // ── Push reminders ─────────────────────────────────────────────

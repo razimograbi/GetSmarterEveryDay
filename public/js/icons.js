@@ -49,6 +49,8 @@ export const ICONS = {
   trophy: i('<path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z"/><path d="M7.5 6H4.5v1.5A3 3 0 0 0 7.5 10.5M16.5 6h3v1.5a3 3 0 0 1-3 3"/><path d="M12 13.5V17M8.5 20.5h7M9.5 17h5v3.5h-5z"/>'),
   dice: i('<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/>'),
   edit: i('<path d="M4 20h4L19.5 8.5a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+  leveling: i('<path d="M3.5 20.5h5v-5h4v-5h4v-5h4"/>'),
+  lock: i('<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke-width="2.6"/>'),
   bell: i('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'),
   plus: i('<path d="M12 5v14M5 12h14"/>'),
   report: i('<path d="M4.5 5.5h15v10.5H10l-5.5 4.5z"/><path d="M12 8.5v3.5"/><circle cx="12" cy="14.2" r=".7" fill="currentColor"/>'),
