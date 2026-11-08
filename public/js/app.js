@@ -4,6 +4,7 @@ import {
 } from '/shared/config.js';
 import { avatarUrl, avatarCode, parseAvatar, randomAvatar, ANIMALS, EYES, BACKGROUNDS, EXTRAS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
+import { pickLevel, subjectOf } from '/shared/levels.js';
 import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
 import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, loadLocalImages, thumb } from './visuals.js';
 import { signSvg } from './signs.js';
@@ -879,9 +880,7 @@ const reviewLabel = (q) => (q.visual.type === 'text' || q.ownPrompt ? qt(q, q.pr
 // Questions of the round played last in this visit, in case the server's stats lag behind.
 let lastPlayedIds = new Set();
 
-// Quick rounds bring back this many questions you recently got wrong (fewer if there aren't enough).
-const RETRY_MIN = 3;
-const RETRY_MAX = 5;
+const recentIds = (stats) => new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
 
 /**
  * Orders a pool for picking: new questions first, then ones you've missed, then ones you
@@ -891,7 +890,7 @@ const RETRY_MAX = 5;
 function orderForPlay(pool, stats) {
   const seen = new Set(stats?.seenIds || []);
   const mastered = new Set(stats?.masteredIds || []);
-  const recent = new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
+  const recent = recentIds(stats);
   const fresh = pool.filter((q) => !recent.has(q.id));
   return [
     ...shuffle(fresh.filter((q) => !seen.has(q.id))),
@@ -911,36 +910,25 @@ function pickQuestions(cat, n, stats) {
   const inQuick = (q) => !CATEGORY_BY_ID[q.cat]?.book && CATEGORY_BY_ID[q.cat]?.quick !== false;
   const pool = (cat === 'mixed' ? QUESTIONS.filter(inQuick) : QUESTIONS.filter((q) => q.cat === cat))
     .filter((q) => !failedPictures.has(q.id));
-  const inPool = new Set(pool.map((q) => q.id));
-
-  // Never two questions about the same country in one round: "What's the capital of
-  // Japan?" shows Japan's flag and names Japan, giving away its flag and shape questions.
-  const pictureKey = (q) => (q.about ? `country:${q.about.toLowerCase()}` : q.id);
-  const perCatLimit = cat === 'mixed' ? 2 : Infinity;
-  const perCat = {};
-  const usedPictures = new Set();
-  const picked = [];
-  const take = (q, { limitTopic = true } = {}) => {
-    if (picked.length === n || picked.includes(q)) return;
-    if (limitTopic && (perCat[q.cat] || 0) >= perCatLimit) return;
-    if (usedPictures.has(pictureKey(q))) return;
-    perCat[q.cat] = (perCat[q.cat] || 0) + 1;
-    usedPictures.add(pictureKey(q));
-    picked.push(q);
-  };
 
   if (cat === 'mixed') {
-    // A few recent mistakes come back for another try, but never ones from the round just played.
-    const recent = new Set([...(stats?.lastRoundIds || []), ...lastPlayedIds]);
-    const retries = shuffle((stats?.recentMissed || []).filter((id) => inPool.has(id) && !recent.has(id)).map((id) => QUESTION_BY_ID.get(id)));
-    const want = RETRY_MIN + Math.floor(Math.random() * (RETRY_MAX - RETRY_MIN + 1));
-    for (const q of retries) {
-      if (picked.length >= want) break;
-      take(q);
-    }
+    return pickLevel(pool, n, {
+      seen: new Set(stats?.seenIds),
+      known: new Set(stats?.masteredIds),
+      missed: new Set(stats?.recentMissed),
+      recent: recentIds(stats),
+    });
   }
-  for (const q of orderForPlay(pool, stats)) take(q);
-  return cat === 'mixed' ? shuffle(picked) : picked;
+
+  const subjects = new Set();
+  const picked = [];
+  for (const q of orderForPlay(pool, stats)) {
+    if (picked.length === n) break;
+    if (subjects.has(subjectOf(q))) continue;
+    subjects.add(subjectOf(q));
+    picked.push(q);
+  }
+  return picked;
 }
 
 const PICTURE_RETRIES = 3;

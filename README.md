@@ -166,12 +166,19 @@ Satellite map tiles are always loaded live from Esri.
 - The next question's picture starts downloading as soon as the current question is on
   screen. It's requested again after you answer and when 2 seconds are left, in case the
   first try failed (the browser cache makes repeats free).
-- Rounds prefer questions you haven't seen, then ones you got wrong, then ones you
+- Topic rounds prefer questions you haven't seen, then ones you got wrong, then ones you
   already know. Questions from the round you just played come last, so they don't
-  come straight back. Quick rounds take at most 2 questions per topic, bring back 3–5
-  questions you got wrong in your last 10 rounds (never from the round just played),
-  and leave out the three book topics and programming (`book: true` or `quick: false`
-  in `shared/config.js`), which are only played from their own tiles.
+  come straight back.
+- Quick rounds are built as a level with a set shape (`LEVEL_SLOTS` in `shared/levels.js`):
+  easy openers, harder questions in the middle, a boss at question 9 and an easy closer.
+  Each slot picks a topic first and then a question in its difficulty band, so big topics
+  don't crowd out small ones. A level has at most 2 questions per topic, never the same topic
+  twice in a row, and never two about the same country. Question 4 brings back a mistake from
+  your last 10 rounds, and question 8 gives a second chance at a mistake from the level you
+  just played. The easy slots (1, 7 and 10) reuse questions you already know once there are
+  at least 20 to choose from. Quick rounds leave out the three book topics, programming and
+  football players (`book: true` or `quick: false` in `shared/config.js`), which are only
+  played from their own tiles.
 - On a laptop, press **1–5** to answer, **Enter** for next and **Esc** to quit.
 
 ### How hard each question is
