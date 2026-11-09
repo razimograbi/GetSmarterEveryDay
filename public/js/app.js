@@ -10,6 +10,7 @@ import { render as renderVisual, preload, isPreloaded, fetchNow, missingHtml, lo
 import { signSvg } from './signs.js';
 import { ICONS } from './icons.js';
 import { coverUrl } from './covers.js';
+import { playLive } from './live.js';
 import { api, esc, shuffle, reduceMotion } from './util.js';
 import {
   LANGUAGES, lang, setLang, savedLang, rememberLang, deviceLang, isLang, locale, t, tn, qt, catName, catBlurb, reasonLabel, timeAgo, fmtDate,
@@ -21,7 +22,7 @@ const state = {
   daily: null, // today's Daily and the player's result, for the home screen
   duels: null, // the player's duels, for the home screen
   stages: null, // the published Leveling stages as this player stands on them
-  fixedRound: null, // a Daily or duel about to be played
+  fixedRound: null, // a Daily or Leveling try about to be played
   duelFriend: null, // the friend a new duel is for
   played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
   justUnlocked: false, // the first round was just finished: say once what the home screen gained
@@ -52,12 +53,14 @@ async function boot() {
   // Start in the language this device chose before, or the phone's own language. A signed-in
   // player's saved choice (below) wins over both.
   const firstLang = savedLang() || deviceLang();
+  let liveDuel = null;
   try {
     const [config, me] = await Promise.all([api('/api/config'), api('/api/me'), loadLocalImages(), setLang(firstLang)]);
     state.config = config;
     state.user = me.user;
     state.profile = me.profile;
     state.played = me.played || 0;
+    liveDuel = me.liveDuel;
     adoptSettings(me.settings);
     await adoptLanguage(me.settings);
   } catch (err) {
@@ -68,6 +71,8 @@ async function boot() {
     return;
   }
   takeSharedLink();
+  // A live duel doesn't wait: back into it, wherever the app was opened.
+  if (liveDuel && !location.hash.startsWith('#/duel/')) history.replaceState(null, '', `/#/duel/${liveDuel}`);
   if (state.user) await finishLeftRound();
   window.addEventListener('hashchange', route);
   // The Back arrow is in many top bars, so one listener serves them all.
@@ -312,7 +317,7 @@ async function route() {
   showLevelUp();
 
   const [, page, arg, sub] = (location.hash || '#/').split('/');
-  if (page === 'play' && (arg === 'daily' || arg === 'duel' || arg === 'stage')) {
+  if (page === 'play' && (arg === 'daily' || arg === 'stage')) {
     const fixed = state.fixedRound;
     state.fixedRound = null;
     return fixed?.kind === arg ? startRound(arg, fixed) : go('#/', { replace: true });
@@ -828,7 +833,8 @@ function dailyRow(d) {
 function duelAlerts() {
   const duels = state.duels || [];
   const ready = duels.filter((d) => d.resultReady);
-  const turn = duels.filter((d) => d.status === 'yourTurn' || d.status === 'invited');
+  const live = duels.filter((d) => d.status === 'live' || d.status === 'joined');
+  const turn = duels.filter((d) => d.status === 'invited');
   const rows = [];
   if (ready.length) {
     rows.push(homeRow({
@@ -839,6 +845,15 @@ function duelAlerts() {
       badge: t('duel.badgeReady'),
     }));
   }
+  if (live.length) {
+    rows.push(homeRow({
+      href: `#/duel/${live[0].id}`,
+      icon: ICONS.duel,
+      title: esc(t('duel.homeLive')),
+      sub: esc(t('duel.homeLiveSub')),
+      badge: t('duel.badgeLive'),
+    }));
+  }
   if (turn.length) {
     const other = duelOther(turn[0]);
     const challenger = turn[0].role !== 'challenger' && other?.name;
@@ -847,7 +862,7 @@ function duelAlerts() {
       icon: ICONS.duel,
       title: turn.length > 1 ? esc(tn('duel.homeTurns', turn.length)) : challenger ? t('duel.challengedYou', { name: personName(other) }) : esc(t('duel.title')),
       sub: turn.length > 1 ? '' : esc(t('duel.homeTurnSub', { topic: duelTopic(turn[0].category) })),
-      badge: t('duel.yourTurn'),
+      badge: t('duel.badgeJoin'),
     }));
   }
   return rows.length ? `<div class="home-rows">${rows.join('')}</div>` : '';
@@ -1778,7 +1793,7 @@ async function startRound(cat, fixed = null) {
     const answered = new Set(round.results.map((r) => r.q.id));
     const left = round.questions.filter((q) => !answered.has(q.id)).length;
     $('[data-quit-note]').textContent = round.fixed
-      ? tn({ daily: 'quit.daily', stage: 'quit.stage' }[round.fixed.kind] ?? 'quit.duel', left)
+      ? tn({ daily: 'quit.daily', stage: 'quit.stage' }[round.fixed.kind], left)
       : tn('quit.note', left);
     pause({ hide: true }); // the clock stops, so the question can't be read meanwhile
     quitSheet.hidden = false;
@@ -2471,19 +2486,17 @@ function drawDailyResult(d, board) {
 
 // ── Duels ──────────────────────────────────────────────────────
 
-/** Starts a new duel on `category` (optionally sent to a friend) and plays the first side. */
+/** Opens a new duel on `category` (optionally sent to a friend) and goes to its lobby. */
 async function startDuel(category, friendId = null) {
   const { duel } = await api('/api/duels', { method: 'POST', body: { category, friendId } });
-  return playDuel(duel.id);
+  go(`#/duel/${duel.id}`);
 }
 
-async function playDuel(id) {
-  const { play } = await api(`/api/duels/${id}/start`, { method: 'POST' });
-  track('round_started', { mode: DEFAULT_MODE, category: 'duel' });
-  playFixed({
-    kind: 'duel', title: t('duel.title'), after: `#/duel/${id}`,
-    play, endpoint: `/api/duels/${id}/finish`, extra: {},
-  });
+/** Someone was already playing, or the seat is gone: the right screen for that. */
+function duelRefused(err, id) {
+  if (err.live) return go(`#/duel/${err.live}`), true;
+  if (err.status === 409 || err.status === 404) return showDuel(id), true;
+  return false;
 }
 
 const duelTopic = (category) => (category === 'mixed' ? t('duel.mixed') : CATEGORY_BY_ID[category] ? catName(CATEGORY_BY_ID[category]) : category);
@@ -2544,9 +2557,9 @@ async function showDuel(id) {
     return;
   }
 
+  if (duel.status === 'hosting' || duel.status === 'joined' || duel.status === 'live') return enterLive(duel);
+
   const max = duel.count * MAX_POINTS;
-  const other = duelOther(duel);
-  const myShareUrl = `${location.origin}/duel/${duel.id}?l=${lang()}`;
   let body;
   if (duel.status === 'open' || duel.status === 'invited') {
     const c = duel.challenger;
@@ -2554,44 +2567,17 @@ async function showDuel(id) {
       <div class="panel challenge-card">
         ${avatarImg(c.avatar, 112, 'avatar-xl')}
         <h1 class="challenge-title">${t('duel.challengedYou', { name: personName(c) })}</h1>
-        <p class="challenge-sub">${esc(c.score === null ? t('duel.notPlayedYet', { topic: duelTopic(duel.category) }) : t('duel.theyScored', { score: c.score, max, topic: duelTopic(duel.category) }))}</p>
+        <p class="challenge-sub">${esc(t('duel.notPlayedYet', { topic: duelTopic(duel.category) }))}</p>
         <p class="challenge-sub">${esc(t('duel.howToPlay'))}${duel.isFriend ? '' : ` ${t('duel.willFriend', { name: personName(c) })}`}</p>
         ${isNew() ? howItWorks() : ''}
         <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.playNow'))}</button>
       </div>`;
-  } else if (duel.status === 'taken') {
+  } else if (duel.status === 'taken' || duel.status === 'expired' || duel.status === 'abandoned') {
     body = `
       <div class="panel challenge-card">
         ${avatarImg(duel.challenger.avatar, 96, 'avatar-xl')}
-        <p>${esc(t('duel.taken'))}</p>
+        <p>${esc(t({ taken: 'duel.taken', expired: 'duel.expired', abandoned: 'duel.abandoned' }[duel.status]))}</p>
         <a class="btn btn-marigold btn-block" href="#/duel/new">${esc(t('duel.startOwn'))}</a>
-      </div>`;
-  } else if (duel.status === 'yourTurn') {
-    body = `
-      <div class="panel challenge-card">
-        ${other ? avatarImg(other.avatar, 112, 'avatar-xl') : avatar(state.profile?.avatar, 112)}
-        <h1 class="challenge-title">${esc(t('duel.yourTurn'))}</h1>
-        <p class="challenge-sub">${esc(duelTopic(duel.category))}</p>
-        <p class="challenge-sub">${esc(t('duel.howToPlay'))}</p>
-        <button class="btn btn-marigold btn-block" data-play>${esc(t('duel.play'))}</button>
-      </div>`;
-  } else if (duel.status === 'waiting') {
-    const mine = duel[duel.role];
-    body = `
-      <div class="panel challenge-card">
-        ${avatar(state.profile?.avatar, 80)}
-        <p class="result-score">${mine.score}<small>/${max}</small></p>
-        <p class="result-line">${esc(t('daily.rightOf', { right: mine.correct ?? 0, total: duel.count }))}</p>
-        ${xpEarned('duel', mine.score)}
-        <p class="challenge-sub">${duel.invitedFriend?.name
-          ? t('duel.waitingInvited', { name: personName(other) })
-          : other?.name ? t('duel.waitingFor', { name: personName(other) }) : esc(t('duel.sendLink'))}</p>
-        ${duel.opponent ? '' : `
-          <div class="share-row">
-            <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('duel.sendButton'))}</span></button>
-            <button class="btn btn-ghost-ink" data-copy>${ICONS.copy}<span>${esc(t('share.copyLink'))}</span></button>
-          </div>
-          <p class="share-status" data-share-status aria-live="polite"></p>`}
       </div>`;
   } else {
     body = duelResultHtml(duel, max);
@@ -2606,31 +2592,66 @@ async function showDuel(id) {
     ${tabbar('friends')}`;
 
   app.querySelector('[data-play]')?.addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
+    const btn = e.currentTarget;
+    btn.disabled = true;
     try {
-      await playDuel(duel.id);
+      await api(`/api/duels/${duel.id}/join`, { method: 'POST' });
+      if (nav === navId) showDuel(id);
     } catch (err) {
-      if (err.status === 409) return showDuel(id);
-      e.currentTarget.disabled = false;
+      if (nav !== navId || duelRefused(err, id)) return;
+      btn.disabled = false;
       window.alert(errMsg(err));
     }
   });
+  if (duel.status !== 'done') return;
+
   const status = app.querySelector('[data-share-status]');
   const mine = duel.role && duel[duel.role];
-  const shareMsg = !mine ? '' : duel.status === 'done'
-    ? t('duel.shareResult', { me: mine.score, them: duel[duel.role === 'challenger' ? 'opponent' : 'challenger'].score, max, name: other?.name || '' })
-    : t('duel.shareInvite', { score: mine?.score ?? 0, max });
-  app.querySelector('[data-share]')?.addEventListener('click', async () => shareStatus(status, await shareText({ text: shareMsg, url: myShareUrl })));
-  app.querySelector('[data-copy]')?.addEventListener('click', async () => shareStatus(status, (await copyText(myShareUrl)) ? 'copied' : 'failed'));
-  app.querySelector('[data-rematch]')?.addEventListener('click', async (e) => {
-    e.currentTarget.disabled = true;
+  const other = duelOther(duel);
+  const shareMsg = mine ? t('duel.shareResult', { me: mine.score, them: duel[duel.role === 'challenger' ? 'opponent' : 'challenger'].score, max, name: other?.name || '' }) : '';
+  app.querySelector('[data-share]')?.addEventListener('click', async () => shareStatus(status, await shareText({ text: shareMsg, url: `${location.origin}/duel/${duel.id}?l=${lang()}` })));
+  const rematch = app.querySelector('[data-rematch]');
+  rematch?.addEventListener('click', async () => {
+    rematch.disabled = true;
     try {
       const { duel: next } = await api(`/api/duels/${duel.id}/rematch`, { method: 'POST' });
-      await playDuel(next.id);
+      go(`#/duel/${next.id}`);
     } catch (err) {
-      e.currentTarget.disabled = false;
+      if (err.live) return go(`#/duel/${err.live}`);
+      rematch.disabled = false;
       window.alert(errMsg(err));
     }
+  });
+  // While the match is still connected, the other player's rematch shows up here.
+  if (rematch && duel.canRematch) {
+    const events = new EventSource(`/api/duels/${duel.id}/stream`);
+    events.addEventListener('state', (e) => {
+      if (!JSON.parse(e.data).rematch) return;
+      rematch.querySelector('span').innerHTML = t('duel.rematchOffer', { name: `<bdi>${esc(other?.name || '')}</bdi>` });
+      rematch.classList.add('is-offer');
+    });
+    events.onerror = () => { if (events.readyState === EventSource.CLOSED) events.close(); };
+    cleanup = () => events.close();
+  }
+}
+
+/** The duel is waiting or going on: the live screen takes over (public/js/live.js). */
+function enterLive(duel) {
+  const shareUrl = `${location.origin}/duel/${duel.id}?l=${lang()}`;
+  const shareMsg = t('duel.shareInvite');
+  cleanup = playLive(app, duel.id, {
+    topbar, tabbar, coveredAvatar, learn, shareStatus, signOut,
+    topic: duelTopic,
+    invitedFriend: duel.invitedFriend,
+    shareLink: () => shareText({ text: shareMsg, url: shareUrl }),
+    copyLink: async () => ((await copyText(shareUrl)) ? 'copied' : 'failed'),
+    started: () => track('round_started', { mode: DEFAULT_MODE, category: 'duel' }),
+    finished: () => {
+      countFinished();
+      roundEnded();
+    },
+    refresh: route,
+    leftLobby: () => go('#/friends'),
   });
 }
 
@@ -2639,7 +2660,11 @@ function duelResultHtml(duel, max) {
   const themSide = meSide === 'challenger' ? 'opponent' : 'challenger';
   const me = meSide ? duel[meSide] : duel.challenger;
   const them = meSide ? duel[themSide] : duel.opponent;
-  const verdict = !meSide ? '' : duel.winner === 'draw' ? t('duel.draw') : duel.winner === meSide ? t('duel.youWon') : t('duel.theyWon', { name: them?.name ? esc(them.name) : esc(t('people.gone')) });
+  const theirName = them?.name ? `<bdi>${esc(them.name)}</bdi>` : esc(t('people.gone'));
+  const verdict = !meSide ? ''
+    : duel.forfeitSide === meSide ? t('duel.youGaveUp')
+      : duel.forfeitSide ? t('duel.theyGaveUp', { name: theirName })
+        : duel.winner === 'draw' ? t('duel.draw') : duel.winner === meSide ? t('duel.youWon') : t('duel.theyWon', { name: theirName });
   const mine = new Map((duel.answers?.[meSide || 'challenger'] || []).map((a) => [a.id, a]));
   const theirs = new Map((duel.answers?.[meSide ? themSide : 'opponent'] || []).map((a) => [a.id, a]));
   const pill = (a) => (a ? `<span class="pts-pill ${a.correct ? (pointsOf(a) >= MAX_POINTS ? 'is-fast' : 'is-right') : 'is-wrong'}">${a.correct ? `+${pointsOf(a)}` : '0'}</span>` : '<span class="pts-pill is-none">–</span>');
@@ -2830,7 +2855,7 @@ async function showStageResult(id) {
 
 // ── Friends ────────────────────────────────────────────────────
 
-const DUEL_STATUS_KEY = { yourTurn: 'duel.st.yourTurn', invited: 'duel.st.invited', waiting: 'duel.st.waiting', open: 'duel.st.waiting', done: 'duel.st.done', taken: 'duel.st.done' };
+const DUEL_STATUS_KEY = { live: 'duel.st.live', joined: 'duel.st.live', invited: 'duel.st.invited', hosting: 'duel.st.waiting', open: 'duel.st.waiting', done: 'duel.st.done', taken: 'duel.st.done' };
 
 function duelRow(d) {
   const other = duelOther(d);
@@ -2862,8 +2887,8 @@ async function showFriends() {
     return;
   }
   const link = `${location.origin}/f/${data.code}?l=${lang()}`;
-  const turn = data.duels.filter((d) => d.status === 'yourTurn' || d.status === 'invited');
-  const waiting = data.duels.filter((d) => d.status === 'waiting' || d.status === 'open');
+  const turn = data.duels.filter((d) => d.status === 'live' || d.status === 'joined' || d.status === 'invited');
+  const waiting = data.duels.filter((d) => d.status === 'hosting');
   const done = data.duels.filter((d) => d.status === 'done').slice(0, 8);
 
   app.innerHTML = `

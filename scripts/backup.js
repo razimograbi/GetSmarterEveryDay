@@ -8,11 +8,10 @@
 // doesn't take the backups with it.
 
 import { readdirSync, rmSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { openDb, backupDb } from '../server/db.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(import.meta.dirname, '..');
 try { process.loadEnvFile(join(ROOT, '.env')); } catch { /* no .env file */ }
 
 const DATA_DIR = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : join(ROOT, 'data');

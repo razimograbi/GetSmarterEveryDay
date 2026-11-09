@@ -8,12 +8,11 @@
 // "fair use") are listed at the end: those need a decision before the game earns money.
 
 import { writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { QUESTIONS } from '../shared/questions.js';
 import { CATEGORIES } from '../shared/config.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(import.meta.dirname, '..');
 const OUT = join(ROOT, 'legal', 'credits.json');
 const API = 'https://en.wikipedia.org/w/api.php';
 const USER_AGENT = `SmartsQuiz/1.0 (personal quiz game; photo credits script${process.env.IMAGE_CONTACT ? `; ${process.env.IMAGE_CONTACT}` : ''})`;

@@ -39,8 +39,28 @@ export const DAILY = { start: '2026-11-01', questions: 10 };
 // above and below you stay in view when you're further down the board.
 export const BOARD = { first: 10, step: 20, around: 2 };
 
-// Duels: two players answer the same questions, each when they like.
-export const DUEL = { questions: 10, maxOpen: 20 };
+// Duels: two players answer the same questions at the same time (see server/match.js).
+export const DUEL = { questions: 10, maxOpen: 5 };
+
+// How a live duel is paced and how long it waits for people. All in milliseconds.
+export const MATCH = {
+  lobbyMs: 10 * 60_000, // how long an invitation stays open
+  hostWaitMs: 60_000, // someone joined while the sender was away: how long to wait for the sender to come back
+  guestWaitMs: 20_000, // the seat goes free again if whoever took it disappears before the start
+  countdownMs: 3000, // the 3-2-1
+  prepareMs: 4000, // the longest both players wait for each other's picture
+  revealMs: 3500, // how long the result of a question stays up
+  voidMs: 2000, // how long "this question was cancelled" stays up
+  restartWaitMs: 6000, // after a server restart, how long players get to reconnect
+  pingEveryMs: 5000, // the server says it's alive this often, so a dead connection can be noticed
+  beatEveryMs: 10_000, // the browser says it's alive this often
+  absentAfterMs: 5000, // no connection for this long: the player is away
+  beatTimeoutMs: 25_000, // connected, but silent for this long: the connection is dead
+  holdMs: 15_000, // between questions, the longest one wait for a player who dropped
+  graceMs: 30_000, // all the waiting a player can cost the other in one duel
+  maxVoids: 2, // questions one player can cancel because their picture failed
+  doneKeepMs: 2 * 60_000, // a finished duel stays connected this long, so a rematch can be offered
+};
 
 // How the server plays and times Daily and duel questions (see server/play.js).
 export const PLAY = {

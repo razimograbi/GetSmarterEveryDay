@@ -7,14 +7,13 @@
 // the credits page is drawn from legal/credits.json (made by `npm run fetch-credits`).
 
 import { readFile, stat } from 'node:fs/promises';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { CATEGORIES, CATEGORY_BY_ID, localDate, dailyNumber } from '../shared/config.js';
 import { getDuel, getProfile, getSettings, profileByCode } from './db.js';
 import { cats as HE_CATS } from '../public/lang/he/ui.js';
 import { cats as AR_CATS } from '../public/lang/ar/ui.js';
 
-const LEGAL = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'legal');
+const LEGAL = join(resolve(import.meta.dirname, '..'), 'legal');
 
 const LANGS = {
   en: { name: 'English', dir: 'ltr' },

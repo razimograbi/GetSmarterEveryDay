@@ -10,10 +10,9 @@
 
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { QUESTIONS } from '../shared/questions.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(import.meta.dirname, '..');
 const PUBLIC = join(ROOT, 'public');
 const FORCE = process.argv.includes('--force');
 const GAP_MS = 1500; // pause between downloads, to stay under Wikimedia's rate limit

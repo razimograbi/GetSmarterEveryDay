@@ -1,4 +1,5 @@
 // Daily, duel and Leveling rounds, played on the server, because other players see the results.
+// In a duel, server/match.js opens and grades the questions of both players together.
 //
 // The browser asks to open one question at a time, and only then gets its text and options. The
 // server starts that question's clock when it opens it, grades the answer when it arrives and
@@ -7,16 +8,16 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 
 import { closePlay, createPlay, findPlay, getPlay, openPlayQuestion, recordPlayAnswer, stalePlays } from './db.js';
 import { questionContent, sortedOptions } from './bank.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
+import { serverNow } from './clock.js';
 import { PLAY, pointsFor, secondsFor } from '../shared/config.js';
 import { signSvg } from '../public/js/signs.js';
 
-const PUBLIC = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'public');
+const PUBLIC = join(resolve(import.meta.dirname, '..'), 'public');
 
 // The pictures kept on this server (`npm run fetch-images`). Those are served at an address that
 // says nothing about them; a picture only available from elsewhere has to keep its real address.
@@ -68,6 +69,9 @@ export function createPlays(db, { onFinish }) {
     return list;
   }
 
+  /** What the browser may know about a question before its words appear. */
+  const peek = (play, idx) => ({ cat: questionAt(play, idx).cat, visual: visualFor(play, idx) });
+
   /** Where a round stands, for the browser that plays it. */
   function view(play) {
     return {
@@ -100,8 +104,11 @@ export function createPlays(db, { onFinish }) {
     return true;
   }
 
+  /** Closes a round without counting it, for a duel nobody finished. */
+  const abandon = (play) => closePlay(db, play.id);
+
   /** Starts the current question's clock (once: asking again doesn't restart it) and gives its words. */
-  function open(play, idx, now = Date.now()) {
+  function open(play, idx, now = serverNow()) {
     if (play.finishedAt) throw conflict('This round has ended.', { ended: true });
     if (idx !== play.idx) throw conflict('That is not the current question.');
     const q = questionAt(play, idx);
@@ -126,8 +133,11 @@ export function createPlays(db, { onFinish }) {
     };
   }
 
-  /** Grades the player's choice, timed by the server. `choice: null` gives up on the question. */
-  function answer(play, idx, choice, now = Date.now()) {
+  /**
+   * Grades the player's choice, timed by the server. `choice: null` gives up on the question.
+   * `allowanceMs` is taken off the measured time for the trip to the player and back.
+   */
+  function answer(play, idx, choice, now = serverNow(), allowanceMs = PLAY.networkAllowanceMs) {
     if (idx < play.idx && play.answers[idx] && !play.answers[idx].skipped) return outcome(play, idx, play.answers[idx]); // a retry after a lost reply
     if (play.finishedAt) throw conflict('This round has ended.', { ended: true });
     if (idx !== play.idx || play.openedAt === null) throw conflict('That question has not been opened.');
@@ -138,7 +148,7 @@ export function createPlays(db, { onFinish }) {
     const inTime = elapsed <= limitMs + PLAY.lateAllowanceMs;
     const given = inTime && sortedOptions(q).includes(choice) ? choice : null;
     const correct = given === q.answer;
-    const ms = given === null ? limitMs : Math.min(limitMs, Math.max(0, elapsed - PLAY.networkAllowanceMs));
+    const ms = given === null ? limitMs : Math.min(limitMs, Math.max(0, elapsed - allowanceMs));
     const a = { id: q.id, cat: q.cat, choice: given, correct, ms, points: pointsFor(correct, ms, seconds) };
     play.answers.push(a);
     play.idx += 1;
@@ -150,15 +160,17 @@ export function createPlays(db, { onFinish }) {
 
   /**
    * A question whose picture never arrived. It can only be skipped before it's opened, so seeing
-   * a question can't be undone, and it says nothing about the answer.
+   * a question can't be undone, and it says nothing about the answer. `force` cancels one that
+   * is open, for a duel question the server lost when it restarted.
    */
-  function skip(play, idx, now = Date.now()) {
+  function skip(play, idx, now = serverNow(), { force = false } = {}) {
     if (idx < play.idx && play.answers[idx]?.skipped) return skipped(play, idx);
     if (play.finishedAt) throw conflict('This round has ended.', { ended: true });
-    if (idx !== play.idx || play.openedAt !== null) throw conflict('That question can no longer be skipped.');
+    if (idx !== play.idx || (play.openedAt !== null && !force)) throw conflict('That question can no longer be skipped.');
     const q = questionAt(play, idx);
     play.answers.push({ id: q.id, cat: q.cat, skipped: true, correct: false, points: 0 });
     play.idx += 1;
+    play.openedAt = null;
     recordPlayAnswer(db, play.id, play.idx, play.answers, now);
     if (play.idx >= play.questionIds.length) finish(play);
     return skipped(play, idx);
@@ -188,5 +200,5 @@ export function createPlays(db, { onFinish }) {
     }
   }
 
-  return { get: (id) => getPlay(db, id), find: (kind, ref, userId) => findPlay(db, kind, ref, userId), begin, view, open, answer, skip, finish, pictureFile, endStale };
+  return { get: (id) => getPlay(db, id), find: (kind, ref, userId) => findPlay(db, kind, ref, userId), begin, view, previews, peek, open, answer, skip, finish, abandon, pictureFile, endStale };
 }

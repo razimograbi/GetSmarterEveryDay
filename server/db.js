@@ -302,6 +302,18 @@ const MIGRATIONS = [
       updated_at  INTEGER NOT NULL
     );
   `),
+  // 9: duels are played live (server/match.js). `live` is where a running one stands, so it can
+  // pick up again after a restart. Turn-based duels still open when this runs can't be finished.
+  (db) => {
+    db.exec(`
+      ALTER TABLE duels ADD COLUMN live TEXT;
+      ALTER TABLE duels ADD COLUMN end_reason TEXT; -- played, forfeit, abandoned, expired or retired
+      ALTER TABLE duels ADD COLUMN forfeit_side TEXT;
+    `);
+    const now = Date.now();
+    db.prepare("UPDATE duels SET finished_at = ?, end_reason = 'retired', result_unseen_by = NULL WHERE finished_at IS NULL").run(now);
+    db.prepare("UPDATE plays SET finished_at = ? WHERE kind = 'duel' AND finished_at IS NULL").run(now);
+  },
 ];
 
 /** The Marketing Studio's project, or null before anything was saved. */
@@ -1021,7 +1033,7 @@ export function friendsBeaten(db, day, userId, score) {
 
 // ── Duels ──────────────────────────────────────────────────────
 
-export function createDuel(db, { id, challengerId, invitedId = null, category, questionIds, rematchOf = null }) {
+export function createDuel(db, { id, challengerId, invitedId = null, category, questionIds = [], rematchOf = null }) {
   db.prepare('INSERT INTO duels (id, challenger_id, invited_id, category, question_ids, rematch_of, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(id, challengerId, invitedId, category, JSON.stringify(questionIds), rematchOf, Date.now());
   return getDuel(db, id);
@@ -1036,6 +1048,7 @@ export function getDuel(db, id) {
     challengerId: r.challenger_id, opponentId: r.opponent_id, invitedId: r.invited_id,
     challenger: side('challenger'), opponent: side('opponent'),
     createdAt: r.created_at, acceptedAt: r.accepted_at, finishedAt: r.finished_at, resultUnseenBy: r.result_unseen_by,
+    live: r.live ? JSON.parse(r.live) : null, endReason: r.end_reason, forfeitSide: r.forfeit_side,
   };
 }
 
@@ -1048,6 +1061,34 @@ export function claimDuel(db, id, userId) {
   const duel = getDuel(db, id);
   return duel?.opponentId === userId ? duel : null;
 }
+
+/** The second player left before the start: the seat is free again. */
+export function releaseDuelSeat(db, id, userId) {
+  db.prepare('UPDATE duels SET opponent_id = NULL, accepted_at = NULL WHERE id = ? AND opponent_id = ? AND finished_at IS NULL').run(id, userId);
+}
+
+/** The questions of a duel, chosen when it starts so that they can avoid what both players met lately. */
+export function setDuelQuestions(db, id, questionIds) {
+  db.prepare('UPDATE duels SET question_ids = ? WHERE id = ?').run(JSON.stringify(questionIds), id);
+}
+
+/** Where a running duel stands (see server/match.js). */
+export function saveDuelLive(db, id, live) {
+  db.prepare('UPDATE duels SET live = ? WHERE id = ? AND finished_at IS NULL').run(JSON.stringify(live), id);
+}
+
+/** The ids of the duels that were running when the server last stopped. */
+export const liveDuelIds = (db) => db.prepare('SELECT id FROM duels WHERE live IS NOT NULL AND finished_at IS NULL').all().map((r) => r.id);
+
+/** Closes a duel. `unseenBy` is a player who wasn't there for the end and has a result to see. */
+export function endDuel(db, id, { reason, forfeitSide = null, unseenBy = null }) {
+  db.prepare('UPDATE duels SET finished_at = COALESCE(finished_at, ?), live = NULL, end_reason = ?, forfeit_side = ?, result_unseen_by = ? WHERE id = ?')
+    .run(Date.now(), reason, forfeitSide, unseenBy, id);
+}
+
+/** The rematch of this duel that's still open, if there is one. */
+export const openRematch = (db, id) =>
+  db.prepare('SELECT id FROM duels WHERE rematch_of = ? AND finished_at IS NULL ORDER BY created_at DESC LIMIT 1').get(id)?.id ?? null;
 
 /** Records one side's result. The duel is finished once both have played, and the first to play has a result to see. */
 export function finishDuelSide(db, id, side, { roundId, score, correct, ms }) {
