@@ -401,10 +401,10 @@ haven't signed in are counted by IP address; signing in keeps the same slot.
 Each player has a public profile: a display name (their Google first name to start with), an
 avatar and, if they choose, a country. Avatars are drawn in SVG by `shared/avatars.js`: 26 skins
 (animals and creatures), 9 faces, 21 backgrounds and 27 accessories, stored as a code such as
-`fox-happy-lilac-crown`. Every skin is free to choose. Add-ons are what levels unlock: 3 faces, 11
-backgrounds and 9 accessories are open to everyone, the rest unlock with levels, and every add-on
-works on every skin. Every new player starts with a random open avatar picked from their id. Google
-profile photos are never shown to other players.
+`fox-happy-lilac-crown`. 12 animals, 3 faces, 11 backgrounds and 9 accessories are open to everyone;
+the 14 creature skins and the other add-ons unlock with levels, and every add-on works on every
+skin. Every new player starts with a random open avatar picked from their id. Google profile photos
+are never shown to other players.
 
 The profile screen shows one list at a time (Skin, Face, Colour, Add-ons, Details). The avatar and
 the tabs stay in view while a list scrolls, and Save stays above the tab bar.
@@ -423,10 +423,11 @@ One finished round always reaches level 2. XP is stored on the profile, added in
 transaction that saves the round, and players started with what their earlier rounds earned.
 
 Each level from 2 to 20 unlocks an add-on (a face, a background or an accessory), then every 2
-levels up to Ascended at 50. The ladder is `LADDER` in `shared/avatars.js`. A locked add-on can be
-tried on in the picker but not saved, and the server refuses it too. Save then says which level it
-needs, and **Take it off** puts back what was saved. An avatar a player already wears is never
-taken away.
+levels up to Ascended at 50. The 14 creature skins unlock along the way, from the wolf at level 3
+to the dragon at 50. The ladders are `LADDER` and `SKIN_LEVELS` in `shared/avatars.js`. A locked skin
+or add-on can be tried on in the picker but not saved, and the server refuses it too. Save then says
+which level it needs, and **Take it off** puts back what was saved. An avatar a player already wears
+is never taken away.
 
 The level shows as a cover around the avatar with the number on it (`public/js/covers.js`), on the
 Home header, the Daily boards, the Friends list and duels. The cover changes with the tier:

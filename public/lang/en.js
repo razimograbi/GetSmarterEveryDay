@@ -402,7 +402,6 @@ export default {
   'remind.unsupported': 'This browser can\'t show reminders. Try Chrome, or install the app.',
   'profile.tabsAria': 'Parts of your avatar',
   'profile.details': 'Details',
-  'profile.skinsFree': 'Every skin is free. Levels unlock faces, colours and add-ons.',
   'profile.unlockedCount': '{n} of {total} unlocked',
   'profile.nextHere': 'Next: {item} at level {n}',
   'profile.allHere': 'All unlocked',

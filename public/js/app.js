@@ -3016,9 +3016,8 @@ function showProfile() {
     return `<button type="button" class="avatar-choice ${locked ? 'is-locked' : ''}" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${label}" title="${label}">${picture}${locked ? `<span class="lock-chip" dir="ltr" aria-hidden="true">${ICONS.lock}${need}</span>` : ''}</button>`;
   }
 
-  /** The line above a list: skins are free; add-ons say how many are open and what's next. */
+  /** The line above a list: how many are open and what's next. */
   function tabProgress(tab) {
-    if (tab.id === 'animal') return `<span>${esc(t('profile.skinsFree'))}</span>`;
     const open = tab.values.filter((v) => unlockLevel(tab.id, v) <= level).length;
     const next = UNLOCKS.find((u) => u.part === tab.id && u.level > level);
     return `<strong>${esc(t('profile.unlockedCount', { n: open, total: tab.values.length }))}</strong><span>${esc(next ? t('profile.nextHere', { item: itemName(next.part, next.value), n: next.level }) : t('profile.allHere'))}</span>`;
