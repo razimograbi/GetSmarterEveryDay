@@ -72,6 +72,9 @@ export function playLive(app, id, ctx) {
 
   const say = (action, body) => send(action, body).catch(trouble);
 
+  /** Tells the server the app is in the background. It has to get out while the page is being hidden. */
+  const sayAway = () => api(`${stream}/away`, { method: 'POST', keepalive: true }).then(apply).catch(trouble);
+
   /** Keeps trying until it gets through or the question has moved on. */
   async function sendAnswer(idx, choice, away) {
     for (let attempt = 0; alive && s?.phase === 'answer' && s.idx === idx; attempt++) {
@@ -117,7 +120,7 @@ export function playLive(app, id, ctx) {
     const quiet = now - lastHeard;
     if ((es?.readyState === EventSource.CLOSED && now - lastConnect > 2000) || (quiet > QUIET_RECONNECT_MS && now - lastConnect > QUIET_RECONNECT_MS)) connect();
     if (quiet > QUIET_POLL_MS && now - lastPoll >= POLL_EVERY_MS) poll();
-    if (now - lastBeat >= MATCH.beatEveryMs) {
+    if (!document.hidden && now - lastBeat >= MATCH.beatEveryMs) {
       lastBeat = now;
       say('beat');
     }
@@ -408,7 +411,7 @@ export function playLive(app, id, ctx) {
       let r = await within(vis.ready(ui.stage), READY_WAIT_MS);
       if (!here()) return;
       if (r === false) {
-        // One more go, in the time there is. If that fails too, the server cancels the question for both.
+        // One more go, in the time there is. If that fails too, this player loses the question.
         const retry = renderVisual(q);
         const pic = ui.stage.querySelector('.pic');
         pic?.querySelector('.vis')?.remove();
@@ -448,7 +451,7 @@ export function playLive(app, id, ctx) {
       return;
     }
     const them = n.them?.profile;
-    ui.waiting.innerHTML = `<span class="lobby-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>${t(n.them?.connected ? 'live.waitingAnswer' : 'live.themAway', { name: nameOf(them) })}</span>`;
+    ui.waiting.innerHTML = `<span class="lobby-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>${t(n.noPicture ? 'live.noPictureWait' : n.them?.connected ? 'live.waitingAnswer' : 'live.themAway', { name: nameOf(them) })}</span>`;
     ui.waiting.hidden = false;
   }
 
@@ -506,7 +509,7 @@ export function playLive(app, id, ctx) {
     const long = shown.length > 22;
     const answer = `<b class="${long ? 'is-long' : ''}">${esc(shown)}</b>`;
     const reveal = t(long ? 'q.answerIs' : 'q.its', { answer });
-    const [icon, verdict] = r.correct ? [ICONS.check, 'live.correct'] : r.away ? [ICONS.cross, 'live.away'] : r.choice === null ? [ICONS.clock, 'live.outOfTime'] : [ICONS.cross, 'live.wrong'];
+    const [icon, verdict] = r.correct ? [ICONS.check, 'live.correct'] : r.noPicture ? [ICONS.cross, 'live.noPicture'] : r.away ? [ICONS.cross, 'live.away'] : r.choice === null ? [ICONS.clock, 'live.outOfTime'] : [ICONS.cross, 'live.wrong'];
     const limit = r.seconds * 1000;
     const mark = Math.max(0, Math.min(1, r.ms / limit));
     const hit = 2 - r.speed; // the zone the time landed in: 0 fast, 1 middle, 2 slow
@@ -593,6 +596,7 @@ export function playLive(app, id, ctx) {
       s = null;
       heard();
       connect();
+      say('beat');
       raf = requestAnimationFrame(frame);
     });
   }
@@ -661,6 +665,7 @@ export function playLive(app, id, ctx) {
       // Leaving the app with a question on screen counts as wrong, as in every server-run round:
       // time away can't go into looking the answer up.
       if (cur && !cur.answered && s?.phase === 'answer') choose(null, { away: true });
+      if (!replaced) sayAway();
       return;
     }
     if (replaced) return;
@@ -688,6 +693,8 @@ export function playLive(app, id, ctx) {
   const dog = setInterval(watchdog, 1000);
   connect();
   poll();
+  if (document.hidden) sayAway();
+  else say('beat'); // a reload after being away: nothing else would tell the server we're back
   raf = requestAnimationFrame(frame);
 
   return () => {

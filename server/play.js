@@ -7,8 +7,7 @@
 // round can only be played forward, once: there's nothing to replay or to finish from a copy.
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { closePlay, createPlay, findPlay, getPlay, openPlayQuestion, recordPlayAnswer, stalePlays } from './db.js';
 import { questionContent, sortedOptions } from './bank.js';
@@ -16,23 +15,7 @@ import { QUESTION_BY_ID } from '../shared/questions.js';
 import { serverNow } from './clock.js';
 import { PLAY, pointsFor, secondsFor } from '../shared/config.js';
 import { signSvg } from '../public/js/signs.js';
-
-const PUBLIC = join(resolve(import.meta.dirname, '..'), 'public');
-
-// The pictures kept on this server (`npm run fetch-images`). Those are served at an address that
-// says nothing about them; a picture only available from elsewhere has to keep its real address.
-let manifest = {};
-try { manifest = JSON.parse(readFileSync(join(PUBLIC, 'img', 'manifest.json'), 'utf8')); } catch { /* no local pictures */ }
-const localFlags = new Set(manifest.flags || []);
-const localCountries = new Set(manifest.countries || []);
-
-function localPicture(q) {
-  const v = q.visual;
-  if (v.type === 'wiki') return manifest.photos?.[q.id]?.src ?? null;
-  if (v.type === 'flag') return localFlags.has(v.code) ? `/img/flags/${v.code}.png` : null;
-  if (v.type === 'country') return localCountries.has(v.iso) ? `/img/countries/${v.iso}.svg` : null;
-  return null;
-}
+import { PUBLIC, localPicture } from './pictures.js';
 
 // Pictures that take a while to download are sent ahead, without the question's words.
 const DOWNLOADED = new Set(['wiki', 'flag', 'country', 'image', 'map']);
@@ -72,6 +55,9 @@ export function createPlays(db, { onFinish }) {
   /** What the browser may know about a question before its words appear. */
   const peek = (play, idx) => ({ cat: questionAt(play, idx).cat, visual: visualFor(play, idx) });
 
+  /** Whether this question has a picture to download, which is the only thing that can fail to load. */
+  const downloads = (play, idx) => DOWNLOADED.has(questionAt(play, idx).visual.type);
+
   /** Where a round stands, for the browser that plays it. */
   function view(play) {
     return {
@@ -88,19 +74,25 @@ export function createPlays(db, { onFinish }) {
     return findPlay(db, kind, ref, userId) ?? createPlay(db, { kind, ref, side, userId, questionIds, content });
   }
 
-  /** Ends a round: every question not reached is wrong, at full time. Does nothing if it has ended. */
-  function finish(play) {
+  /**
+   * Ends a round: every question not reached is wrong, at full time. Does nothing if it has ended.
+   * For a duel cut short by a forfeit, `playedOnly` leaves out what nobody got to play and `xp`
+   * says whether it earns any.
+   */
+  function finish(play, { playedOnly = false, xp = true } = {}) {
     if (!closePlay(db, play.id)) return false;
     const skipped = play.answers.filter((a) => a.skipped);
     const graded = play.answers.filter((a) => !a.skipped);
-    for (const id of play.questionIds.slice(play.answers.length)) {
-      const q = questionOf(play, id);
-      graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
+    if (!playedOnly) {
+      for (const id of play.questionIds.slice(play.answers.length)) {
+        const q = questionOf(play, id);
+        graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
+      }
     }
     // A question skipped because its picture failed scores nothing and is left out of the answers,
     // but costs its full time: skipping the hard ones must not win ties.
     const skippedMs = skipped.reduce((sum, a) => sum + secondsFor(questionOf(play, a.id)) * 1000, 0);
-    onFinish(play, graded, skippedMs);
+    onFinish(play, graded, skippedMs, { xp });
     return true;
   }
 
@@ -153,7 +145,7 @@ export function createPlays(db, { onFinish }) {
     play.answers.push(a);
     play.idx += 1;
     play.openedAt = null;
-    recordPlayAnswer(db, play.id, play.idx, play.answers, now);
+    recordPlayAnswer(db, play.id, play.idx, play.answers);
     if (play.idx >= play.questionIds.length) finish(play);
     return outcome(play, idx, a);
   }
@@ -163,7 +155,7 @@ export function createPlays(db, { onFinish }) {
    * a question can't be undone, and it says nothing about the answer. `force` cancels one that
    * is open, for a duel question the server lost when it restarted.
    */
-  function skip(play, idx, now = serverNow(), { force = false } = {}) {
+  function skip(play, idx, { force = false } = {}) {
     if (idx < play.idx && play.answers[idx]?.skipped) return skipped(play, idx);
     if (play.finishedAt) throw conflict('This round has ended.', { ended: true });
     if (idx !== play.idx || (play.openedAt !== null && !force)) throw conflict('That question can no longer be skipped.');
@@ -171,7 +163,7 @@ export function createPlays(db, { onFinish }) {
     play.answers.push({ id: q.id, cat: q.cat, skipped: true, correct: false, points: 0 });
     play.idx += 1;
     play.openedAt = null;
-    recordPlayAnswer(db, play.id, play.idx, play.answers, now);
+    recordPlayAnswer(db, play.id, play.idx, play.answers);
     if (play.idx >= play.questionIds.length) finish(play);
     return skipped(play, idx);
   }
@@ -200,5 +192,8 @@ export function createPlays(db, { onFinish }) {
     }
   }
 
-  return { get: (id) => getPlay(db, id), find: (kind, ref, userId) => findPlay(db, kind, ref, userId), begin, view, previews, peek, open, answer, skip, finish, abandon, pictureFile, endStale };
+  return {
+    get: (id) => getPlay(db, id), find: (kind, ref, userId) => findPlay(db, kind, ref, userId), begin, view, previews, peek, downloads, open, answer, skip, finish, abandon, pictureFile, endStale,
+    result: (play, idx) => outcome(play, idx, play.answers[idx]),
+  };
 }

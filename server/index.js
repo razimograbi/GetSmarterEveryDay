@@ -25,7 +25,7 @@ import {
   MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber,
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
-import { pickQuestions } from './pick.js';
+import { hasEnoughQuestions, pickQuestions } from './pick.js';
 import { BROWSER_BANK, contentFor } from './bank.js';
 import { createPlays } from './play.js';
 import { createMatches } from './match.js';
@@ -503,6 +503,7 @@ const routes = {
     const { category = 'mixed', friendId = null } = await body(req);
     if (category !== 'mixed' && !CATEGORY_BY_ID[category]) return json(res, 400, { error: `Unknown category "${category}".` });
     if (friendId !== null && !areFriends(db, user.id, friendId)) return json(res, 400, { error: 'You can only send a duel to a friend.' });
+    if (!hasEnoughQuestions(category, DUEL.questions)) return json(res, 409, { error: 'This topic is not available for duels right now.', code: 'topicUnavailable' });
     const busy = matches.liveFor(user.id);
     if (busy) return json(res, 409, { error: 'You are already in a live duel.', live: busy });
     if (openDuelCount(db, user.id) >= DUEL.maxOpen) return json(res, 409, { error: `You have ${DUEL.maxOpen} duels waiting. Finish some first.` });
@@ -633,6 +634,7 @@ const paramRoutes = [
   ['GET', new RegExp(`^/api/duels/${DUEL_PATH}/stream$`), matchStream, 'live'],
   ['GET', new RegExp(`^/api/duels/${DUEL_PATH}/state$`), matchRoute((user, id) => matches.state(id, user.id)), 'live'],
   ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/beat$`), matchRoute((user, id) => matches.beat(id, user.id)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/away$`), matchRoute((user, id) => matches.away(id, user.id)), 'live'],
   ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/ready$`), matchRoute((user, id, input) => matches.ready(id, user.id, input.idx, input.failed)), 'live'],
   ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/seen$`), matchRoute((user, id, input) => matches.seen(id, user.id, input.idx)), 'live'],
   ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/answer$`), matchRoute((user, id, input) => matches.answer(id, user.id, input.idx, input.choice, input.away)), 'live'],
@@ -755,11 +757,11 @@ function grade(answers, { modeCfg = MODES[DEFAULT_MODE] } = {}) {
 }
 
 /** Saves a Daily or duel round like any other (it counts in stats). Returns its score and time. */
-function saveFixedRound(userId, category, graded, skippedMs) {
+function saveFixedRound(userId, category, graded, skippedMs, xp) {
   const time = graded.reduce((sum, a) => sum + a.ms, 0) + skippedMs;
   if (!graded.length) return { roundId: null, score: 0, correct: 0, ms: time };
-  const r = saveRound(db, userId, { mode: DEFAULT_MODE, category, graded, complete: true });
-  logEvent(db, userId, 'round_finished', { mode: DEFAULT_MODE, category, correct: r.correct, total: r.total, score: r.score });
+  const r = saveRound(db, userId, { mode: DEFAULT_MODE, category, graded, complete: xp }); // only a complete round earns XP
+  if (xp) logEvent(db, userId, 'round_finished', { mode: DEFAULT_MODE, category, correct: r.correct, total: r.total, score: r.score });
   return { roundId: r.roundId, score: r.score, correct: r.correct, ms: time };
 }
 
@@ -773,9 +775,9 @@ function finishStage(play, graded) {
 }
 
 /** A Daily, duel or Leveling round has ended on the server: saves the result and tells whoever should hear. */
-function finishFixedRound(play, graded, skippedMs) {
+function finishFixedRound(play, graded, skippedMs, { xp }) {
   if (play.kind === 'stage') return finishStage(play, graded);
-  const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs);
+  const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs, xp);
   if (play.kind === 'daily') {
     finishDaily(db, play.ref, play.userId, { ...saved, total: play.questionIds.length });
     // Friends who already played and scored less hear about it (if they asked to).
@@ -976,10 +978,10 @@ const MIME = {
 const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.svg', '.json', '.webmanifest']);
 const gzipCache = new Map(); // file -> { etag, data }
 
-// Question pictures and road signs rarely change, so browsers may keep them for a day (a
-// replaced picture shows up by the next day). Everything else is checked with the server on
+// Question and topic pictures and road signs rarely change, so browsers may keep them for a day
+// (a replaced picture shows up by the next day). Everything else is checked with the server on
 // each load (cheap: an unchanged file is answered with "304 Not Modified" and no body).
-const LONG_CACHE = /^\/(img|signs)\//;
+const LONG_CACHE = /^\/(img|signs|topics)\//;
 
 async function sendFile(req, res, file, pathname) {
   const info = await stat(file);
@@ -1054,7 +1056,7 @@ function siteOrigin(req) {
 
 // The shared files browsers use. Listed one by one so that shared/questions.js, which has the
 // right answers, can't be fetched under another spelling of its address.
-const BROWSER_SHARED = new Set(['avatars.js', 'config.js', 'countries.js', 'geo.js', 'levels.js']);
+const BROWSER_SHARED = new Set(['avatars.js', 'config.js', 'countries.js', 'covers.js', 'geo.js', 'levels.js']);
 const browserBank = { data: Buffer.from(BROWSER_BANK), gzip: gzipSync(BROWSER_BANK) };
 const browserBankEtag = `"${createHash('sha256').update(BROWSER_BANK).digest('hex').slice(0, 16)}"`;
 

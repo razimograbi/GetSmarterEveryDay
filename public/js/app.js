@@ -1,4 +1,5 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
+import { coverSrc } from '/shared/covers.js';
 import {
   MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, BOARD, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, XP, STAGE, STAGE_PICTURE_HOSTS, inQuickRounds, pointsFor, secondsFor, localDate, levelFor, levelProgress, tierFor, xpForRound,
 } from '/shared/config.js';
@@ -102,6 +103,7 @@ function errMsg(err) {
   if (err.status === 503) return t('app.full');
   if (err.status === 401) return t('err.signedOut');
   if (!err.status) return t('err.network');
+  if (err.code) return t(`err.${err.code}`);
   return lang() === 'en' ? err.message : t('err.generic'); // the server's own messages are in English
 }
 
@@ -868,6 +870,15 @@ function duelAlerts() {
   return rows.length ? `<div class="home-rows">${rows.join('')}</div>` : '';
 }
 
+/** What's inside a topic's card: its photo, name and description, then anything `extra`. */
+const topicCard = (c, extra = '') => `
+  <span class="topic-photo"><img src="${coverSrc(c.id)}" alt="" loading="lazy" decoding="async"></span>
+  <span class="topic-text">
+    <strong>${esc(catName(c))}</strong>
+    <span class="topic-desc"><span class="topic-icon">${ICONS[c.id]}</span><span class="topic-blurb">${esc(catBlurb(c))}</span></span>
+    ${extra}
+  </span>`;
+
 function topicRows(stats) {
   const gotRight = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.gotRight]));
   return orderTopics(stats).map((c) => {
@@ -876,15 +887,11 @@ function topicRows(stats) {
     return `
       <li>
         <a class="topic" href="#/play/${c.id}" style="--hue:${c.hue}">
-          <span class="topic-icon">${ICONS[c.id]}</span>
-          <span class="topic-text">
-            <strong>${esc(catName(c))}</strong>
-            <span>${esc(catBlurb(c))}</span>
-          </span>
-          <span class="topic-meter" aria-label="${esc(t('home.topicMeter', { m, total }))}">
-            <span class="topic-count">${m}<small>/${total}</small></span>
-            <span class="meter"><span style="width:${(m / total) * 100}%"></span></span>
-          </span>
+          ${topicCard(c, `
+            <span class="topic-meter" aria-label="${esc(t('home.topicMeter', { m, total }))}">
+              <span class="topic-count">${m}<small>/${total}</small></span>
+              <span class="meter"><span style="width:${(m / total) * 100}%"></span></span>
+            </span>`)}
         </a>
       </li>`;
   }).join('');
@@ -2521,10 +2528,7 @@ function showDuelNew() {
       <h2 class="section-title">${esc(t('duel.orTopic'))}</h2>
       <ul class="topics">
         ${CATEGORIES.map((c) => `
-          <li><button class="topic" data-cat="${c.id}" style="--hue:${c.hue}">
-            <span class="topic-icon">${ICONS[c.id]}</span>
-            <span class="topic-text"><strong>${esc(catName(c))}</strong><span>${esc(catBlurb(c))}</span></span>
-          </button></li>`).join('')}
+          <li><button class="topic" data-cat="${c.id}" style="--hue:${c.hue}">${topicCard(c)}</button></li>`).join('')}
       </ul>
     </section>
     ${tabbar('friends')}`;

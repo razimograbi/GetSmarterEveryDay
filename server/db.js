@@ -971,7 +971,8 @@ export function getDaily(db, day, number, pick) {
       .run(day, number, JSON.stringify(pick(recent)), Date.now());
     row = db.prepare('SELECT day, number, question_ids FROM daily_challenges WHERE day = ?').get(day);
   }
-  return { day: row.day, number: row.number, questionIds: JSON.parse(row.question_ids) };
+  // A question taken out of the bank after this Daily was picked can't be played any more.
+  return { day: row.day, number: row.number, questionIds: JSON.parse(row.question_ids).filter((id) => QUESTION_BY_ID.has(id)) };
 }
 
 const toDailyResult = (r) => r && ({
@@ -1158,12 +1159,12 @@ export function createPlay(db, { kind, ref, side, userId, questionIds, content =
 
 /** Starts the question's clock. Only the first opening counts. */
 export function openPlayQuestion(db, id, idx, now) {
-  db.prepare('UPDATE plays SET opened_at = ?, updated_at = ? WHERE id = ? AND idx = ? AND opened_at IS NULL AND finished_at IS NULL').run(now, now, id, idx);
+  db.prepare('UPDATE plays SET opened_at = ?, updated_at = ? WHERE id = ? AND idx = ? AND opened_at IS NULL AND finished_at IS NULL').run(now, Date.now(), id, idx);
 }
 
-export function recordPlayAnswer(db, id, idx, answers, now) {
+export function recordPlayAnswer(db, id, idx, answers) {
   db.prepare('UPDATE plays SET idx = ?, opened_at = NULL, answers = ?, updated_at = ? WHERE id = ? AND finished_at IS NULL')
-    .run(idx, JSON.stringify(answers), now, id);
+    .run(idx, JSON.stringify(answers), Date.now(), id);
 }
 
 /** Marks a round as ended. False if it already had: what ended it has counted it. */

@@ -1,4 +1,4 @@
-// Arabic: paintings, famous books, human body, famous people, beauty products, professions.
+// Arabic: paintings, human body, famous people, beauty products, professions.
 export default {
   // Paintings
   'What is this painting called?': 'ما اسم هذه اللوحة؟',
@@ -32,58 +32,6 @@ export default {
   'The Swing': 'الأرجوحة', 'The Embarkation for Cythera': 'الإبحار إلى سيثيرا', 'Portrait of a Musician': 'بورتريه موسيقي',
   'The Annunciation': 'البشارة', 'Grande Odalisque': 'الجارية الكبرى', 'A Sunday on La Grande Jatte': 'يوم أحد في لا غراند جات',
   Automat: 'المطعم الآلي',
-
-  // Famous books
-  'In a future North America, a teenage girl volunteers to take her little sister’s place in a televised fight to the death. Which book is this?':
-    'في أمريكا الشمالية في المستقبل، تتطوع فتاة مراهقة لتحلّ محلّ أختها الصغيرة في قتال حتى الموت يُبثّ على التلفاز. ما هذا الكتاب؟',
-  'Instead of returning to school for his final year, a 17-year-old wizard hunts down the hidden pieces of a dark lord’s soul. Which book is this?':
-    'بدلًا من العودة إلى المدرسة في سنته الأخيرة، يطارد ساحر في السابعة عشرة الأجزاء المخبأة من روح سيد الظلام. ما هذا الكتاب؟',
-  'A rich boy in Kabul betrays his loyal friend, the son of his father’s servant, and returns decades later to make amends. Which book is this?':
-    'فتى ثري في كابول يخون صديقه الوفي، ابن خادم أبيه، ثم يعود بعد عقود ليكفّر عن خطئه. ما هذا الكتاب؟',
-  'Narrated by Death, it follows a foster girl in Nazi Germany who learns to read while her family hides a Jewish man in the basement. Which book is this?':
-    'يرويها الموت، وتتبع فتاة متبنّاة في ألمانيا النازية تتعلم القراءة بينما تخبّئ عائلتها رجلًا يهوديًا في القبو. ما هذا الكتاب؟',
-  'In 1960s Mississippi, a young white writer secretly collects the stories of the Black maids who work for white families. Which book is this?':
-    'في ميسيسيبي في الستينيات، تجمع كاتبة بيضاء شابة سرًا قصص الخادمات السود اللواتي يعملن لدى عائلات بيضاء. ما هذا الكتاب؟',
-  'After a shipwreck, an Indian teenager spends 227 days adrift in a lifeboat with a Bengal tiger. Which book is this?':
-    'بعد غرق سفينة، يقضي فتى هندي 227 يومًا تائهًا في قارب نجاة مع نمر بنغالي. ما هذا الكتاب؟',
-  'In Sweden, a disgraced journalist and a brilliant young hacker investigate a wealthy family’s 40-year-old disappearance case. Which book is this?':
-    'في السويد، يحقق صحفي فقد سمعته وقرصانة شابة بارعة في قضية اختفاء عمرها 40 عامًا داخل عائلة ثرية. ما هذا الكتاب؟',
-  'Two teenagers who meet at a cancer support group fall in love and fly to Amsterdam to meet their favourite author. Which book is this?':
-    'مراهقان يلتقيان في مجموعة دعم لمرضى السرطان يقعان في الحب ويسافران إلى أمستردام للقاء كاتبهما المفضل. ما هذا الكتاب؟',
-  'After a museum curator is murdered in the Louvre, a Harvard professor follows clues hidden in Renaissance art to a secret about the Holy Grail. Which book is this?':
-    'بعد مقتل أمين متحف في اللوفر، يتتبع أستاذ من هارفارد أدلة مخبأة في فن عصر النهضة توصله إلى سر عن الكأس المقدسة. ما هذا الكتاب؟',
-  'A teenage girl moves to the rainy town of Forks and falls in love with a classmate who turns out to be a vampire. Which book is this?':
-    'تنتقل فتاة مراهقة إلى بلدة فوركس الممطرة وتقع في حب زميل لها يتبيّن أنه مصاص دماء. ما هذا الكتاب؟',
-  'On their fifth wedding anniversary a wife vanishes, and her husband becomes the prime suspect as her diary comes to light. Which book is this?':
-    'في الذكرى الخامسة لزواجهما تختفي الزوجة، ويصبح زوجها المشتبه به الأول عندما تظهر مذكّراتها. ما هذا الكتاب؟',
-  'In a future Chicago where everyone is sorted into one of five factions, a girl hides that she fits into more than one. Which book is this?':
-    'في شيكاغو المستقبل، حيث يُوزَّع الجميع على خمس فصائل، تُخفي فتاة أنها تناسب أكثر من فصيل واحد. ما هذا الكتاب؟',
-  'A 12-year-old boy discovers he is the son of Poseidon and is accused of stealing Zeus’s master bolt. Which book is this?':
-    'يكتشف فتى في الثانية عشرة أنه ابن بوسيدون، ويُتّهم بسرقة صاعقة زيوس. ما هذا الكتاب؟',
-  'During the Great Depression, a veterinary student joins a travelling circus and falls for the ringmaster’s wife. Which book is this?':
-    'خلال الكساد الكبير، ينضم طالب طب بيطري إلى سيرك متجوّل ويقع في حب زوجة مدير السيرك. ما هذا الكتاب؟',
-  'A 14-year-old girl, murdered by a neighbour, watches from her own heaven as her family copes with her death. Which book is this?':
-    'فتاة في الرابعة عشرة قتلها جارها تراقب من جنّتها الخاصة عائلتها وهي تتعامل مع موتها. ما هذا الكتاب؟',
-  'The Hunger Games': 'مباريات الجوع', Divergent: 'المتشعبة', 'The Maze Runner': 'عدّاء المتاهة', 'Red Queen': 'الملكة الحمراء',
-  'Children of Blood and Bone': 'أبناء الدم والعظم', 'Harry Potter and the Deathly Hallows': 'هاري بوتر ومقدسات الموت',
-  'Harry Potter and the Half-Blood Prince': 'هاري بوتر والأمير الهجين', 'Harry Potter and the Order of the Phoenix': 'هاري بوتر وجماعة العنقاء',
-  'Harry Potter and the Goblet of Fire': 'هاري بوتر وكأس النار', 'Harry Potter and the Chamber of Secrets': 'هاري بوتر وحجرة الأسرار',
-  'The Kite Runner': 'عدّاء الطائرة الورقية', 'A Thousand Splendid Suns': 'ألف شمس ساطعة', 'The Book Thief': 'سارقة الكتب',
-  'Life of Pi': 'حياة باي', 'The Namesake': 'السميّ', "Sarah's Key": 'مفتاح سارة', 'The Lovely Bones': 'العظام الجميلة',
-  'The Help': 'الخادمات', 'Little Fires Everywhere': 'حرائق صغيرة في كل مكان', 'Water for Elephants': 'ماء للفيلة',
-  'The Color Purple': 'اللون الأرجواني', 'Gone Girl': 'الفتاة المفقودة', 'The Martian': 'المريخي', 'The Road': 'الطريق',
-  'The Girl with the Dragon Tattoo': 'الفتاة ذات وشم التنين', 'The Girl Who Played with Fire': 'الفتاة التي لعبت بالنار',
-  "The Girl Who Kicked the Hornet's Nest": 'الفتاة التي ركلت عش الدبابير', "The Memory Keeper's Daughter": 'ابنة حارس الذكريات',
-  'Extremely Loud and Incredibly Close': 'صاخب جدًا وقريب للغاية', 'The Fault in Our Stars': 'ما تخبئه لنا النجوم',
-  'Me Before You': 'أنا قبلك', 'Looking for Alaska': 'البحث عن ألاسكا', 'Five Feet Apart': 'على بُعد خمسة أقدام',
-  'Everything, Everything': 'كل شيء، كل شيء', 'The Da Vinci Code': 'شيفرة دافنشي', 'Angels & Demons': 'ملائكة وشياطين',
-  'The Celestine Prophecy': 'النبوءة السماوية', 'The Lost Symbol': 'الرمز المفقود', 'Digital Fortress': 'الحصن الرقمي',
-  Twilight: 'الشفق', 'New Moon': 'قمر جديد', 'City of Bones': 'مدينة العظام', 'Vampire Academy': 'أكاديمية مصاصي الدماء',
-  'The Host': 'المضيفة', 'The Girl on the Train': 'الفتاة في القطار', 'The Silent Patient': 'المريضة الصامتة',
-  'Sharp Objects': 'أشياء حادة', 'Big Little Lies': 'أكاذيب صغيرة كبيرة', Insurgent: 'المتمرّدة', Matched: 'المتطابقون',
-  'The Lightning Thief': 'سارق البرق', 'The Sea of Monsters': 'بحر الوحوش', 'The Red Pyramid': 'الهرم الأحمر',
-  Eragon: 'إراغون', 'The Night Circus': 'سيرك الليل', "The Time Traveler's Wife": 'زوجة المسافر عبر الزمن',
-  "My Sister's Keeper": 'حارسة أختي', Room: 'الغرفة',
 
   // Human body
   'What is this part of the body called?': 'ما اسم هذا الجزء من الجسم؟',

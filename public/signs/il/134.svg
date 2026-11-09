@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"
+   sodipodi:docname="134.svg"
+   viewBox="0 0 301 281.82077"
+   height="281.82077"
+   width="301"
+   id="svg11007"
+   version="1.1">
+  <metadata
+     id="metadata11013">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <defs
+     id="defs11011" />
+  <sodipodi:namedview
+     inkscape:current-layer="g11015"
+     inkscape:window-maximized="1"
+     inkscape:window-y="-9"
+     inkscape:window-x="-9"
+     inkscape:cy="178.28955"
+     inkscape:cx="335.91039"
+     inkscape:zoom="1.3833333"
+     showgrid="false"
+     id="namedview11009"
+     inkscape:window-height="1001"
+     inkscape:window-width="1920"
+     inkscape:pageshadow="2"
+     inkscape:pageopacity="0"
+     guidetolerance="10"
+     gridtolerance="10"
+     objecttolerance="10"
+     borderopacity="1"
+     bordercolor="#666666"
+     pagecolor="#ffffff" />
+  <g
+     transform="translate(-24.410162,-53.525384)"
+     id="g11015"
+     inkscape:label="Image"
+     inkscape:groupmode="layer">
+    <g
+       style="opacity:1"
+       inkscape:transform-center-y="-87.037162"
+       inkscape:transform-center-x="150.79601"
+       transform="matrix(1.0344959,0.59942007,-0.59942007,1.0344959,696.56191,263.52098)"
+       id="g10982">
+      <path
+         transform="matrix(0.85509962,-0.49547211,0.49547211,0.85509962,-621.31706,96.334216)"
+         d="m 49.712891,53.525391 -25.302735,3.300781 9.71875,23.595703 86.224614,49.960935 -41.482426,24.03711 -29.158203,-16.89453 -25.302735,3.30078 9.71875,23.59571 13.740235,7.96093 -13.740235,7.96289 -9.71875,23.59375 25.302735,3.30274 29.158203,-16.89453 41.482426,24.03515 -86.224614,49.96289 -9.71875,23.59375 25.302735,3.30274 101.646489,-58.89453 101.64257,58.89453 25.30274,-3.30274 -9.71875,-23.59375 -86.22461,-49.96289 41.48242,-24.03515 29.1582,16.89453 25.30274,-3.30274 -9.71875,-23.59375 -13.74024,-7.96289 13.74024,-7.96093 9.71875,-23.59571 -25.30274,-3.30078 -29.1582,16.89453 -41.48242,-24.03711 86.22461,-49.960935 9.71875,-23.595703 -25.30274,-3.300781 -101.64257,58.894529 z M 151.35938,148.34766 192.8418,172.38281 151.35938,196.41992 109.875,172.38281 Z"
+         style="opacity:1;fill:#c0111e;fill-opacity:1;stroke-width:2.33756;paint-order:stroke fill markers"
+         id="rect10972" />
+      <path
+         transform="matrix(0.85509962,-0.49547211,0.49547211,0.85509962,-621.31706,96.334216)"
+         d="m 47.378906,57.550781 -10.916015,18.84375 93.175779,53.988279 -50.765623,29.41602 -31.494141,-18.24805 -10.916015,18.84375 20.691406,11.98828 -20.691406,11.99024 10.916015,18.84179 31.492188,-18.24804 50.767576,29.41601 -93.175779,53.99024 10.916015,18.84179 103.980474,-60.24804 103.97656,60.24804 10.91601,-18.84179 -93.17578,-53.99024 50.76758,-29.41601 31.49219,18.24804 10.91601,-18.84179 -20.6914,-11.99024 20.6914,-11.98828 -10.91601,-18.84375 -31.49414,18.24805 -50.76563,-29.41602 93.17578,-53.988279 -10.91601,-18.84375 -103.97656,60.248049 z M 151.35938,142.9668 202.125,172.38281 151.35938,201.79883 100.5918,172.38281 Z"
+         style="opacity:1;fill:#ffffff;stroke-width:1.95646;paint-order:stroke fill markers"
+         id="rect10974" />
+    </g>
+    <g
+       id="g11050"
+       transform="matrix(0.87550952,0.50729826,-0.50729826,0.87550952,592.83918,314.85154)"
+       inkscape:transform-center-x="127.62094"
+       inkscape:transform-center-y="-73.660871"
+       style="opacity:0.5" />
+  </g>
+</svg>

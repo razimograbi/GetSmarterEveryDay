@@ -58,7 +58,8 @@ export const MATCH = {
   beatTimeoutMs: 25_000, // connected, but silent for this long: the connection is dead
   holdMs: 15_000, // between questions, the longest one wait for a player who dropped
   graceMs: 30_000, // all the waiting a player can cost the other in one duel
-  maxVoids: 2, // questions one player can cancel because their picture failed
+  maxVoids: 2, // questions one player can report a picture failure on
+  forfeitXpMin: 5, // questions the winner must have played for a forfeited duel to earn XP
   doneKeepMs: 2 * 60_000, // a finished duel stays connected this long, so a rematch can be offered
 };
 
@@ -174,7 +175,6 @@ export const CATEGORIES = [
   { id: 'elements', name: 'Elements', blurb: 'Read the periodic table', hue: '#6B7A0F' },
   { id: 'music', name: 'Instruments', blurb: 'Strings, brass, drums and more', hue: '#C2255C' },
   { id: 'paintings', name: 'Paintings', blurb: 'Masterpieces of art', hue: '#B5651D' },
-  { id: 'novels', name: 'Famous books', blurb: 'Bestsellers since 2000', hue: '#7048E8', seconds: 20 }, // plot descriptions take longer to read
   { id: 'body', name: 'Human body', blurb: 'Muscles, bones and organs', hue: '#E03131' },
   { id: 'people', name: 'Famous people', blurb: 'Know them by their face', hue: '#1971C2' },
   { id: 'beauty', name: 'Beauty products', blurb: 'From mascara to bobby pins', hue: '#F06595' },
