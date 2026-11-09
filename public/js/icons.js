@@ -20,7 +20,6 @@ export const ICONS = {
   habits: i('<circle cx="12" cy="12" r="1.6" fill="currentColor"/><ellipse cx="12" cy="12" rx="9" ry="3.6"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(120 12 12)"/>'),
   sayno: i('<path d="M7.5 12V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M10.5 10V4.5a1.5 1.5 0 0 1 3 0V10"/><path d="M13.5 10V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M16.5 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-.5a6.5 6.5 0 0 1-5.4-2.9L4 14.5a1.6 1.6 0 0 1 2.6-1.8l.9 1.3V12"/>'),
   paintings: i('<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="15.5" cy="8.5" r="1.5"/>'),
-  novels: i('<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9 7h6"/>'),
   body: i('<circle cx="12" cy="4.5" r="2"/><path d="M5 9h14"/><path d="M12 9v6"/><path d="m8.5 21 3.5-6 3.5 6"/>'),
   people: i('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
   beauty: i('<rect x="8" y="12" width="8" height="9" rx="1"/><path d="M9.5 12V7l5-3v8"/>'),

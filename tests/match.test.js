@@ -7,12 +7,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createDuel, finishDuelSide, getDuel, openDb, upsertUser } from '../server/db.js';
+import { createDuel, finishDuelSide, getDaily, getDuel, openDb, upsertUser } from '../server/db.js';
 import { createPlays } from '../server/play.js';
 import { serverNow } from '../server/clock.js';
 import { createMatches } from '../server/match.js';
-import { pickQuestions } from '../server/pick.js';
-import { QUESTION_BY_ID } from '../shared/questions.js';
+import { hasEnoughQuestions, pickQuestions } from '../server/pick.js';
+import { pictureKeepsSecret } from '../server/pictures.js';
+import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
 import { MATCH, PLAY } from '../shared/config.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'smarts-match-'));
@@ -27,18 +28,23 @@ let pushes;
 let clock;
 let alive; // players whose browsers keep saying they're there
 let duel;
+let picked; // the questions of the next match, when a test needs particular ones
+let finished; // what was saved for each player
 
 function build() {
   plays = createPlays(db, {
-    onFinish: (play, graded, skippedMs) => finishDuelSide(db, play.ref, play.side, {
-      roundId: null, score: graded.reduce((s, a) => s + a.points, 0), correct: graded.filter((a) => a.correct).length, ms: graded.reduce((s, a) => s + a.ms, skippedMs),
-    }),
+    onFinish: (play, graded, skippedMs, { xp }) => {
+      finished[play.userId] = { graded: graded.length, xp };
+      finishDuelSide(db, play.ref, play.side, {
+        roundId: null, score: graded.reduce((s, a) => s + a.points, 0), correct: graded.filter((a) => a.correct).length, ms: graded.reduce((s, a) => s + a.ms, skippedMs),
+      });
+    },
   });
   pushes = [];
   matches = createMatches(db, {
     plays, clock: () => clock.t,
     profileOf: (id) => ({ id, name: id, avatar: null }),
-    pick: () => pickQuestions({ count: 10, category: 'mixed', seed: 'test' }),
+    pick: () => picked ?? pickQuestions({ count: 10, category: 'mixed', seed: 'test' }),
     reminders: { duelJoined: (...a) => pushes.push(['joined', ...a]), duelFinished: (...a) => pushes.push(['finished', ...a]) },
     log: (...a) => { throw a[1] ?? new Error(a.join(' ')); },
   });
@@ -47,6 +53,8 @@ function build() {
 beforeEach(() => {
   db = openDb(join(dir, `t${file++}.db`));
   clock = { t: 1_000_000 };
+  picked = null;
+  finished = {};
   alive = new Set(['ann', 'bob']);
   for (const id of ['ann', 'bob']) upsertUser(db, { id, name: id, provider: 'dev' });
   build();
@@ -243,22 +251,180 @@ test('the slowest picture sets the pace, up to a limit', () => {
   assert.equal(state('ann').phase, 'answer');
 });
 
-test('a picture that fails cancels the question for both, but only so often', () => {
-  begin();
+const withVisual = (type) => QUESTIONS.filter((q) => q.visual.type === type).slice(0, 10).map((q) => q.id);
+
+test('a picture only one player reports costs only that player, and only so often', () => {
+  picked = withVisual('map');
+  const s = begin();
   for (let idx = 0; idx < MATCH.maxVoids; idx++) {
     matches.ready(duel.id, 'bob', idx, true, clock.t);
-    const v = state('ann');
-    assert.equal(v.phase, 'void');
-    assert.equal(v.voidReason, 'picture');
-    run(MATCH.voidMs + 100);
+    assert.equal(state('ann').phase, 'prepare', 'one report cancels nothing');
+    matches.ready(duel.id, 'ann', idx, false, clock.t);
+    assert.equal(state('ann').phase, 'answer');
+    assert.equal(state('bob').noPicture, true);
+    assert.equal(state('ann').noPicture, undefined);
+    assert.equal(s.ann.last.them.answered, true, 'Ann is not kept waiting for Bob');
+    run(1000);
+    answer('bob', idx, right(idx));
+    assert.equal(state('ann').phase, 'answer', 'Bob can no longer answer');
+    answer('ann', idx, right(idx));
+    assert.equal(state('ann').phase, 'reveal');
+    assert.equal(s.ann.last.result.correct, true);
+    assert.equal(s.bob.last.result.correct, false);
+    assert.equal(s.bob.last.result.points, 0);
+    assert.equal(s.bob.last.result.noPicture, true);
+    assert.equal(s.bob.last.result.answer, right(idx));
+    run(MATCH.revealMs + 100);
   }
   const idx = MATCH.maxVoids;
   matches.ready(duel.id, 'bob', idx, true, clock.t);
-  assert.equal(state('ann').phase, 'prepare', 'out of cancels: it counts as ready');
   matches.ready(duel.id, 'ann', idx, false, clock.t);
+  assert.equal(state('bob').noPicture, undefined, 'out of reports: Bob plays it like anyone else');
+  assert.equal(state('bob').you.results.filter((r) => r.skipped).length, MATCH.maxVoids);
+  assert.equal(state('ann').you.results.filter((r) => r.skipped).length, 0);
+});
+
+test('a question is cancelled for both only if both report the picture', () => {
+  picked = withVisual('map');
+  begin();
+  matches.ready(duel.id, 'bob', 0, true, clock.t);
+  matches.ready(duel.id, 'ann', 0, true, clock.t);
+  const v = state('ann');
+  assert.equal(v.phase, 'void');
+  assert.equal(v.voidReason, 'picture');
+  assert.equal(v.you.results[0].skipped, true);
+  assert.equal(state('bob').you.results[0].skipped, true);
+});
+
+test('a report about a question with nothing to download is not believed', () => {
+  picked = withVisual('text');
+  begin();
+  matches.ready(duel.id, 'bob', 0, true, clock.t);
+  matches.ready(duel.id, 'ann', 0, false, clock.t);
   assert.equal(state('ann').phase, 'answer');
-  const results = state('ann').you.results;
-  assert.equal(results.filter((r) => r.skipped).length, MATCH.maxVoids);
+  assert.equal(state('bob').noPicture, undefined);
+  assert.equal(state('bob').answered, false);
+});
+
+test('a player who switched apps is away at once, and only coming back ends that', () => {
+  const s = begin();
+  bothReady(0);
+  alive.delete('bob');
+  matches.away(duel.id, 'bob', clock.t); // Bob's connection is still open
+  answer('ann', 0, right(0));
+  run(100);
+  assert.equal(s.ann.last.phase, 'reveal', 'Ann is not kept waiting');
+  assert.equal(s.ann.last.them.connected, false);
+  run(MATCH.revealMs + 100);
+  state('bob'); // a hidden page can still poll
+  run(100);
+  assert.equal(state('ann').them.connected, false, 'polling is not being back');
+  assert.ok(state('ann').holdMs === undefined || state('ann').holdMs > 0);
+  matches.beat(duel.id, 'bob', clock.t);
+  alive.add('bob');
+  run(100);
+  assert.equal(state('ann').them.connected, true);
+});
+
+test('a player who stays in another app forfeits', () => {
+  begin();
+  alive.delete('bob');
+  matches.away(duel.id, 'bob', clock.t);
+  run(MATCH.prepareMs + MATCH.holdMs + 200);
+  const d = getDuel(db, duel.id);
+  assert.equal(d.endReason, 'forfeit');
+  assert.equal(d.forfeitSide, 'opponent');
+  assert.equal(d.resultUnseenBy, 'bob');
+});
+
+test('a sender who left to share the link hears when someone joins and has a minute to return', () => {
+  matches.attach(duel.id, 'ann', stream(), clock.t);
+  alive.delete('ann');
+  matches.away(duel.id, 'ann', clock.t);
+  matches.join(duel.id, 'bob', clock.t);
+  matches.attach(duel.id, 'bob', stream(), clock.t);
+  assert.equal(pushes[0][0], 'joined');
+  run(MATCH.hostWaitMs - 1000);
+  assert.equal(state('bob').phase, 'lobby');
+  matches.beat(duel.id, 'ann', clock.t);
+  run(100);
+  assert.equal(state('bob').phase, 'countdown');
+});
+
+test('no measurement of the connection means no allowance', () => {
+  const s = begin();
+  bothReady(0);
+  run(2000);
+  answer('ann', 0, right(0));
+  answer('bob', 0, right(0));
+  assert.equal(s.ann.last.result.ms, 2000);
+});
+
+test('the allowance is the fastest delay measured in the match', () => {
+  const s = begin();
+  const withDelay = (idx, delay) => {
+    bothReady(idx);
+    run(delay);
+    matches.seen(duel.id, 'ann', idx, clock.t);
+    run(2000 - delay);
+    answer('ann', idx, right(idx));
+    answer('bob', idx, right(idx));
+    return s.ann.last.result.ms;
+  };
+  assert.equal(withDelay(0, 100), 2000 - 100);
+  run(MATCH.revealMs + 100);
+  assert.equal(withDelay(1, 900), 2000 - 100, 'a late "got it" gains nothing');
+});
+
+test('rounds record when they were last touched by the time of day', () => {
+  begin(); // this test's clock is far from the time of day
+  bothReady(0);
+  answer('ann', 0, right(0));
+  answer('bob', 0, right(0));
+  assert.ok(Math.abs(plays.find('duel', duel.id, 'ann').updatedAt - Date.now()) < 60_000);
+  plays.endStale();
+  assert.equal(plays.find('duel', duel.id, 'ann').finishedAt, null, 'a round being played is not stale');
+});
+
+test('a forfeit saves only what was played, and the player who left earns nothing', () => {
+  begin();
+  for (let idx = 0; idx < 5; idx++) playQuestion(idx);
+  matches.leave(duel.id, 'ann', clock.t);
+  assert.deepEqual(finished.bob, { graded: 5, xp: true });
+  assert.deepEqual(finished.ann, { graded: 5, xp: false });
+});
+
+test('winning by forfeit early on earns no XP', () => {
+  begin();
+  for (let idx = 0; idx < 4; idx++) playQuestion(idx);
+  matches.leave(duel.id, 'ann', clock.t);
+  assert.deepEqual(finished.bob, { graded: 4, xp: false });
+});
+
+test('a duel played to the end earns both players their XP', () => {
+  begin();
+  for (let idx = 0; idx < 10; idx++) playQuestion(idx);
+  assert.deepEqual(finished.ann, { graded: 10, xp: true });
+  assert.deepEqual(finished.bob, { graded: 10, xp: true });
+});
+
+test('no question whose picture would give away its answer is ever picked', () => {
+  for (let i = 0; i < 40; i++) {
+    for (const category of ['mixed', 'clubs', 'flags', 'countries']) {
+      for (const id of pickQuestions({ count: 10, category, seed: `${category}${i}` })) assert.ok(pictureKeepsSecret(QUESTION_BY_ID.get(id)), id);
+    }
+  }
+});
+
+test('a Daily picked before a question was removed plays without it', () => {
+  const real = QUESTIONS[0].id;
+  assert.deepEqual(getDaily(db, '2026-11-09', 9, () => ['removed-question', real]).questionIds, [real]);
+});
+
+test('a topic with too few safe questions is not available', () => {
+  const safe = QUESTIONS.filter((q) => q.cat === 'clubs' && pictureKeepsSecret(q)).length;
+  assert.equal(hasEnoughQuestions('clubs', 10), safe >= 10);
+  assert.equal(hasEnoughQuestions('mixed', 10), true);
 });
 
 test('a short drop between questions holds the game, and coming back carries on', () => {

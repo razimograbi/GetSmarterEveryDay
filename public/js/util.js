@@ -11,9 +11,10 @@ export function shuffle(arr) {
   return a;
 }
 
-export async function api(path, { method = 'GET', body } = {}) {
+export async function api(path, { method = 'GET', body, keepalive = false } = {}) {
   const res = await fetch(path, {
     method,
+    keepalive, // lets the request finish even if the app is on its way to the background
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
     credentials: 'same-origin',
@@ -22,6 +23,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   if (!res.ok) {
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), {
       status: res.status,
+      code: data.code,
       retryAfter: Number(res.headers.get('retry-after')) || null,
     });
   }

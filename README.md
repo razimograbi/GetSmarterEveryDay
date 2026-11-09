@@ -3,14 +3,14 @@
 A picture quiz built for phones (it works on laptops too). Sign in with Google, play
 10-question rounds against a 15-second clock, and track what you've mastered.
 
-**915 questions in 29 topics:** flags (40), capitals (30), seas & oceans (25),
-road signs (70: 20 European, 50 Israeli), animals (25), cars (15), programming languages (20), landmarks (25),
-dog breeds (40), world food (40), countries (40), chemical elements (40),
-musical instruments (40), paintings (30), famous books (15: bestsellers published after
-2000 with over 1.5 million Goodreads ratings, named from a plot description),
-human body (20), famous people (20), beauty products (40), professions (10),
-company logos (20, symbol-only logos that don't spell the name), history (40),
-interesting questions (30) and not what you think (10, where the obvious answer is
+**2,125 questions in 28 topics:** flags (100), capitals (100), seas & oceans (25),
+road signs (100: 20 European, 80 Israeli), animals (100), cars (100), programming languages (20), landmarks (100),
+dog breeds (100), world food (100), countries (100), chemical elements (40),
+musical instruments (100), paintings (100), human body (100), famous people (100),
+beauty products (100), professions (50),
+company logos (100, symbol-only logos that don't spell the name), football clubs (40),
+football players (40), currencies (20), history (100),
+interesting questions (100) and not what you think (100, where the obvious answer is
 wrong), which mix photo and text-only questions, and three book topics with text-only questions:
 *Sapiens* by Yuval Noah Harari (30), *Atomic Habits* by James Clear (30) and
 *The Art of Saying No* by Damon Zahariades (30).
@@ -159,8 +159,9 @@ only count towards a player's own progress and day streak, never a board or a du
 - let a second account play first, since every result screen shows that round's answers;
 - look an answer up in another app or ask a friend during the clock. Leaving the app counts as
   wrong, but that rule runs in the browser, so a script can ignore it (the server's clock still runs);
-- see upcoming pictures, without their words, before their clock starts. The 100 or so Wikipedia
-  pictures with no local copy (`npm run fetch-images`) also keep their real title in the question.
+- see upcoming pictures, without their words, before their clock starts. Questions whose picture
+  has no local copy (`npm run fetch-images`) would show its real title, so they are left out of
+  the Daily and duels, and a topic with too few others can't be played as a duel.
 
 ### Pictures
 
@@ -174,7 +175,6 @@ only count towards a player's own progress and day streak, never a board or a du
 | Animals, cars, landmarks, dogs, food, instruments | The lead image of the matching English Wikipedia article, fetched in the browser and cached |
 | Programming | The code snippet itself |
 | Paintings, human body, famous people, beauty products, professions | A specific Wikipedia/Commons image pinned by file name (`'File:…'`), each checked so no caption or label gives the answer away |
-| Famous books | No picture (their covers show the title and are copyrighted): a plot description that never uses a word from the title |
 | Books | No picture: the question is shown on its own card, with five long answers |
 
 **Download the pictures once (recommended):**
@@ -510,7 +510,10 @@ one message arriving.
 | A player drops during a question | The other isn't kept waiting. The absent player scores 0 |
 | A player drops between questions | Get ready waits up to 15 s, 30 s in total per player per duel, then they forfeit |
 | Both players disappear | The duel ends with no winner and isn't saved as a round |
-| A picture won't load | The question is cancelled for both, at most twice per player |
+| A player switches to another app | They count as away at once: the other isn't kept waiting, and they get the same time to return as after a drop |
+| A player gives up, or stays away | Only the questions played are saved. The one who left earns no XP, and the winner earns it only after at least 5 questions |
+| A picture won't load for one player | That player gets no points for the question, at most twice per duel. The other plays on |
+| A picture won't load for both | The question is cancelled for both |
 | A second tab or device | The newest takes over |
 | The server restarts | Matches carry on (they're saved at every phase change). The open question is cancelled for both |
 

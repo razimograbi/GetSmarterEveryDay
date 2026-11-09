@@ -28,24 +28,26 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
 
   const newSeat = (userId, t) => ({
     userId, profile: profileOf(userId), stream: null, lastSeen: t, wasPresent: false, play: null,
-    grace: MATCH.graceMs, voids: 0,
+    grace: MATCH.graceMs, voids: 0, hidden: false, fastestTrip: null,
     ...freshQuestion(),
   });
 
   /** What a seat knows about the question being played. */
-  const freshQuestion = () => ({ ready: false, failed: false, opened: null, answered: false, choice: null, away: false, answeredAt: 0, seenAt: null, result: null });
+  const freshQuestion = () => ({ ready: false, failed: false, noPicture: false, opened: null, answered: false, choice: null, away: false, answeredAt: 0, seenAt: null, result: null });
 
   /**
-   * Is the player here? Without a connection they count as here for a few seconds (a page reload,
-   * a change of network). With one, they must also have said something lately, because a phone
-   * that died leaves a connection that looks open.
+   * Is the player here? Someone whose app is in the background is not. Without a connection they
+   * count as here for a few seconds (a page reload, a change of network). With one, they must also
+   * have said something lately, because a phone that died leaves a connection that looks open.
    */
-  const present = (seat, t) => !!seat && t - seat.lastSeen <= (seat.stream ? MATCH.beatTimeoutMs : MATCH.absentAfterMs);
+  const present = (seat, t) => !!seat && !seat.hidden && t - seat.lastSeen <= (seat.stream ? MATCH.beatTimeoutMs : MATCH.absentAfterMs);
 
   const seatsOf = (m) => SIDES.map((side) => m.seats[side]).filter(Boolean);
   const scoreOf = (seat) => (seat.play ? seat.play.answers.reduce((sum, a) => sum + (a.points || 0), 0) : 0);
   const sideOf = (m, seat) => SIDES.find((side) => m.seats[side] === seat);
   const started = (m) => m.phase !== 'lobby' && m.phase !== 'done';
+  const playedCount = (seat) => seat.play.answers.filter((a) => !a.skipped).length;
+  const canReportFailure = (seat) => seat.failed && seat.voids < MATCH.maxVoids;
 
   /** The running match this player is in, if any. */
   function liveFor(userId) {
@@ -82,6 +84,7 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
       out.clockMs = Math.max(0, question.seconds * 1000 - (t - m.openedAt));
       out.answered = me.answered;
       if (me.answered) out.choice = me.choice;
+      if (me.noPicture) out.noPicture = true;
     }
     if (m.phase === 'reveal') out.result = me.result;
     if (m.phase === 'void') out.voidReason = m.voidReason;
@@ -149,7 +152,14 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
   }
 
   function openQuestion(m, t) {
-    for (const seat of seatsOf(m)) seat.opened = plays.open(seat.play, m.idx, t);
+    for (const seat of seatsOf(m)) {
+      seat.opened = plays.open(seat.play, m.idx, t);
+      if (canReportFailure(seat)) {
+        // Only this player said their picture failed, so only they lose the question.
+        seat.voids += 1;
+        Object.assign(seat, { noPicture: true, answered: true, answeredAt: t });
+      }
+    }
     m.openedAt = t;
     m.holdUntil = 0;
     enter(m, 'answer', seatsOf(m)[0].opened.seconds * 1000 + PLAY.lateAllowanceMs, t);
@@ -158,9 +168,15 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
   /** The question is over for both: only now are the answers graded. */
   function closeQuestion(m, t) {
     for (const seat of seatsOf(m)) {
-      // The trip to the player and back, as measured when they said they got the question.
-      // It can't be more than the allowance every player used to get.
-      const trip = seat.seenAt === null ? PLAY.networkAllowanceMs : Math.min(seat.seenAt - m.openedAt, PLAY.networkAllowanceMs);
+      if (seat.noPicture) {
+        plays.skip(seat.play, m.idx, { force: true });
+        const { seconds } = seat.opened;
+        seat.result = { ...plays.result(seat.play, m.idx), ms: seconds * 1000, choice: null, away: false, noPicture: true, seconds, base: 0, speed: 0 };
+        continue;
+      }
+      // The trip to the player and back: nothing without a measurement for this question, and
+      // otherwise the player's best of the match, so that answering "got it" late one time gains nothing.
+      const trip = seat.seenAt === null ? 0 : Math.min(seat.fastestTrip, PLAY.networkAllowanceMs);
       const choice = seat.answered ? seat.choice : null;
       const r = plays.answer(seat.play, m.idx, choice, seat.answered ? seat.answeredAt : t, trip);
       seat.result = {
@@ -175,7 +191,7 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
   /** Nobody can fairly play this question: it's skipped for both and costs neither any points. */
   function voidQuestion(m, reason, t, ms = MATCH.voidMs) {
     for (const seat of seatsOf(m)) {
-      if (seat.play.idx === m.idx) plays.skip(seat.play, m.idx, t, { force: true });
+      if (seat.play.idx === m.idx) plays.skip(seat.play, m.idx, { force: true });
     }
     m.voidReason = reason;
     if (m.idx + 1 >= m.total) settle(m, { reason: 'played' }, t);
@@ -192,7 +208,10 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
   function settle(m, { reason, forfeitSide = null }, t) {
     if (m.settled) return;
     for (const seat of seatsOf(m)) {
-      if (seat.play) (reason === 'abandoned' ? plays.abandon(seat.play) : plays.finish(seat.play));
+      if (!seat.play) continue;
+      if (reason === 'abandoned') plays.abandon(seat.play);
+      else if (reason === 'forfeit') plays.finish(seat.play, { playedOnly: true, xp: sideOf(m, seat) !== forfeitSide && playedCount(seat) >= MATCH.forfeitXpMin });
+      else plays.finish(seat.play);
     }
     m.settled = true;
     m.ended = { reason, forfeitSide };
@@ -287,9 +306,8 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
         if (t >= m.endsAt) enterPrepare(m, t);
         return;
       case 'prepare': {
-        const failed = seats.find((s) => s.failed && s.voids < MATCH.maxVoids);
-        if (failed) {
-          failed.voids += 1;
+        if (seats.every(canReportFailure)) {
+          for (const seat of seats) seat.voids += 1;
           return voidQuestion(m, 'picture', t);
         }
         const absent = seats.filter((s) => !present(s, t));
@@ -451,7 +469,7 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
     const { m, side, seat } = locate(id, userId, t);
     if (m.phase === 'prepare' && idx === m.idx) {
       seat.ready = true;
-      seat.failed = !!failed;
+      seat.failed = !!failed && plays.downloads(seat.play, idx); // words can't fail to load
       advance(m, t);
     }
     return view(m, side, t);
@@ -460,7 +478,24 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
   /** The player has the question. Measures their connection, so a slow one doesn't lose ties. */
   function seen(id, userId, idx, t = clock()) {
     const { m, side, seat } = locate(id, userId, t);
-    if (m.phase === 'answer' && idx === m.idx && seat.seenAt === null) seat.seenAt = t;
+    if (m.phase === 'answer' && idx === m.idx && seat.seenAt === null) {
+      seat.seenAt = t;
+      seat.fastestTrip = Math.min(seat.fastestTrip ?? Infinity, t - m.openedAt);
+    }
+    return view(m, side, t);
+  }
+
+  /** The app is on screen and the player is still here. Only this ends being "away". */
+  function beat(id, userId, t = clock()) {
+    const { m, side, seat } = locate(id, userId, t);
+    seat.hidden = false;
+    return view(m, side, t);
+  }
+
+  /** The player has switched to another app. If this message is lost, the missing beats say the same. */
+  function away(id, userId, t = clock()) {
+    const { m, side, seat } = locate(id, userId, t);
+    seat.hidden = true;
     return view(m, side, t);
   }
 
@@ -559,5 +594,5 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
     enterPrepare(m, t, MATCH.restartWaitMs);
   }
 
-  return { open, join, attach, state, ready, seen, answer, leave, offerRematch, userGone, liveFor, tick, restore, isOpen: (id) => matches.has(id), beat: state };
+  return { open, join, attach, state, beat, away, ready, seen, answer, leave, offerRematch, userGone, liveFor, tick, restore, isOpen: (id) => matches.has(id) };
 }

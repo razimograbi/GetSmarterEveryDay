@@ -3,6 +3,12 @@
 
 import { QUESTIONS } from '../shared/questions.js';
 import { inQuickRounds } from '../shared/config.js';
+import { pictureKeepsSecret } from './pictures.js';
+
+const inPool = (category) => (q) => pictureKeepsSecret(q) && (category === 'mixed' ? inQuickRounds(q) : q.cat === category);
+
+/** Whether a topic has enough questions that can be played without giving their answers away. */
+export const hasEnoughQuestions = (category, count) => QUESTIONS.filter(inPool(category)).length >= count;
 
 // For a round of 10: 3 easy (0–3), 4 medium (4–6) and 3 hard (7–10). Longer rounds stretch it.
 const BANDS = [[0, 3], [4, 6], [7, 10]];
@@ -31,7 +37,7 @@ function seeded(seed) {
 export function pickQuestions({ count, category = 'mixed', seed = String(Math.random()), avoid = new Set(), seenRecently = new Set() }) {
   const random = seeded(seed);
   const mixed = category === 'mixed';
-  const pool = QUESTIONS.filter(mixed ? inQuickRounds : (q) => q.cat === category);
+  const pool = QUESTIONS.filter(inPool(category));
 
   const picked = [];
   const topics = new Set();

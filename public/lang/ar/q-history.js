@@ -128,7 +128,6 @@ export default {
   'Why is the Eiffel Tower about 15 cm taller in summer?': 'لماذا يزداد طول برج إيفل نحو 15 سم في الصيف؟',
   'Heat makes its iron expand': 'الحرارة تجعل حديده يتمدد', 'Its antennas are extended': 'تُمدَّد هوائياته',
   'The ground beneath it swells': 'الأرض تحته تنتفخ', 'Fresh paint adds a layer': 'الطلاء الجديد يضيف طبقة', 'Warm wind lifts its top': 'الرياح الدافئة ترفع قمته',
-  'Which of these is a true berry, botanically speaking?': 'أيّ هذه ثمرة لبية حقيقية من الناحية النباتية؟',
   Banana: 'الموز', Strawberry: 'الفراولة', Raspberry: 'التوت الأحمر', Blackberry: 'العليق', Mulberry: 'التوت',
   'The shortest war on record, between Britain and Zanzibar in 1896, lasted about how long?': 'كم دامت تقريبًا أقصر حرب مسجّلة، بين بريطانيا وزنجبار عام 1896؟',
   'About 40 minutes': 'نحو 40 دقيقة', 'About 6 hours': 'نحو 6 ساعات', 'About 2 days': 'نحو يومين', 'About 3 weeks': 'نحو 3 أسابيع',

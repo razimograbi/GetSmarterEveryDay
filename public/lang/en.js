@@ -8,7 +8,8 @@ export default {
   'app.full': 'Smarts is full right now. Try again in a few minutes.',
   'err.rateLimited': 'Too many requests. Wait {s} seconds and try again.',
   'err.signedOut': 'You were signed out. Sign in again.',
-  'err.network': "Couldn't reach the server. Check your connection.",
+  'err.topicUnavailable': 'This topic is not available for duels right now.',
+  'err.network':"Couldn't reach the server. Check your connection.",
   'err.generic': 'Something went wrong. Try again.',
 
   // Language
@@ -363,7 +364,9 @@ export default {
   'live.outOfTime': 'Time\'s up',
   'live.away': 'You left the app',
   'live.speed': 'Speed',
-  'live.voidPicture': 'A picture didn\'t load, so this question doesn\'t count for either of you.',
+  'live.noPicture': 'Your picture didn\'t load',
+  'live.noPictureWait': 'Your picture didn\'t load, so you get no points for this question.',
+  'live.voidPicture':'A picture didn\'t load, so this question doesn\'t count for either of you.',
   'live.voidRestart': 'We had a hiccup, so this question doesn\'t count for either of you.',
   'live.quitTitle': 'Leave the duel?',
   'live.quitNote': 'If you leave now, you lose.',

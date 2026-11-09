@@ -1,4 +1,4 @@
-// Hebrew: paintings, famous books, human body, famous people, beauty products, professions.
+// Hebrew: paintings, human body, famous people, beauty products, professions.
 // Book and painting titles use their published Hebrew names where they have one.
 export default {
   // Paintings
@@ -33,58 +33,6 @@ export default {
   'The Swing': 'הנדנדה', 'The Embarkation for Cythera': 'ההפלגה לקיתרה', 'Portrait of a Musician': 'דיוקן של מוזיקאי',
   'The Annunciation': 'הבשורה', 'Grande Odalisque': 'האודליסקית הגדולה', 'A Sunday on La Grande Jatte': 'יום ראשון בגראנד ז׳אט',
   Automat: 'אוטומט',
-
-  // Famous books
-  'In a future North America, a teenage girl volunteers to take her little sister’s place in a televised fight to the death. Which book is this?':
-    'בצפון אמריקה של העתיד, נערה מתנדבת לתפוס את מקומה של אחותה הקטנה בקרב עד מוות שמשודר בטלוויזיה. איזה ספר זה?',
-  'Instead of returning to school for his final year, a 17-year-old wizard hunts down the hidden pieces of a dark lord’s soul. Which book is this?':
-    'במקום לחזור לשנתו האחרונה בבית הספר, קוסם בן 17 צד את החלקים החבויים של נשמת אדון האופל. איזה ספר זה?',
-  'A rich boy in Kabul betrays his loyal friend, the son of his father’s servant, and returns decades later to make amends. Which book is this?':
-    'ילד עשיר בקאבול בוגד בחברו הנאמן, בנו של משרת אביו, וחוזר אחרי עשרות שנים כדי לתקן. איזה ספר זה?',
-  'Narrated by Death, it follows a foster girl in Nazi Germany who learns to read while her family hides a Jewish man in the basement. Which book is this?':
-    'המוות מספר על ילדה במשפחת אומנה בגרמניה הנאצית, שלומדת לקרוא בזמן שמשפחתה מסתירה יהודי במרתף. איזה ספר זה?',
-  'In 1960s Mississippi, a young white writer secretly collects the stories of the Black maids who work for white families. Which book is this?':
-    'במיסיסיפי של שנות ה-60, כותבת לבנה צעירה אוספת בסתר את סיפוריהן של עוזרות בית שחורות שעובדות אצל משפחות לבנות. איזה ספר זה?',
-  'After a shipwreck, an Indian teenager spends 227 days adrift in a lifeboat with a Bengal tiger. Which book is this?':
-    'אחרי שספינה טובעת, נער הודי נסחף 227 ימים בסירת הצלה עם נמר בנגלי. איזה ספר זה?',
-  'In Sweden, a disgraced journalist and a brilliant young hacker investigate a wealthy family’s 40-year-old disappearance case. Which book is this?':
-    'בשוודיה, עיתונאי שנפל מגדולתו והאקרית צעירה ומבריקה חוקרים היעלמות בת 40 שנה במשפחה עשירה. איזה ספר זה?',
-  'Two teenagers who meet at a cancer support group fall in love and fly to Amsterdam to meet their favourite author. Which book is this?':
-    'שני בני נוער שנפגשים בקבוצת תמיכה לחולי סרטן מתאהבים וטסים לאמסטרדם לפגוש את הסופר האהוב עליהם. איזה ספר זה?',
-  'After a museum curator is murdered in the Louvre, a Harvard professor follows clues hidden in Renaissance art to a secret about the Holy Grail. Which book is this?':
-    'אחרי שאוצר מוזיאון נרצח בלובר, פרופסור מהרווארד עוקב אחר רמזים שחבויים באמנות הרנסנס אל סוד על הגביע הקדוש. איזה ספר זה?',
-  'A teenage girl moves to the rainy town of Forks and falls in love with a classmate who turns out to be a vampire. Which book is this?':
-    'נערה עוברת לעיירה הגשומה פורקס ומתאהבת בבן כיתה שמתברר שהוא ערפד. איזה ספר זה?',
-  'On their fifth wedding anniversary a wife vanishes, and her husband becomes the prime suspect as her diary comes to light. Which book is this?':
-    'ביום הנישואים החמישי שלהם אישה נעלמת, ובעלה הופך לחשוד העיקרי כשהיומן שלה נחשף. איזה ספר זה?',
-  'In a future Chicago where everyone is sorted into one of five factions, a girl hides that she fits into more than one. Which book is this?':
-    'בשיקגו של העתיד, שבה כל אחד משויך לאחד מחמישה פלגים, נערה מסתירה שהיא מתאימה ליותר מפלג אחד. איזה ספר זה?',
-  'A 12-year-old boy discovers he is the son of Poseidon and is accused of stealing Zeus’s master bolt. Which book is this?':
-    'ילד בן 12 מגלה שהוא בנו של פוסידון ומואשם בגניבת הברק של זאוס. איזה ספר זה?',
-  'During the Great Depression, a veterinary student joins a travelling circus and falls for the ringmaster’s wife. Which book is this?':
-    'בזמן השפל הגדול, סטודנט לווטרינריה מצטרף לקרקס נודד ומתאהב באשתו של מנהל הקרקס. איזה ספר זה?',
-  'A 14-year-old girl, murdered by a neighbour, watches from her own heaven as her family copes with her death. Which book is this?':
-    'נערה בת 14 שנרצחה בידי שכן צופה מגן העדן שלה במשפחתה שמתמודדת עם מותה. איזה ספר זה?',
-  'The Hunger Games': 'משחקי הרעב', Divergent: 'מפוצלים', 'The Maze Runner': 'רץ המבוך', 'Red Queen': 'המלכה האדומה',
-  'Children of Blood and Bone': 'ילדי הדם והעצם', 'Harry Potter and the Deathly Hallows': 'הארי פוטר ואוצרות המוות',
-  'Harry Potter and the Half-Blood Prince': 'הארי פוטר והנסיך חצוי הדם', 'Harry Potter and the Order of the Phoenix': 'הארי פוטר ומסדר עוף החול',
-  'Harry Potter and the Goblet of Fire': 'הארי פוטר וגביע האש', 'Harry Potter and the Chamber of Secrets': 'הארי פוטר וחדר הסודות',
-  'The Kite Runner': 'רודף העפיפונים', 'A Thousand Splendid Suns': 'אלף שמשות זוהרות', 'The Book Thief': 'גנבת הספרים',
-  'Life of Pi': 'חיי פיי', 'The Namesake': 'השם שלי', "Sarah's Key": 'המפתח של שרה', 'The Lovely Bones': 'עצמות יקרות',
-  'The Help': 'העזרה', 'Little Fires Everywhere': 'שריפות קטנות בכל מקום', 'Water for Elephants': 'מים לפילים',
-  'The Color Purple': 'הצבע הסגול', 'Gone Girl': 'נעלמת', 'The Martian': 'האיש ממאדים', 'The Road': 'הדרך',
-  'The Girl with the Dragon Tattoo': 'נערה עם קעקוע של דרקון', 'The Girl Who Played with Fire': 'הנערה ששיחקה באש',
-  "The Girl Who Kicked the Hornet's Nest": 'הנערה שבעטה בקן הצרעות', "The Memory Keeper's Daughter": 'בתו של שומר הזיכרונות',
-  'Extremely Loud and Incredibly Close': 'רועש להחריד וקרוב להפליא', 'The Fault in Our Stars': 'אשמת הכוכבים',
-  'Me Before You': 'לפני שהכרתי אותך', 'Looking for Alaska': 'מחפשים את אלסקה', 'Five Feet Apart': 'במרחק נגיעה',
-  'Everything, Everything': 'הכול, הכול', 'The Da Vinci Code': 'צופן דה וינצ\'י', 'Angels & Demons': 'מלאכים ושדים',
-  'The Celestine Prophecy': 'הנבואה השמימית', 'The Lost Symbol': 'הסמל האבוד', 'Digital Fortress': 'מבצר דיגיטלי',
-  Twilight: 'דמדומים', 'New Moon': 'ירח חדש', 'City of Bones': 'עיר העצמות', 'Vampire Academy': 'אקדמיית הערפדים',
-  'The Host': 'המארחת', 'The Girl on the Train': 'הבחורה ברכבת', 'The Silent Patient': 'המטופלת השותקת',
-  'Sharp Objects': 'חפצים חדים', 'Big Little Lies': 'שקרים קטנים גדולים', Insurgent: 'מורדים', Matched: 'מותאמים',
-  'The Lightning Thief': 'גנב הברק', 'The Sea of Monsters': 'ים המפלצות', 'The Red Pyramid': 'הפירמידה האדומה',
-  Eragon: 'ארגון', 'The Night Circus': 'קרקס הלילה', "The Time Traveler's Wife": 'אשתו של הנוסע בזמן',
-  "My Sister's Keeper": 'שומרת אחותי', Room: 'חדר',
 
   // Human body
   'What is this part of the body called?': 'איך נקרא איבר הגוף הזה?',

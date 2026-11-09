@@ -11,6 +11,7 @@ import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { QUESTIONS } from '../shared/questions.js';
 import { CATEGORIES } from '../shared/config.js';
+import { COVERS } from '../shared/covers.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const OUT = join(ROOT, 'legal', 'credits.json');
@@ -68,6 +69,7 @@ for (const q of QUESTIONS) {
   if (q.visual.type === 'wiki') add(q.visual.title, q.cat);
   if (q.visual.type === 'image' && q.visual.commons) add(`File:${q.visual.commons}`, q.cat);
 }
+for (const [id, title] of Object.entries(COVERS)) add(title, id);
 
 // Articles show their lead image, so first find which file that is.
 const articles = [...topicsOf.keys()].filter((t) => !t.startsWith('File:'));

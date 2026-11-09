@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   version="1.1"
+   id="Layer_1"
+   x="0px"
+   y="0px"
+   width="377.95276"
+   height="377.95276"
+   viewBox="0 0 377.95276 377.95276"
+   enable-background="new 0 0 610 600"
+   xml:space="preserve"
+   sodipodi:docname="Israel_road_sign_211.svg"
+   inkscape:version="1.0 (4035a4fb49, 2020-05-01)"><metadata
+   id="metadata75"><rdf:RDF><cc:Work
+       rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
+         rdf:resource="http://purl.org/dc/dcmitype/StillImage" /></cc:Work></rdf:RDF></metadata><defs
+   id="defs41" /><sodipodi:namedview
+   id="namedview39"
+   pagecolor="#ffffff"
+   bordercolor="#666666"
+   borderopacity="1.0"
+   inkscape:pageshadow="2"
+   inkscape:pageopacity="0.0"
+   inkscape:pagecheckerboard="0"
+   showgrid="false"
+   inkscape:zoom="1"
+   inkscape:cx="219.5"
+   inkscape:cy="240.5"
+   inkscape:window-width="1920"
+   inkscape:window-height="1001"
+   inkscape:window-x="-9"
+   inkscape:window-y="-9"
+   inkscape:window-maximized="1"
+   inkscape:current-layer="Layer_1"
+   inkscape:object-paths="false"
+   inkscape:snap-intersection-paths="true"
+   inkscape:snap-smooth-nodes="true"
+   inkscape:snap-bbox="true"
+   inkscape:snap-bbox-edge-midpoints="true"
+   inkscape:bbox-nodes="true"
+   showguides="true"
+   inkscape:guide-bbox="true"
+   inkscape:snap-global="false"
+   inkscape:document-rotation="0" />
+
+<g
+   id="g34">
+	<g
+   id="g24">
+		<g
+   id="g6">
+			<path
+   fill="#ffffff"
+   d="m 355.545,329.729 c 0.008,-50.328 40.785,-91.109 91.111,-91.119 v 0 10.549 10.548 c -19.371,0.006 -36.809,7.823 -49.512,20.508 v 0 c -12.686,12.703 -20.503,30.143 -20.505,49.51 v 0 c 0.002,19.363 7.817,36.805 20.505,49.506 v 0 c 12.703,12.688 30.141,20.504 49.512,20.508 v 0 c 19.365,-0.008 36.805,-7.82 49.504,-20.508 v 0 c 12.688,-12.701 20.507,-30.143 20.51,-49.506 v 0 c -0.008,-19.367 -7.822,-36.807 -20.51,-49.51 v 0 c -12.699,-12.686 -30.139,-20.506 -49.504,-20.508 v 0 -10.548 -10.549 c 50.324,0.01 91.106,40.791 91.113,91.119 v 0 c -0.007,50.322 -40.789,91.107 -91.113,91.113 v 0 c -50.326,-0.01 -91.103,-40.795 -91.111,-91.113 z"
+   id="path4"
+   style="display:none" />
+		</g>
+		<g
+   id="g10">
+			
+		</g>
+		<g
+   id="g14">
+			
+		</g>
+		<g
+   id="g18">
+			
+		</g>
+		<g
+   id="g22">
+			
+		</g>
+	</g>
+	<g
+   id="g30">
+		
+		
+	</g>
+	
+</g>
+
+<g
+   transform="matrix(-1,0,0,1,377.95276,0)"
+   id="g1158"><circle
+     style="fill:#070fdb;fill-opacity:1;stroke-width:0.646108"
+     id="circle2"
+     r="188.97638"
+     cy="188.97638"
+     cx="188.97638"
+     fill="#0099BB" /><circle
+     style="opacity:1"
+     id="circle36"
+     r="181.69217"
+     cy="188.97638"
+     cx="188.97702"
+     stroke-width="4.46784"
+     stroke="#ffffff"
+     fill="none" /><path
+     id="rect22"
+     style="opacity:1;fill:#ffffff;fill-rule:evenodd;stroke-width:2.01816"
+     d="m 180.62307,69.016347 c -41.87954,0 -75.59312,33.713583 -75.59312,75.593103 L 89.371229,305.85154 H 161.43807 L 145.77935,136.90856 c -1.89545,-20.45002 16.53254,-37.073272 37.0702,-37.073272 h 25.46989 c 20.53765,0 37.07326,16.535582 37.07326,37.073272 v 6.8354 l 3.13175,57.1207 -0.15903,1.50777 h -47.55727 l 62.13334,104.05409 62.13029,-104.05409 H 277.9855 l -0.0703,-0.6606 3.13175,-57.10238 c 2.29338,-41.81669 -33.71359,-75.593103 -75.59311,-75.593103 z"
+     sodipodi:nodetypes="scccssssccccccccsss" /></g></svg>
