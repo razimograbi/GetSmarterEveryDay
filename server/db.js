@@ -294,7 +294,29 @@ const MIGRATIONS = [
     CREATE INDEX stage_results_stage ON stage_results(stage_id);
     ALTER TABLE plays ADD COLUMN content TEXT; -- a Leveling round's own copy of its questions
   `),
+  // 8: the Marketing Studio's saved project (videos, words and timing). There is only one.
+  (db) => db.exec(`
+    CREATE TABLE marketing_project (
+      id          INTEGER PRIMARY KEY CHECK (id = 1),
+      data        TEXT NOT NULL,
+      updated_at  INTEGER NOT NULL
+    );
+  `),
 ];
+
+/** The Marketing Studio's project, or null before anything was saved. */
+export function getMarketingProject(db) {
+  const row = db.prepare('SELECT data FROM marketing_project WHERE id = 1').get();
+  return row ? JSON.parse(row.data) : null;
+}
+
+export function saveMarketingProject(db, project) {
+  db.prepare('INSERT INTO marketing_project (id, data, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
+    .run(JSON.stringify(project), Date.now());
+}
+
+/** How many accounts there are, for the Marketing Studio. */
+export const playerCount = (db) => db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 
 /** The XP all of a player's finished rounds add up to. */
 const earnedXp = (db, userId) =>

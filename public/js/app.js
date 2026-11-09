@@ -328,7 +328,16 @@ async function route() {
   if (page === 'results' && state.lastRound) return showResults();
   if (page === 'progress') return showProgress();
   if (page === 'admin' && state.user.admin) return showAdmin(arg, sub);
+  if (page === 'marketing' && state.user.marketing) return openMarketing();
   return showHome();
+}
+
+/** The Marketing Studio. Its code is only downloaded by the people who open it. */
+async function openMarketing() {
+  const nav = navId;
+  app.innerHTML = '<section class="screen center-screen" dir="ltr"><p class="sub">Opening the Marketing Studio…</p></section>';
+  const { showMarketing } = await import('./marketing.js');
+  if (nav === navId) cleanup = await showMarketing(app, () => nav === navId);
 }
 
 /**
@@ -3527,6 +3536,7 @@ async function showProgress() {
         <p>${t('acc.signedInAs', { name: esc(user.name) })}${user.email ? ` <span dir="ltr">(${esc(user.email)})</span>` : user.provider === 'dev' ? ` ${esc(t('acc.localName'))}` : ''}</p>
         <button class="btn btn-ghost" data-signout>${esc(t('acc.signOut'))}</button>
         <div class="account-links">
+          ${user.marketing ? '<a class="link-btn" href="#/marketing" dir="ltr">Marketing Studio</a>' : ''}
           ${user.admin ? `<a class="link-btn" href="#/admin/players">${esc(t('acc.players'))}</a><a class="link-btn" href="#/admin">${esc(t('acc.reports'))}</a><a class="link-btn" href="#/admin/stages">${esc(t('acc.stages'))}</a>` : ''}
           <button class="link-btn" data-signout-all>${esc(t('acc.signOutAll'))}</button>
           <a class="link-btn" href="/api/account/export" download>${esc(t('acc.download'))}</a>

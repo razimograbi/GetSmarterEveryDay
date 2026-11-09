@@ -9,7 +9,7 @@ import {
   openDb, optimizeDb, upsertUser, deleteUser, saveRound, getStats, exportUser, finishedRounds,
   createSession, sessionUser, deleteSession, deleteUserSessions, purgeExpiredSessions,
   getSettings, saveSettings, saveReport, listReports, resolveReports, REPORT_STATUSES, logEvent, getRetention,
-  ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode,
+  ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode, getMarketingProject, saveMarketingProject, playerCount,
   addFriend, removeFriend, areFriends, listFriends,
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
   listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
@@ -21,9 +21,9 @@ import {
   verifyGoogleIdToken, sessionCookie, clearedCookie, parseCookies, SESSION_COOKIE, SESSION_TTL_MS,
 } from './auth.js';
 import { rateLimiter, clientIp, capacityGate } from './ratelimit.js';
-import { QUESTION_BY_ID } from '../shared/questions.js';
+import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber,
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
 import { pickQuestions } from './pick.js';
@@ -90,6 +90,7 @@ setInterval(() => plays.endStale(), 60_000).unref();
 
 const CSP = [
   "default-src 'self'",
+  "media-src 'self' blob:", // the Marketing Studio plays back its recordings
   "script-src 'self' https://accounts.google.com/gsi/client",
   "frame-src https://accounts.google.com/gsi/",
   "connect-src 'self' https://accounts.google.com/gsi/ https://en.wikipedia.org https://cdn.jsdelivr.net https://unpkg.com",
@@ -145,6 +146,18 @@ function currentUser(req) {
 
 const isAdmin = (u) => !!u && (ADMINS.has(u.id.toLowerCase()) || (!!u.email && ADMINS.has(u.email.toLowerCase())));
 
+// Who can open the Marketing Studio: comma-separated Google emails (or user ids such as dev:razi).
+const MARKETERS = new Set((process.env.MARKETING_USERS || 'razimograbi44@gmail.com').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+const isMarketer = (u) => !!u && (MARKETERS.has(u.id.toLowerCase()) || (!!u.email && MARKETERS.has(u.email.toLowerCase())));
+const MARKETING_PROJECT_MAX = 128 * 1024;
+
+/** The Marketing Studio's routes refuse everyone else. Returns true once it has replied. */
+function refuseNonMarketer(res, user) {
+  if (isMarketer(user)) return false;
+  json(res, user ? 403 : 401, { error: 'Only the marketing team can open this.' });
+  return true;
+}
+
 /** A route for admins only. `act(input, ...ids)` returns the reply; errors it throws say what to fix. */
 function adminRoute(act) {
   return async (req, res, url, ...ids) => {
@@ -157,7 +170,7 @@ function adminRoute(act) {
 }
 
 const publicUser = (u) => u && {
-  id: u.id, name: u.name, email: u.email, picture: u.picture, provider: u.provider, since: u.created_at, admin: isAdmin(u),
+  id: u.id, name: u.name, email: u.email, picture: u.picture, provider: u.provider, since: u.created_at, admin: isAdmin(u), marketing: isMarketer(u),
 };
 
 /**
@@ -327,6 +340,28 @@ const routes = {
     const clean = cleanProps(props);
     if (clean === undefined) return json(res, 400, { error: 'props must be a flat object of up to 10 short values.' });
     logEvent(db, user.id, name, clean);
+    json(res, 200, { ok: true });
+  },
+
+  // ── Marketing Studio ──
+
+  // Everything the videos draw on. It includes right answers, so it's for the marketing team only.
+  'GET /api/marketing/kit': (req, res) => {
+    const user = currentUser(req);
+    if (refuseNonMarketer(res, user)) return;
+    const questions = Object.values(contentFor(QUESTIONS.map((q) => q.id))).map((q) => ({ ...q, difficulty: QUESTION_BY_ID.get(q.id).difficulty }));
+    json(res, 200, {
+      questions, project: getMarketingProject(db), siteUrl: siteOrigin(req),
+      counts: { questions: QUESTIONS.length, topics: CATEGORIES.length, players: playerCount(db) },
+    });
+  },
+
+  'PUT /api/marketing/project': async (req, res) => {
+    const user = currentUser(req);
+    if (refuseNonMarketer(res, user)) return;
+    const project = await body(req, MARKETING_PROJECT_MAX);
+    if (!project || typeof project !== 'object' || Array.isArray(project)) return json(res, 400, { error: 'Send the project as a JSON object.' });
+    saveMarketingProject(db, project);
     json(res, 200, { ok: true });
   },
 
