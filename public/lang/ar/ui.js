@@ -321,7 +321,7 @@ export const ui = {
   'board.topOf': 'أفضل {shown} من {players}',
   'duel.title': 'مبارزة',
   'duel.cardTitle': 'بارز صديقًا',
-  'duel.cardDesc': 'العب مع صديق مباشرة على الأسئلة العشرة نفسها.',
+  'duel.cardDesc': 'نافس صديقًا مباشرة في 10 أسئلة',
   'duel.newTitle': 'مبارزة جديدة',
   'duel.newSub': 'اختر الأسئلة، ثم ادعُ شخصًا ليلعب معك الآن.',
   'duel.newFor': 'اختر أسئلة مبارزتك مع {name}. يجب أن تكونا متصلين معًا للعب.',

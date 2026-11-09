@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, levelFor, pointsFor, secondsFor, stageCleared, xpForRound,
+  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, levelFor, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
 } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { avatarLevel, parseAvatar, randomAvatar } from '../shared/avatars.js';
@@ -217,6 +217,15 @@ export function openDb(file) {
   return db;
 }
 
+/** A player's XP under the costlier levels of migration 10: same level, same share of it. */
+export function rescaledXp(xp) {
+  const oldStart = (l) => 5 * l * (l - 1);
+  const level = Math.min(MAX_LEVEL, Math.floor((1 + Math.sqrt(1 + (4 * xp) / 5)) / 2));
+  if (level >= MAX_LEVEL) return xpForLevel(MAX_LEVEL) + (xp - oldStart(MAX_LEVEL));
+  const share = (xp - oldStart(level)) / (oldStart(level + 1) - oldStart(level));
+  return xpForLevel(level) + Math.floor(share * (xpForLevel(level + 1) - xpForLevel(level)));
+}
+
 // Numbered migrations, run once each in order. PRAGMA user_version remembers the last one done.
 const MIGRATIONS = [
   // 1: scoring changed from 100 + up to 50 per answer to 1 + up to 2. Old rounds are scored again
@@ -313,6 +322,12 @@ const MIGRATIONS = [
     const now = Date.now();
     db.prepare("UPDATE duels SET finished_at = ?, end_reason = 'retired', result_unseen_by = NULL WHERE finished_at IS NULL").run(now);
     db.prepare("UPDATE plays SET finished_at = ? WHERE kind = 'duel' AND finished_at IS NULL").run(now);
+  },
+  // 10: levels cost more now that there are far more questions. Everyone stays on the level they
+  // reached, the same share of the way through it, so nobody loses anything they unlocked.
+  (db) => {
+    const set = db.prepare('UPDATE profiles SET xp = ? WHERE user_id = ?');
+    for (const { user_id: id, xp } of db.prepare('SELECT user_id, xp FROM profiles').all()) set.run(rescaledXp(xp), id);
   },
 ];
 

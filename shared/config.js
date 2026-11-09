@@ -114,8 +114,8 @@ export const MAX_POINTS = SCORING.base + SCORING.speedBonus;
 
 // Player levels. A finished round earns its points as XP, plus `finished`, plus a bonus for the
 // modes the server plays (a round quit halfway earns nothing). Reaching level L takes
-// 5 × L × (L − 1) XP in total, so each level costs 10 XP more than the one before. One finished
-// round always reaches level 2. Levels unlock avatar parts (see UNLOCKS in shared/avatars.js).
+// 12 × L × (L − 1) − 14 XP in total, so each level costs 24 XP more than the one before. The − 14
+// keeps level 2 at 10 XP: one finished round always reaches it. Levels unlock avatar parts (see UNLOCKS in shared/avatars.js).
 export const XP = { finished: 10, bonus: { daily: 20, duel: 10 }, stageClear: 50 };
 export const MAX_LEVEL = 99;
 
@@ -146,10 +146,10 @@ export const LEVEL_TIERS = [
 export const xpForRound = (category, score) => score + XP.finished + (XP.bonus[category] || 0);
 
 /** The total XP it takes to reach a level. */
-export const xpForLevel = (level) => 5 * level * (level - 1);
+export const xpForLevel = (level) => (level <= 1 ? 0 : 12 * level * (level - 1) - 14);
 
 /** The level a total of XP puts a player on. */
-export const levelFor = (xp) => Math.min(MAX_LEVEL, Math.floor((1 + Math.sqrt(1 + (4 * xp) / 5)) / 2));
+export const levelFor = (xp) => Math.min(MAX_LEVEL, Math.floor((1 + Math.sqrt(1 + (xp + 14) / 3)) / 2));
 
 export const tierFor = (level) => LEVEL_TIERS.findLast((tier) => level >= tier.from);
 

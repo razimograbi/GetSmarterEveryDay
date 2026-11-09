@@ -1,6 +1,10 @@
-// The photo on each topic's card. `npm run fetch-covers` downloads them into public/topics/,
-// which is kept in the repository so a new server has them straight away.
-// After changing one, run that and `npm run fetch-credits`.
+// The photo on each topic's card. `npm run fetch-covers` makes them in public/topics/, which is
+// kept in the repository so a new server has them straight away.
+//
+// Phones keep these for good and never ask the server again (see public/sw.js), so after changing
+// a photo raise COVERS_VERSION, or players will go on seeing the old one. Then run
+// `npm run fetch-covers -- --force` and `npm run fetch-credits`.
+export const COVERS_VERSION = 4;
 
 export const COVERS = {
   flags: 'File:United Nations Flags - cropped.jpg',
@@ -14,7 +18,7 @@ export const COVERS = {
   dogs: 'File:Golden Retriever Dukedestiny01 drvd.jpg',
   food: 'File:Good Food Display - NCI Visuals Online.jpg',
   countries: 'File:The Great Globe, Guyot Hall, Princeton University.jpg',
-  elements: 'File:Colour 18-col PT with labels.svg',
+  elements: 'File:Two small test tubes held in spring clamps.jpg',
   music: 'File:Historical instruments.jpg',
   paintings: 'File:Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg',
   body: 'File:Human-Skeleton.jpg',
@@ -26,12 +30,12 @@ export const COVERS = {
   footballers: 'File:Norberto Alonso 1984.jpg',
   currencies: 'File:Euro coins and banknotes (cropped).jpg',
   history: 'File:Pyramids of the Giza Necropolis.jpg',
-  trivia: 'File:Question mark 3d.png',
-  unexpected: 'File:Penrose-dreieck.svg',
+  trivia: 'File:Gold question mark 3d.png',
+  unexpected: 'File:Hieronymus Bosch 051.jpg',
   sapiens: 'File:Lascaux painting.jpg',
-  habits: 'File:2010-07-20 Black windup alarm clock face.jpg',
-  sayno: 'File:ISO 7010 P001.svg',
+  habits: 'File:Girls jog along Morro Strand State Beach.jpg',
+  sayno: 'File:Qatar - Japan, AFC Asian Cup 2019 38.jpg',
 };
 
-/** Where a topic's photo is served from. Drawings are PNG, photos JPEG. */
-export const coverSrc = (id) => `/topics/${id}.${/\.(png|svg)$/i.test(COVERS[id]) ? 'png' : 'jpg'}`;
+/** Where a topic's photo is served from. The version in the address is what makes phones fetch a new one. */
+export const coverSrc = (id) => `/topics/${id}.webp?v=${COVERS_VERSION}`;

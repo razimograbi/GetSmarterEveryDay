@@ -6,7 +6,8 @@
 // online. API calls and question pictures are left to the browser and its own cache.
 
 const CACHE = 'smarts-v2';
-const SKIP = /^\/(api|img|signs|topics|pic)\//;
+const COVERS = 'smarts-covers'; // the topic photos: kept across versions of the app
+const SKIP = /^\/(api|img|signs|pic)\//;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest', '/icon.svg'])));
@@ -16,7 +17,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== COVERS).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -25,7 +26,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin || SKIP.test(url.pathname)) return;
-  event.respondWith(networkFirst(req));
+  event.respondWith(url.pathname.startsWith('/topics/') ? coverFromPhone(req) : networkFirst(req));
 });
 
 // Reminders from the server (server/push.js): { title, body, url, tag }.
@@ -57,6 +58,22 @@ self.addEventListener('notificationclick', (event) => {
     return self.clients.openWindow(url);
   })());
 });
+
+/**
+ * A topic photo never changes at its address (a new one gets a new COVERS_VERSION), so once it's
+ * on the phone the network isn't used for it again. A new version replaces the old copy.
+ */
+async function coverFromPhone(req) {
+  const cache = await caches.open(COVERS);
+  const saved = await cache.match(req);
+  if (saved) return saved;
+  const res = await fetch(req);
+  if (res.ok) {
+    for (const old of await cache.keys(req, { ignoreSearch: true })) await cache.delete(old);
+    await cache.put(req, res.clone());
+  }
+  return res;
+}
 
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
