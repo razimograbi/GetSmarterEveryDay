@@ -5,9 +5,8 @@
 // "fox-happy-marigold-crown". avatarSvg(code) draws it; avatarUrl(code) gives an image address.
 
 //
-// Every skin in ANIMALS is open to everyone. Levels unlock add-ons, which work on every skin: the
-// first eyes, backgrounds and extras are open too, and the rest are listed in the order they
-// unlock (see UNLOCKS).
+// The first parts of each list are open to everyone. The rest unlock with the player's level and
+// are listed in the order they unlock (see UNLOCKS). Add-ons work on every skin.
 
 export const ANIMALS = [
   'cat', 'fox', 'bear', 'panda', 'koala', 'rabbit', 'owl', 'penguin', 'frog', 'lion', 'dog', 'monkey',
@@ -43,7 +42,12 @@ export const EXTRAS = [
   'tribal', 'warpaint', 'bandana', 'goggles', 'scar', 'eyepatch', 'hood', 'mohawk', 'katana', 'collar', 'wings', 'horns', 'halo', 'visor', 'chain', 'flames', 'aura', 'ascended',
 ];
 
-// What each level unlocks. Levels skipped here unlock nothing; anything not listed is free.
+// The level that unlocks each creature skin.
+const SKIN_LEVELS = {
+  wolf: 3, ninja: 6, shark: 10, cobra: 13, robot: 16, tiger: 20, bull: 24, alien: 28, knight: 30, panther: 36, fiend: 40, skull: 44, phoenix: 48, dragon: 50,
+};
+
+// The add-on each level unlocks. Levels skipped here unlock none; anything not listed is free.
 const LADDER = {
   2: 'eyes:angry', 3: 'extra:tribal', 4: 'bg:crimson', 5: 'extra:warpaint', 6: 'bg:glacier', 7: 'bg:ember', 8: 'extra:bandana', 9: 'eyes:glow',
   10: 'extra:goggles', 11: 'bg:toxic', 12: 'extra:scar', 13: 'eyes:hollow', 14: 'bg:storm', 15: 'extra:eyepatch', 16: 'extra:hood', 17: 'extra:mohawk', 18: 'bg:amethyst', 19: 'eyes:slit',
@@ -53,13 +57,16 @@ const LADDER = {
   50: 'extra:ascended',
 };
 
-export const UNLOCKS = Object.entries(LADDER).map(([level, what]) => {
-  const [part, value] = what.split(':');
-  return { level: Number(level), part, value };
-});
-const LEVEL_OF = new Map(Object.entries(LADDER).map(([level, what]) => [what, Number(level)]));
+export const UNLOCKS = [
+  ...Object.entries(SKIN_LEVELS).map(([value, level]) => ({ level, part: 'animal', value })),
+  ...Object.entries(LADDER).map(([level, what]) => {
+    const [part, value] = what.split(':');
+    return { level: Number(level), part, value };
+  }),
+].sort((a, b) => a.level - b.level);
+const LEVEL_OF = new Map(UNLOCKS.map((u) => [`${u.part}:${u.value}`, u.level]));
 
-/** The level that unlocks one part of an avatar, such as ('extra', 'scar'). 1 means it's open to everyone. */
+/** The level that unlocks one part of an avatar, such as ('animal', 'wolf'). 1 means it's open to everyone. */
 export const unlockLevel = (part, value) => LEVEL_OF.get(`${part}:${value}`) ?? 1;
 
 /** The level a whole avatar needs: its most demanding part. */

@@ -452,7 +452,6 @@ export const ui = {
   'remind.unsupported': 'هذا المتصفح لا يعرض التذكيرات. جرّب Chrome أو ثبّت التطبيق.',
   'profile.tabsAria': 'أجزاء شخصيتك',
   'profile.details': 'البيانات',
-  'profile.skinsFree': 'كل الشخصيات مجانية. المستويات تفتح الوجوه والألوان والإضافات.',
   'profile.unlockedCount': '{n} من {total} مفتوحة',
   'profile.nextHere': 'التالي: {item} في المستوى {n}',
   'profile.allHere': 'كلها مفتوحة',

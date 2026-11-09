@@ -410,7 +410,6 @@ export const ui = {
   'remind.unsupported': 'הדפדפן הזה לא יכול להציג תזכורות. נסו Chrome, או התקינו את האפליקציה.',
   'profile.tabsAria': 'חלקי הדמות שלכם',
   'profile.details': 'פרטים',
-  'profile.skinsFree': 'כל הדמויות פתוחות בחינם. הרמות פותחות פנים, צבעים ותוספות.',
   'profile.unlockedCount': '{n} מתוך {total} פתוחים',
   'profile.nextHere': 'הבא: {item} ברמה {n}',
   'profile.allHere': 'הכול פתוח',
