@@ -5,16 +5,17 @@
   "description": "A mobile-first picture quiz with Google sign-in and progress tracking.",
   "type": "module",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=26"
   },
   "scripts": {
-    "start": "node --no-warnings server/index.js",
-    "dev": "node --no-warnings --watch-path=server --watch-path=shared server/index.js",
+    "start": "node server/index.js",
+    "dev": "node --watch-path=server --watch-path=shared server/index.js",
+    "test": "node --test tests/",
     "validate": "node scripts/validate.js",
     "check-images": "node scripts/check-images.js",
     "fetch-images": "node scripts/fetch-images.js",
-    "backup": "node --no-warnings scripts/backup.js",
-    "fetch-signs": "node --no-warnings scripts/fetch-signs.js",
+    "backup": "node scripts/backup.js",
+    "fetch-signs": "node scripts/fetch-signs.js",
     "fetch-credits": "node scripts/fetch-credits.js"
   }
 }

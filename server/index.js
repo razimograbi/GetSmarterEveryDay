@@ -2,8 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { createHash, randomUUID } from 'node:crypto';
-import { extname, join, normalize, resolve, dirname, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 
 import {
   openDb, optimizeDb, upsertUser, deleteUser, saveRound, getStats, exportUser, finishedRounds,
@@ -14,7 +13,7 @@ import {
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
   listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
   stagePath, stageRound, openStagePlay, finishStageTry,
-  createDuel, getDuel, claimDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, recentQuestionIds, roundAnswers,
+  createDuel, getDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, openRematch, recentQuestionIds, roundAnswers,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
 import {
@@ -29,9 +28,10 @@ import { legalPage, shareMeta } from './pages.js';
 import { pickQuestions } from './pick.js';
 import { BROWSER_BANK, contentFor } from './bank.js';
 import { createPlays } from './play.js';
+import { createMatches } from './match.js';
 import { loadVapidKeys, createReminders } from './push.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(import.meta.dirname, '..');
 try { process.loadEnvFile(join(ROOT, '.env')); } catch { /* no .env file */ }
 
 const PRODUCTION = process.env.NODE_ENV === 'production';
@@ -85,6 +85,13 @@ reminders.start();
 
 const plays = createPlays(db, { onFinish: finishFixedRound });
 setInterval(() => plays.endStale(), 60_000).unref();
+
+// Live duels (server/match.js). Questions are picked when one starts, when both players are known.
+const matches = createMatches(db, {
+  plays, reminders,
+  profileOf: (id) => shownProfile(getProfile(db, id)),
+  pick: (a, b, category, avoid) => pickQuestions({ count: DUEL.questions, category, avoid, seenRecently: seenByPlayers(a, b) }),
+});
 
 // ── HTTP helpers ───────────────────────────────────────────────
 
@@ -203,6 +210,7 @@ const routes = {
     json(res, 200, {
       user: publicUser(user), settings: user ? getSettings(db, user.id) : null, profile: user ? ensureProfile(db, user) : null,
       played: user ? finishedRounds(db, user.id) : 0, // rounds finished: 0 shows the new-player home
+      liveDuel: user ? matches.liveFor(user.id) : null, // a duel going on right now, to get back to
     });
   },
 
@@ -301,6 +309,7 @@ const routes = {
   'DELETE /api/account': (req, res) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'You are not signed in.' });
+    matches.userGone(user.id);
     deleteUser(db, user.id);
     json(res, 200, { ok: true }, { 'Set-Cookie': clearedCookie() });
   },
@@ -494,12 +503,13 @@ const routes = {
     const { category = 'mixed', friendId = null } = await body(req);
     if (category !== 'mixed' && !CATEGORY_BY_ID[category]) return json(res, 400, { error: `Unknown category "${category}".` });
     if (friendId !== null && !areFriends(db, user.id, friendId)) return json(res, 400, { error: 'You can only send a duel to a friend.' });
+    const busy = matches.liveFor(user.id);
+    if (busy) return json(res, 409, { error: 'You are already in a live duel.', live: busy });
     if (openDuelCount(db, user.id) >= DUEL.maxOpen) return json(res, 409, { error: `You have ${DUEL.maxOpen} duels waiting. Finish some first.` });
     ensureProfile(db, user);
-    const duel = createDuel(db, {
-      id: randomCode(8), challengerId: user.id, invitedId: friendId, category,
-      questionIds: pickQuestions({ count: DUEL.questions, category, seenRecently: seenByPlayers(user.id, friendId) }),
-    });
+    const duel = createDuel(db, { id: randomCode(8), challengerId: user.id, invitedId: friendId, category });
+    matches.open(duel);
+    if (friendId) reminders.duelSent(friendId, duel.id, { name: getProfile(db, user.id).name });
     json(res, 200, { duel: duelView(duel, user.id) });
   },
 
@@ -529,7 +539,7 @@ const DUEL_PATH = '([A-Z2-9]{8})';
 const PLAY_PATH = '([0-9a-f-]{36})';
 const ID_PATH = '(\\d{1,9})';
 
-/** A route for one question of a round the signed-in player owns. */
+/** A route for one question of a round the signed-in player owns. Duels are played through matches instead. */
 function playRoute(act) {
   return async (req, res, url, id) => {
     const user = currentUser(req);
@@ -537,7 +547,7 @@ function playRoute(act) {
     const input = await body(req, 4096);
     if (!Number.isInteger(input?.idx)) return json(res, 400, { error: 'Say which question this is.' });
     const play = plays.get(id);
-    if (!play || play.userId !== user.id) return json(res, 404, { error: 'This round no longer exists.' });
+    if (!play || play.userId !== user.id || play.kind === 'duel') return json(res, 404, { error: 'This round no longer exists.' });
     try {
       json(res, 200, act(play, input));
     } catch (err) {
@@ -545,6 +555,44 @@ function playRoute(act) {
       json(res, 409, { error: err.message, ended: !!err.ended });
     }
   };
+}
+
+/** A route of a live duel. `act(user, id, input)` returns where the match stands for this player. */
+function matchRoute(act) {
+  return async (req, res, url, id) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play this duel.' });
+    const input = req.method === 'GET' ? {} : await body(req, 4096);
+    try {
+      json(res, 200, act(user, id, input));
+    } catch (err) {
+      if (!err.status) throw err;
+      json(res, err.status, { error: err.message, ended: !!err.ended, taken: !!err.taken, live: err.live ?? null });
+    }
+  };
+}
+
+/** The live connection of a duel: the server tells this browser whenever the match changes. */
+function matchStream(req, res, url, id) {
+  const user = currentUser(req);
+  if (!user) return json(res, 401, { error: 'Sign in to play this duel.' });
+  if (crossSite(req)) return json(res, 403, { error: 'Requests from other websites are not allowed.' });
+  try {
+    matches.state(id, user.id);
+  } catch (err) {
+    if (!err.status) throw err;
+    return json(res, err.status, { error: err.message });
+  }
+  res.writeHead(200, {
+    ...BASE_HEADERS,
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store, no-transform',
+    'X-Accel-Buffering': 'no', // nginx and the like must pass each message on at once
+    Connection: 'keep-alive',
+  });
+  req.socket.setKeepAlive?.(true, 15_000);
+  res.write('retry: 1500\n\n');
+  res.on('close', matches.attach(id, user.id, res));
 }
 
 const paramRoutes = [
@@ -579,38 +627,16 @@ const paramRoutes = [
     json(res, 200, { challenger: challenger && shownProfile(challenger), score: duel.challenger.score, category: duel.category, taken: !!duel.opponentId });
   }],
 
-  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/start$`), (req, res, url, id) => {
-    const user = currentUser(req);
-    if (!user) return json(res, 401, { error: 'Sign in to play this duel.' });
-    let duel = getDuel(db, id);
-    if (!duel) return json(res, 404, { error: 'This duel link is no longer valid.' });
-    const role = duel.challengerId === user.id ? 'challenger' : duel.opponentId === user.id ? 'opponent' : null;
-    if (!role) {
-      ensureProfile(db, user);
-      duel = claimDuel(db, id, user.id);
-      if (!duel) return json(res, 409, { error: 'Someone else has already taken this duel.', taken: true });
-      // Playing someone's duel makes you friends, so you can challenge each other again.
-      try { addFriend(db, user.id, duel.challengerId); } catch { /* at the friend limit: play anyway */ }
-    } else if (duel[role].score !== null) {
-      return json(res, 409, { error: "You've already played this duel.", duel: duelView(duel, user.id) });
-    }
-    const side = duel.challengerId === user.id ? 'challenger' : 'opponent';
-    const play = plays.begin({ kind: 'duel', ref: id, side, userId: user.id, questionIds: duel.questionIds });
-    if (play.finishedAt) return json(res, 409, { error: "You've already played this duel.", duel: duelView(duel, user.id) });
-    json(res, 200, { duel: duelView(duel, user.id), play: plays.view(play) });
-  }, 'duels'],
-
-  // Ends the player's side where it stands: whatever they haven't answered counts as wrong.
-  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/finish$`), (req, res, url, id) => {
-    const user = currentUser(req);
-    if (!user) return json(res, 401, { error: 'Sign in to play this duel.' });
-    const duel = getDuel(db, id);
-    if (!duel) return json(res, 404, { error: 'This duel link is no longer valid.' });
-    if (duel.challengerId !== user.id && duel.opponentId !== user.id) return json(res, 403, { error: "You're not in this duel." });
-    const play = plays.find('duel', id, user.id);
-    if (!play || !plays.finish(play)) return json(res, 409, { error: "You've already played this duel." });
-    json(res, 200, { duel: duelView(getDuel(db, id), user.id) });
-  }, 'duels'],
+  // Takes the second seat of a duel that's waiting. Playing someone's duel makes you friends,
+  // so you can challenge each other again.
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/join$`), matchRoute((user, id) => joinDuel(user, id)), 'duels'],
+  ['GET', new RegExp(`^/api/duels/${DUEL_PATH}/stream$`), matchStream, 'live'],
+  ['GET', new RegExp(`^/api/duels/${DUEL_PATH}/state$`), matchRoute((user, id) => matches.state(id, user.id)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/beat$`), matchRoute((user, id) => matches.beat(id, user.id)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/ready$`), matchRoute((user, id, input) => matches.ready(id, user.id, input.idx, input.failed)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/seen$`), matchRoute((user, id, input) => matches.seen(id, user.id, input.idx)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/answer$`), matchRoute((user, id, input) => matches.answer(id, user.id, input.idx, input.choice, input.away)), 'live'],
+  ['POST', new RegExp(`^/api/duels/${DUEL_PATH}/leave$`), matchRoute((user, id) => matches.leave(id, user.id)), 'live'],
 
   // Starts a try at a stage, or picks up the one this player has open.
   ['POST', new RegExp(`^/api/stages/${ID_PATH}/start$`), (req, res, url, rawId) => {
@@ -664,13 +690,24 @@ const paramRoutes = [
     if (!duel) return json(res, 404, { error: 'This duel link is no longer valid.' });
     const otherId = duel.challengerId === user.id ? duel.opponentId : duel.opponentId === user.id ? duel.challengerId : null;
     if (!otherId) return json(res, 409, { error: 'There is nobody to play a rematch with.' });
+    // Both may tap Rematch: whoever is second joins the one already waiting.
+    const waiting = openRematch(db, id);
+    if (waiting) {
+      try {
+        joinDuel(user, waiting);
+      } catch (err) {
+        if (!err.status) throw err;
+        return json(res, err.status, { error: err.message, live: err.live ?? null });
+      }
+      return json(res, 200, { duel: duelView(getDuel(db, waiting), user.id) });
+    }
+    const busy = matches.liveFor(user.id);
+    if (busy) return json(res, 409, { error: 'You are already in a live duel.', live: busy });
     if (openDuelCount(db, user.id) >= DUEL.maxOpen) return json(res, 409, { error: `You have ${DUEL.maxOpen} duels waiting. Finish some first.` });
-    const rematch = createDuel(db, {
-      id: randomCode(8), challengerId: user.id, invitedId: otherId, category: duel.category, rematchOf: id,
-      questionIds: pickQuestions({
-        count: DUEL.questions, category: duel.category, avoid: new Set(duel.questionIds), seenRecently: seenByPlayers(user.id, otherId),
-      }),
-    });
+    const rematch = createDuel(db, { id: randomCode(8), challengerId: user.id, invitedId: otherId, category: duel.category, rematchOf: id });
+    matches.open({ ...rematch, avoid: duel.questionIds });
+    matches.offerRematch(id, rematch.id);
+    reminders.duelSent(otherId, rematch.id, { name: getProfile(db, user.id).name });
     json(res, 200, { duel: duelView(rematch, user.id) });
   }, 'duelCreate'],
 ];
@@ -748,22 +785,7 @@ function finishFixedRound(play, graded, skippedMs) {
     }
     return;
   }
-  const id = play.ref;
-  const role = play.side;
-  finishDuelSide(db, id, role, saved);
-  const done = getDuel(db, id);
-  if (!done) return; // the challenger deleted their account mid-round, and the duel went with it
-  // The other player hears how it ended, or that it's their turn (if they asked to be told).
-  const other = role === 'challenger' ? 'opponent' : 'challenger';
-  const otherId = role === 'challenger' ? done.opponentId : done.challengerId;
-  const name = getProfile(db, play.userId).name;
-  if (done.finishedAt && otherId) {
-    const winner = duelWinner(done);
-    const outcome = winner === 'draw' ? 'Draw' : winner === other ? 'Won' : 'Lost';
-    reminders.duelFinished(otherId, id, outcome, { name, their: done[role].score, yours: done[other].score });
-  } else if (!done.finishedAt && role === 'challenger' && done.invitedId) {
-    reminders.duelSent(done.invitedId, id, { name, score: done[role].score });
-  }
+  finishDuelSide(db, play.ref, play.side, saved); // server/match.js says who won and tells whoever missed it
 }
 
 /**
@@ -783,8 +805,9 @@ const dailyFor = (date) => getDaily(db, date, dailyNumber(date), (recent) => pic
 /** Questions any of these players met lately, so a new duel can stay away from them. */
 const seenByPlayers = (...userIds) => new Set(userIds.filter(Boolean).flatMap((id) => recentQuestionIds(db, id)));
 
-/** 'challenger', 'opponent' or 'draw' once both have played: more points wins, then less time. */
+/** 'challenger', 'opponent' or 'draw' once it's over: giving up loses, then more points win, then less time. */
 function duelWinner(d) {
+  if (d.forfeitSide) return d.forfeitSide === 'challenger' ? 'opponent' : 'challenger';
   const a = d.challenger;
   const b = d.opponent;
   if (a.score === null || b.score === null) return null;
@@ -793,40 +816,55 @@ function duelWinner(d) {
   return 'draw';
 }
 
+/** Where a duel stands for one player. Before it's over, nobody is told anything about the score. */
+function duelStatus(d, role, viewerId) {
+  if (d.endReason === 'expired' || d.endReason === 'retired') return 'expired';
+  if (d.endReason === 'abandoned') return 'abandoned';
+  if (d.finishedAt) return role ? 'done' : 'taken';
+  if (!matches.isOpen(d.id)) return 'expired'; // not running any more, whatever the database last heard
+  const inLobby = !d.live || d.live.phase === 'lobby';
+  if (role) return !inLobby ? 'live' : role === 'challenger' ? 'hosting' : 'joined';
+  if (d.opponentId || (d.invitedId && d.invitedId !== viewerId)) return 'taken';
+  return d.invitedId === viewerId ? 'invited' : 'open';
+}
+
 /**
- * A duel as one player sees it. Everyone sees the scores; the answers are shown once the
- * viewer has played their own side (theirs) and once both have (both).
+ * A duel as one player sees it. Everyone sees who is in it; the scores and answers are shown to
+ * its two players once it's over.
  */
 function duelView(d, viewerId, { brief = false } = {}) {
   const role = d.challengerId === viewerId ? 'challenger' : d.opponentId === viewerId ? 'opponent' : null;
   const person = (id, side) => {
     const p = id && getProfile(db, id);
-    return { ...(p ? shownProfile(p) : { id: null, name: null, avatar: null, country: null, gone: side.score !== null }), score: side.score, correct: side.correct, ms: side.ms };
+    return { ...(p ? shownProfile(p) : { id: null, name: null, avatar: null, country: null, gone: side.score !== null }), score: d.finishedAt ? side.score : null, correct: d.finishedAt ? side.correct : null, ms: d.finishedAt ? side.ms : null };
   };
-  const mine = role && d[role].score !== null;
-  const status = d.finishedAt ? 'done'
-    : !role ? (d.opponentId ? 'taken' : d.invitedId === viewerId ? 'invited' : d.invitedId ? 'taken' : 'open')
-      : mine ? 'waiting' : 'yourTurn';
   const view = {
-    id: d.id, category: d.category, role, status, winner: duelWinner(d), invited: d.invitedId === viewerId,
-    resultReady: d.resultUnseenBy === viewerId, isFriend: areFriends(db, viewerId, d.challengerId),
+    id: d.id, category: d.category, role, status: duelStatus(d, role, viewerId), winner: duelWinner(d), invited: d.invitedId === viewerId,
+    resultReady: d.resultUnseenBy === viewerId, isFriend: areFriends(db, viewerId, d.challengerId), endReason: d.endReason, forfeitSide: d.forfeitSide,
     challenger: person(d.challengerId, d.challenger),
     opponent: d.opponentId || d.opponent.score !== null ? person(d.opponentId, d.opponent) : null,
     invitedFriend: !d.opponentId && d.invitedId ? shownProfile(getProfile(db, d.invitedId) ?? { id: d.invitedId, name: null }) : null,
-    createdAt: d.createdAt, finishedAt: d.finishedAt, count: d.questionIds.length,
+    createdAt: d.createdAt, finishedAt: d.finishedAt, count: d.questionIds.length || DUEL.questions,
+    canRematch: !!role && matches.isOpen(d.id),
   };
   if (brief) return view;
-  // The questions stay secret until the viewer has played their side.
-  if (mine) {
+  if (d.finishedAt && role && d[role].score !== null) {
     view.questionIds = d.questionIds;
     view.questions = contentFor(d.questionIds);
-    view.answers = { [role]: roundAnswers(db, d[role].roundId) };
-  }
-  if (d.finishedAt && mine) {
-    view.answers.challenger = roundAnswers(db, d.challenger.roundId);
-    view.answers.opponent = roundAnswers(db, d.opponent.roundId);
+    view.answers = { challenger: roundAnswers(db, d.challenger.roundId), opponent: roundAnswers(db, d.opponent.roundId) };
   }
   return view;
+}
+
+/** Takes the second seat of a duel. */
+function joinDuel(user, id) {
+  ensureProfile(db, user);
+  const state = matches.join(id, user.id);
+  const duel = getDuel(db, id);
+  if (duel && duel.challengerId !== user.id) {
+    try { addFriend(db, user.id, duel.challengerId); } catch { /* at the friend limit: play anyway */ }
+  }
+  return state;
 }
 
 /** Event props: null, or a flat object of up to 10 strings (≤100 chars), numbers or booleans. Else undefined. */
@@ -860,7 +898,8 @@ const LIMITS = {
   daily: rateLimiter({ limit: 20, windowMs: 10 * MINUTE }), // Daily starts and finishes
   play: rateLimiter({ limit: 300, windowMs: 10 * MINUTE }), // opening and answering Daily and duel questions
   questions: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // Quick rounds' questions, per browser
-  duels: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // duel starts and finishes
+  duels: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // joining duels
+  live: rateLimiter({ limit: 200, windowMs: MINUTE }), // everything a browser says during a live duel
   duelCreate: rateLimiter({ limit: 30, windowMs: 60 * MINUTE }), // new duels and rematches
   stages: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // starts and early finishes of Leveling tries
   static: rateLimiter({ limit: 600, windowMs: MINUTE }), // pages, scripts and pictures from one IP
@@ -906,7 +945,9 @@ function overLimit(req, route, routeLimit = ROUTE_LIMITS[route]) {
   }
   const ip = clientIp(req, TRUST_PROXY);
   const client = sessionToken(req) || ip; // signed-in players are counted per session, others per address
-  const checks = [LIMITS.perAddress(ip), LIMITS.perClient(client)];
+  const checks = [LIMITS.perAddress(ip)];
+  // A live duel makes several small requests per question, and must never be cut off for that.
+  if (routeLimit !== 'live') checks.push(LIMITS.perClient(client));
   if (routeLimit) checks.push(LIMITS[routeLimit](routeLimit === 'signIn' ? ip : client));
   const blocked = checks.filter((c) => !c.ok);
   return blocked.length ? Math.max(...blocked.map((c) => c.retryAfter)) : 0;
@@ -1130,6 +1171,10 @@ const server = createServer(async (req, res) => {
 server.headersTimeout = 15_000; // the request line and headers must arrive within 15 s
 server.requestTimeout = 30_000; // and the whole request within 30 s
 server.maxConnections = 1000; // ~100 players with several browser connections each, plus headroom
+
+// Live duels that were running when the server stopped pick up again, and all of them move from here.
+matches.restore();
+setInterval(() => matches.tick(), 100).unref();
 
 server.listen(PORT, HOST, () => {
   console.log(`\n  Smarts is running at http://localhost:${PORT}${PRODUCTION ? ' (production)' : ''}`);

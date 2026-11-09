@@ -108,7 +108,9 @@ const TEXT = {
     beatDailyTitle: '{name} beat you',
     beatDailyBody: '{name} scored {their} in today\'s Daily. You scored {yours}.',
     duelSentTitle: '{name} challenged you to a duel',
-    duelSentBody: '{name} scored {score}. Your turn, whenever you like.',
+    duelSentBody: 'Join now to play the same 10 questions at the same time.',
+    duelJoinedTitle: '{name} joined your duel',
+    duelJoinedBody: 'Come back now. They are waiting for you.',
     duelLostTitle: '{name} won your duel',
     duelLostBody: '{name} {their}, you {yours}. Time for a rematch?',
     duelWonTitle: 'You won your duel with {name}',
@@ -122,7 +124,9 @@ const TEXT = {
     beatDailyTitle: '{name} עקף/ה אותך',
     beatDailyBody: '{name} השיג/ה {their} נקודות באתגר היומי. לך יש {yours}.',
     duelSentTitle: '{name} הזמין/ה אותך לדו־קרב',
-    duelSentBody: '{name} השיג/ה {score}. התור שלך, מתי שנוח לך.',
+    duelSentBody: 'הצטרפו עכשיו ושחקו באותן עשר שאלות באותו הזמן.',
+    duelJoinedTitle: '{name} הצטרף/ה לדו־קרב',
+    duelJoinedBody: 'חזרו עכשיו, מחכים לכם.',
     duelLostTitle: '{name} ניצח/ה בדו־קרב',
     duelLostBody: '{name} {their}, את/ה {yours}. מה דעתך על משחק חוזר?',
     duelWonTitle: 'ניצחת בדו־קרב מול {name}',
@@ -136,7 +140,9 @@ const TEXT = {
     beatDailyTitle: '{name} تفوّق عليك',
     beatDailyBody: 'حصل {name} على {their} في تحدّي اليوم. نتيجتك {yours}.',
     duelSentTitle: '{name} يتحدّاك في مبارزة',
-    duelSentBody: 'حصل {name} على {score}. دورك، متى شئت.',
+    duelSentBody: 'انضم الآن والعبا الأسئلة العشرة نفسها في الوقت نفسه.',
+    duelJoinedTitle: 'انضم {name} إلى مبارزتك',
+    duelJoinedBody: 'عد الآن، إنه ينتظرك.',
     duelLostTitle: '{name} فاز في المبارزة',
     duelLostBody: '{name} {their}، وأنت {yours}. ما رأيك في مباراة ثأرية؟',
     duelWonTitle: 'فزت في مبارزتك مع {name}',
@@ -180,11 +186,15 @@ export function createReminders({ db, keys, subject }) {
   const friendBeatYou = (userId, ref, vars) =>
     tell(userId, 'beat-daily', ref, (T) => ({ title: fill(T.beatDailyTitle, vars), body: fill(T.beatDailyBody, vars), url: '/#/daily', tag: 'daily-board' }));
 
-  /** A friend played first and it's this player's turn. */
+  /** A friend is waiting to play this player live. */
   const duelSent = (userId, duelId, vars) =>
     tell(userId, 'duel-sent', duelId, (T) => ({ title: fill(T.duelSentTitle, vars), body: fill(T.duelSentBody, vars), url: `/#/duel/${duelId}`, tag: `duel-${duelId}` }));
 
-  /** The other player finished. `outcome` is how it went for this player: 'Won', 'Lost' or 'Draw'. */
+  /** Someone joined a duel the player started and then left the app for. */
+  const duelJoined = (userId, duelId, vars) =>
+    tell(userId, 'duel-joined', duelId, (T) => ({ title: fill(T.duelJoinedTitle, vars), body: fill(T.duelJoinedBody, vars), url: `/#/duel/${duelId}`, tag: `duel-${duelId}` }));
+
+  /** A duel ended while this player was away. `outcome` is how it went for this player: 'Won', 'Lost' or 'Draw'. */
   const duelFinished = (userId, duelId, outcome, vars) =>
     tell(userId, 'duel-done', duelId, (T) => ({ title: fill(T[`duel${outcome}Title`], vars), body: fill(T[`duel${outcome}Body`], vars), url: `/#/duel/${duelId}`, tag: `duel-${duelId}` }));
 
@@ -211,5 +221,5 @@ export function createReminders({ db, keys, subject }) {
     setInterval(run, 5 * 60_000).unref();
   }
 
-  return { publicKey: keys.publicKey, friendBeatYou, duelSent, duelFinished, sendDailyReminders, deliver, start };
+  return { publicKey: keys.publicKey, friendBeatYou, duelSent, duelJoined, duelFinished, sendDailyReminders, deliver, start };
 }

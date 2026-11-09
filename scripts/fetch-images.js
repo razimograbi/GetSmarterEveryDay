@@ -7,12 +7,11 @@
 // Needs internet. Safe to stop and re-run: finished files are skipped.
 
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { QUESTIONS } from '../shared/questions.js';
 import { countrySvg, WORLD_ATLAS_URLS } from '../shared/geo.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = resolve(import.meta.dirname, '..');
 const IMG = join(ROOT, 'public', 'img');
 const FORCE = process.argv.includes('--force');
 

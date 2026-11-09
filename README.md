@@ -17,7 +17,7 @@ wrong), which mix photo and text-only questions, and three book topics with text
 
 ## Run it
 
-You need **Node.js 22.13 or newer** (`node -v`). There is nothing to install: the app
+You need **Node.js 26 or newer** (`node -v`). There is nothing to install: the app
 uses only Node's built-in modules (HTTP server, `node:sqlite`, `node:crypto`).
 
 ```bash
@@ -109,8 +109,10 @@ scripts/
 | GET/POST | `/api/duels` | List your duels / `{ category, friendId? }` → a new duel |
 | GET | `/api/duels/:id` | One duel as you see it (questions and answers once you've played) |
 | GET | `/api/duels/:id/preview` | Who sent a duel link and their score (no sign-in needed) |
-| POST | `/api/duels/:id/start`, `/finish`, `/rematch` | Take the seat and start your side, end your side now, start a rematch |
-| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily, duel or Leveling question at a time (see Fair play) |
+| POST | `/api/duels/:id/join`, `/rematch` | Take the seat of a duel that's waiting, start or join a rematch |
+| GET | `/api/duels/:id/stream`, `/state` | A live duel as you see it: pushed as it changes (Server-Sent Events), or once |
+| POST | `/api/duels/:id/ready`, `/seen`, `/answer`, `/beat`, `/leave` | What a player does in a live duel (see Live duels) |
+| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily or Leveling question at a time (see Fair play) |
 | GET | `/api/stages` | The published Leveling stages as this player stands on them (never the questions) |
 | POST | `/api/stages/:id/start`, `/finish` | Start or pick up a try at an open stage, end the open try now |
 | GET/POST | `/api/admin/stages` | Admins only: list the stages / `{ title }` → a new draft |
@@ -143,6 +145,8 @@ Other players see Daily and duel scores, so those rounds run on the server (`ser
   the app, the next visit does, from `localStorage` that holds only which round to end. If nobody
   comes back, the server ends it after 15 idle minutes. Either way the rest counts as wrong and the
   points already earned stay.
+
+Duels are stricter still: see "Live duels" below. Their rounds can't be played through `/api/plays`.
 
 Quick and topic rounds are still graded from what the browser reports (`POST /api/rounds`). They
 only count towards a player's own progress and day streak, never a board or a duel.
@@ -464,18 +468,59 @@ Friends tab. Only the open tab is drawn.
 
 ### Duels
 
-Players take turns and never need to be online together. A player picks mixed topics or one
-topic, plays 10 questions first, then sends the link, `/duel/ID`. Whoever opens it first (or the
-friend it was sent to, when started from the Friends tab) plays the same questions. Everyone who
-opens a link sees who challenged them and their score before the clock starts. The Home screen
-shows a card when it's your turn or when a result is ready. The result screen compares both
-players question by question, with a **Rematch** button that sends a new duel back. More points
-wins; on equal points, less time, and the screen then shows both times. A player can have up to
-20 unfinished duels they started (`DUEL` in `shared/config.js`).
+Two players play the same 10 questions at the same time. A player picks mixed topics or one topic
+and sends the link, `/duel/ID` (or invites a friend from the Friends tab, who gets a push). Whoever
+opens it first takes the second seat, and the match starts once both are there. An invitation
+stays open for 10 minutes, and the sender can leave the app to share it: if someone joins while
+they're away, they get a push and the other player waits up to a minute.
 
-New duels stay away from questions the players met in their last 30 rounds (for a duel sent to a
-friend or a rematch, both players'; for a link, only the sender's, because the other player isn't
-known yet). A rematch never repeats the duel it follows unless the topic is too small.
+Every question goes through three phases, the same for both players:
+
+| Phase | Ends when | What a player sees |
+| --- | --- | --- |
+| Get ready | Both pictures are up, or after 4 s | The picture, no words yet |
+| Answer | Both have answered, or the question's time limit is up | The words and options. After tapping, "Waiting for Ana…" |
+| Reveal | After 3.5 s | Only their own result: right or wrong, a speed bar, the points landing on the score |
+
+The server moves both players on, so there's no Next button. Nobody is told anything about the
+other player's answers or score until the end, only that they've answered. The result screen then
+compares both players question by question, with a **Rematch** button. More points wins; on equal
+points, less time, and the screen then shows both times. Timings are `MATCH` in `shared/config.js`.
+
+New duels stay away from questions either player met in their last 30 rounds. A rematch never
+repeats the duel it follows unless the topic is too small.
+
+#### Live duels: how they stay in step
+
+`server/match.js` runs one clock for both players. Each player's side is an ordinary round in
+`server/play.js`, which grades, times and saves it. Answers are only graded when the question
+closes. Each player's own connection delay, measured when they acknowledge the question and capped
+at 400 ms, comes off their time.
+
+Browsers get a stream of messages (Server-Sent Events) and answer with ordinary POST requests. Every
+message is that player's whole view of the match with a version number, so nothing depends on any
+one message arriving.
+
+| When | What happens |
+| --- | --- |
+| The signal drops for a moment | The browser reconnects and gets the current state. The clock doesn't stop |
+| The connection dies silently | Both sides notice from missing heartbeats (12 s in the browser, 25 s on the server) |
+| The network blocks the stream | The browser asks for the state every 2 s instead |
+| A reply to an answer gets lost | The browser sends it again; the first answer stands |
+| A player drops during a question | The other isn't kept waiting. The absent player scores 0 |
+| A player drops between questions | Get ready waits up to 15 s, 30 s in total per player per duel, then they forfeit |
+| Both players disappear | The duel ends with no winner and isn't saved as a round |
+| A picture won't load | The question is cancelled for both, at most twice per player |
+| A second tab or device | The newest takes over |
+| The server restarts | Matches carry on (they're saved at every phase change). The open question is cancelled for both |
+
+Clocks are never compared between machines. The server times everything with a clock that only
+runs forward (`server/clock.js`), so a correction to the server's time of day can't affect a question.
+Browsers only ever get "this many milliseconds left" and count down on their own clock, so a phone
+set to the wrong time plays the same as any other.
+
+The whole design relies on one server process, like the rate limits. `npm test` plays all of this
+with simulated players and a fake clock.
 
 ### Leveling
 
