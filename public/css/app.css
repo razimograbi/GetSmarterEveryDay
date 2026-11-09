@@ -1937,3 +1937,78 @@ button.quick, button.topic { width: 100%; border: 0; font: inherit; text-align: 
 /* Three tabs: keep them snug on small phones. */
 .tabbar a { padding-inline: 16px; }
 @media (max-width: 360px) { .tabbar a span { font-size: 13px; } .tabbar a { padding-inline: 12px; } }
+
+/* ── Marketing Studio ────────────────────────────────────────── */
+
+.mk { max-width: 1560px; margin: 0 auto; padding: 16px 22px 40px; }
+.mk-top { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.mk-top h1 { margin: 0; font-size: 24px; font-weight: 800; }
+.mk-back { font-size: 26px; line-height: 1; color: #fff; text-decoration: none; }
+.mk-save { color: var(--on-cobalt-2); font-size: 14px; font-weight: 650; }
+.mk-record { margin-inline-start: auto; min-height: 48px; padding: 0 22px; }
+.mk-warn { margin: 0 0 14px; padding: 12px 16px; border-radius: 14px; background: var(--coral); font-weight: 700; }
+.mk-grid { display: grid; grid-template-columns: 310px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.mk-col, .mk-stage { display: grid; gap: 14px; min-width: 0; }
+.mk-panel { padding: 16px; color: var(--ink); }
+.mk-panel h2 { margin: 0 0 10px; font-size: 16px; font-weight: 800; }
+.mk-panel h2 small { font-weight: 600; color: var(--ink-2); margin-inline-start: 6px; }
+.mk-note { margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
+.mk-option { display: grid; gap: 1px; width: 100%; margin-bottom: 6px; padding: 9px 12px; border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); text-align: start; font: inherit; cursor: pointer; }
+.mk-option span { font-size: 13px; color: var(--ink-2); }
+.mk-option[aria-pressed="true"] { border-color: var(--cobalt); background: #eef0ff; }
+.mk-scenes { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.mk-scenes li { display: grid; grid-template-columns: 1fr 62px 22px; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 10px; }
+.mk-scenes li.is-selected { background: #eef0ff; }
+.mk-scenes li.is-off .mk-scene { opacity: 0.45; }
+.mk-scene { display: flex; justify-content: space-between; gap: 8px; min-height: 38px; align-items: center; padding: 0 6px; border: 0; background: none; color: var(--ink); font: inherit; font-weight: 700; text-align: start; cursor: pointer; }
+.mk-scene small { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mk-scene em, .mk-field em { color: var(--coral-deep); font-style: normal; font-weight: 800; }
+.mk-dur { width: 100%; min-height: 34px; padding: 0 4px; border: 2px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; font-size: 14px; }
+.mk-input { width: 100%; padding: 8px 10px; border: 2px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 15px; resize: vertical; }
+.mk-input:focus, .mk-dur:focus { outline: none; border-color: var(--cobalt); }
+.mk-input:lang(he) { font-family: 'Rubik', var(--font-ui); }
+.mk-input:lang(ar) { font-family: 'Cairo', var(--font-ui); }
+.mk-field { display: grid; gap: 3px; margin-bottom: 10px; font-size: 14px; font-weight: 700; }
+.mk-reset { padding: 0; color: var(--cobalt); }
+.mk-view { display: grid; place-items: center; min-height: 60vh; }
+.mk-canvas-wrap { position: relative; line-height: 0; }
+.mk-canvas-wrap[hidden], .mk-compare[hidden] { display: none; }
+.mk-canvas-wrap canvas { display: block; max-width: 100%; height: min(70vh, 900px); width: auto; border-radius: 14px; box-shadow: 0 12px 34px rgba(8, 12, 60, 0.5); }
+.mk-view[data-shape="wide"] .mk-canvas-wrap canvas { height: auto; width: 100%; }
+.mk-safe { position: absolute; border: 2px dashed var(--marigold); border-radius: 8px; pointer-events: none; }
+.mk-compare { display: flex; justify-content: center; gap: 12px; width: 100%; }
+.mk-compare figure { flex: 1 1 0; min-width: 0; max-width: 300px; margin: 0; text-align: center; font-weight: 700; }
+.mk-view[data-shape="wide"] .mk-compare figure { max-width: none; }
+.mk-compare canvas { width: 100%; height: auto; border-radius: 10px; }
+.mk-compare figcaption { margin-top: 6px; line-height: 1.3; }
+.mk-transport { padding: 12px 16px; color: var(--ink); }
+.mk-track { position: relative; }
+.mk-track input { width: 100%; accent-color: var(--cobalt); }
+.mk-ticks { position: relative; height: 8px; }
+.mk-ticks i { position: absolute; top: 0; width: 2px; height: 8px; background: var(--ink-2); }
+.mk-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 6px; }
+.mk-time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.mk-langs { flex: 0 1 380px; margin: 0; }
+.mk-langs button { min-height: 34px; padding: 0 8px; font-size: 14px; }
+.mk-check { display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 650; }
+.mk-lower { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+.mk-lower table { width: 100%; margin-bottom: 10px; border-collapse: collapse; font-size: 14px; }
+.mk-lower th { text-align: start; color: var(--ink-2); font-size: 12px; }
+.mk-lower td, .mk-lower th { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.mk-lower td small { color: var(--ink-2); }
+.mk-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.mk-cues { max-height: 300px; overflow-y: auto; }
+.mk-good { color: var(--mint-deep); font-weight: 750; }
+.mk-bad { color: var(--coral-deep); font-weight: 750; }
+.mk-row-buttons { white-space: nowrap; }
+.mk-row-buttons .link-btn { color: var(--cobalt); padding: 0 6px; }
+.mk-player { display: block; max-width: 100%; max-height: 60vh; margin: 10px auto 0; border-radius: 10px; }
+.mk-player[hidden] { display: none; }
+.mk-recording { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(8, 12, 60, 0.82); }
+.mk-recording[hidden] { display: none; }
+.mk-recording-box { display: flex; align-items: center; gap: 22px; padding: 22px; color: var(--ink); max-width: min(760px, 94vw); }
+.mk-recording-box canvas { height: min(62vh, 620px); max-width: 52vw; width: auto; border-radius: 12px; }
+.mk-recording-box h2 { margin: 0 0 8px; font-size: 22px; }
+.mk-recording-box p { margin: 0 0 14px; color: var(--ink-2); }
+.mk-recording-box .meter { margin-bottom: 14px; height: 10px; }
+@media (max-width: 1180px) { .mk-grid { grid-template-columns: 1fr; } .mk-lower { grid-template-columns: 1fr; } }

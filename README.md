@@ -599,6 +599,30 @@ install, it doesn't come back. The service worker always loads from the network 
 there's no connection. It needs HTTPS (or `localhost`). If you change what it caches, change
 `CACHE` in `sw.js` so old copies are cleared.
 
+### Marketing Studio
+
+**Progress → Marketing Studio** (`#/marketing`) makes promo videos from the game itself. It's open
+only to the accounts in `MARKETING_USERS` (comma-separated Google emails), and the server checks
+this on every request, because the data includes right answers. Use desktop Chrome or Edge.
+
+A video is one timeline drawn frame by frame (`public/js/studio.js`), using real questions, avatars,
+level covers and translations. Arabic, English and Hebrew are the same video with identical timing,
+so an editor adds sound once and it fits all three. The files have no sound on purpose.
+
+- **Videos:** Main promo, Can you get all 3? and Levels and looks, each in 9:16, 1:1 or 16:9.
+- **Editing:** turn scenes on or off, change their length, edit the words in all three languages
+  (too-long text is flagged), choose the questions and set the link on the end card. Changes save
+  to the server. `{questions}`, `{topics}` and `{skins}` fill in live numbers.
+- **Preview:** one language or all three side by side, with safe zones for the apps' own buttons.
+- **Record all 3 languages:** records each language in real time as MP4 (WebM if the browser can't)
+  and checks each file's size and length. Keep the window in front: if it stops drawing, the
+  recording stops and says so.
+- **For the editor:** a timing sheet (CSV) with every cut and place a sound could go, and subtitles
+  (SRT) in each language. **Save stills** exports the current frame as a PNG in each language.
+
+Only questions with a local picture (`npm run fetch-images`) and full Hebrew and Arabic text can be
+used, since a picture from another site would stop the canvas from being recorded.
+
 ### Question reports
 
 After answering, players can tap the flag (in the answer bar or next to each answer on
