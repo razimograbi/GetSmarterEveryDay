@@ -294,7 +294,7 @@ export const ui = {
   'board.topOf': '{shown} המובילים מתוך {players}',
   'duel.title': 'דו־קרב',
   'duel.cardTitle': 'דו־קרב עם חבר/ה',
-  'duel.cardDesc': 'שחקו מול חבר בזמן אמת באותן עשר שאלות.',
+  'duel.cardDesc': 'דו-קרב חי מול חבר, 10 שאלות',
   'duel.newTitle': 'דו־קרב חדש',
   'duel.newSub': 'בחרו את השאלות, ואז הזמינו מישהו לשחק איתכם עכשיו.',
   'duel.newFor': 'בחרו את השאלות לדו־קרב מול {name}. צריך להיות מחוברים יחד כדי לשחק.',

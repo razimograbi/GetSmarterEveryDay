@@ -7,14 +7,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createDuel, finishDuelSide, getDaily, getDuel, openDb, upsertUser } from '../server/db.js';
+import { createDuel, finishDuelSide, getDaily, getDuel, openDb, rescaledXp, upsertUser } from '../server/db.js';
 import { createPlays } from '../server/play.js';
 import { serverNow } from '../server/clock.js';
 import { createMatches } from '../server/match.js';
 import { hasEnoughQuestions, pickQuestions } from '../server/pick.js';
 import { pictureKeepsSecret } from '../server/pictures.js';
 import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
-import { MATCH, PLAY } from '../shared/config.js';
+import { MATCH, PLAY, levelFor, xpForLevel } from '../shared/config.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'smarts-match-'));
 after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
@@ -414,6 +414,21 @@ test('no question whose picture would give away its answer is ever picked', () =
       for (const id of pickQuestions({ count: 10, category, seed: `${category}${i}` })) assert.ok(pictureKeepsSecret(QUESTION_BY_ID.get(id)), id);
     }
   }
+});
+
+test('levels cost more, but one finished round still reaches level 2', () => {
+  assert.equal(levelFor(9), 1);
+  assert.equal(levelFor(10), 2);
+  for (let level = 2; level < 99; level++) {
+    assert.equal(levelFor(xpForLevel(level)), level);
+    assert.equal(levelFor(xpForLevel(level) - 1), level - 1);
+  }
+  assert.equal(xpForLevel(50), 29_386);
+});
+
+test('moving to the costlier levels keeps every player on their level', () => {
+  const oldLevel = (xp) => Math.min(99, Math.floor((1 + Math.sqrt(1 + (4 * xp) / 5)) / 2));
+  for (const xp of [0, 1, 9, 10, 29, 30, 99, 100, 451, 1900, 12_250, 48_509, 48_510, 60_000]) assert.equal(levelFor(rescaledXp(xp)), oldLevel(xp), `xp ${xp}`);
 });
 
 test('a Daily picked before a question was removed plays without it', () => {

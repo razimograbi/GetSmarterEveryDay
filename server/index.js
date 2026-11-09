@@ -978,10 +978,12 @@ const MIME = {
 const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.svg', '.json', '.webmanifest']);
 const gzipCache = new Map(); // file -> { etag, data }
 
-// Question and topic pictures and road signs rarely change, so browsers may keep them for a day
-// (a replaced picture shows up by the next day). Everything else is checked with the server on
+// Question pictures and road signs rarely change, so browsers may keep them for a day (a
+// replaced picture shows up by the next day). Topic photos never change at their address (see
+// shared/covers.js), so they're kept for good. Everything else is checked with the server on
 // each load (cheap: an unchanged file is answered with "304 Not Modified" and no body).
-const LONG_CACHE = /^\/(img|signs|topics)\//;
+const LONG_CACHE = /^\/(img|signs)\//;
+const cacheRule = (pathname) => (pathname.startsWith('/topics/') ? 'public, max-age=31536000, immutable' : LONG_CACHE.test(pathname) ? 'public, max-age=86400' : 'no-cache');
 
 async function sendFile(req, res, file, pathname) {
   const info = await stat(file);
@@ -990,7 +992,7 @@ async function sendFile(req, res, file, pathname) {
   const etag = `"${info.size.toString(36)}-${Math.floor(info.mtimeMs).toString(36)}"`;
   const headers = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': LONG_CACHE.test(pathname) ? 'public, max-age=86400' : 'no-cache',
+    'Cache-Control': cacheRule(pathname),
     ETag: etag,
     'Last-Modified': info.mtime.toUTCString(),
   };

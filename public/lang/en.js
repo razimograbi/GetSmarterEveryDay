@@ -291,7 +291,7 @@ export default {
   'board.topOf': 'Top {shown} of {players}',
   'duel.title': 'Duel',
   'duel.cardTitle': 'Duel a friend',
-  'duel.cardDesc': 'Play a friend live on the same 10 questions.',
+  'duel.cardDesc': 'Play a friend live, 10 questions',
   'duel.newTitle': 'New duel',
   'duel.newSub': 'Pick the questions, then invite someone to play with you now.',
   'duel.newFor': 'Pick the questions for your duel with {name}. You both need to be online to play.',

@@ -813,8 +813,10 @@ const playCta = (label, sub) => `
 const homeRow = ({ href = null, data = '', icon, title, sub = '', badge = '' }) => `
   ${href ? `<a class="home-row" href="${href}"` : `<button type="button" class="home-row" ${data}`}>
     <span class="home-row-icon">${icon}</span>
-    <span class="home-row-text"><strong>${title}</strong>${sub ? `<span>${sub}</span>` : ''}</span>
-    ${badge ? `<span class="home-row-badge">${esc(badge)}</span>` : ''}
+    <span class="home-row-text">
+      <span class="home-row-title"><strong>${title}</strong>${badge ? `<span class="home-row-badge">${esc(badge)}</span>` : ''}</span>
+      ${sub ? `<span class="home-row-sub">${sub}</span>` : ''}
+    </span>
     <span class="home-row-chevron" aria-hidden="true">${ICONS.chevron}</span>
   ${href ? '</a>' : '</button>'}`;
 
@@ -872,12 +874,24 @@ function duelAlerts() {
 
 /** What's inside a topic's card: its photo, name and description, then anything `extra`. */
 const topicCard = (c, extra = '') => `
-  <span class="topic-photo"><img src="${coverSrc(c.id)}" alt="" loading="lazy" decoding="async"></span>
+  <span class="topic-photo"><img src="${coverSrc(c.id)}" alt="" loading="lazy" decoding="sync"></span>
   <span class="topic-text">
     <strong>${esc(catName(c))}</strong>
-    <span class="topic-desc"><span class="topic-icon">${ICONS[c.id]}</span><span class="topic-blurb">${esc(catBlurb(c))}</span></span>
+    <span class="topic-blurb">${esc(catBlurb(c))}</span>
     ${extra}
   </span>`;
+
+// The photos on the home screen stay decoded in memory, so coming back from a round draws them at once.
+const coverMemory = new Map();
+function keepCovers(topics) {
+  for (const { id } of topics) {
+    if (coverMemory.has(id)) continue;
+    const img = new Image();
+    img.src = coverSrc(id);
+    img.decode?.().catch(() => {});
+    coverMemory.set(id, img);
+  }
+}
 
 function topicRows(stats) {
   const gotRight = Object.fromEntries((stats?.byCategory || []).map((c) => [c.category, c.gotRight]));
@@ -887,7 +901,7 @@ function topicRows(stats) {
     return `
       <li>
         <a class="topic" href="#/play/${c.id}" style="--hue:${c.hue}">
-          ${topicCard(c, `
+          ${topicCard(c, !m ? '' : `
             <span class="topic-meter" aria-label="${esc(t('home.topicMeter', { m, total }))}">
               <span class="topic-count">${m}<small>/${total}</small></span>
               <span class="meter"><span style="width:${(m / total) * 100}%"></span></span>
@@ -916,6 +930,7 @@ function homeTopbar({ withAvatar = true } = {}) {
 function drawNewHome(firstName) {
   const quickTopics = CATEGORIES.filter((c) => !c.book && c.quick !== false).slice(0, TOPIC_PREVIEW);
   const friend = state.newFriend;
+  keepCovers(quickTopics);
   app.innerHTML = `
     <section class="screen home home-new">
       ${homeTopbar()}
@@ -928,19 +943,20 @@ function drawNewHome(firstName) {
         title: t('home.duelFriend', { name: `<bdi>${esc(friend.name)}</bdi>` }), sub: esc(t('duel.cardDesc')),
       }) : ''}
       <h2 class="home-or">${esc(t('home.topics'))}</h2>
-      <div class="topic-chips">
-        ${quickTopics.map((c) => `<a class="topic-chip" href="#/play/${c.id}" style="--hue:${c.hue}">${ICONS[c.id]}<span>${esc(catName(c))}</span></a>`).join('')}
-        <button type="button" class="topic-chip topic-chip-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
-          <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
-        </button>
+      <div class="topic-tiles">
+        ${quickTopics.map((c) => `<a class="topic-tile" href="#/play/${c.id}" style="--hue:${c.hue}"><img src="${coverSrc(c.id)}" alt="" decoding="sync"><span>${esc(catName(c))}</span></a>`).join('')}
       </div>
+      <button type="button" class="see-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
+        <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
+        <span class="see-all-arrow" aria-hidden="true"></span>
+      </button>
       <ul class="topics" id="topic-list" ${topicsOpen ? '' : 'hidden'}>${topicRows(null)}</ul>
     </section>`;
   app.querySelector('[data-duel-friend]')?.addEventListener('click', () => {
     state.duelFriend = { id: friend.id, name: friend.name };
     go('#/duel/new');
   });
-  app.querySelector('.topic-chip-all').addEventListener('click', (e) => {
+  app.querySelector('.see-all').addEventListener('click', (e) => {
     topicsOpen = !topicsOpen;
     const btn = e.currentTarget;
     const list = app.querySelector('#topic-list');
@@ -951,35 +967,24 @@ function drawNewHome(firstName) {
   });
 }
 
-/** What's up next on the level ladder, under the level bar. */
-function nextUnlockLine() {
-  const next = nextUnlock(state.profile.level);
-  if (!next) return `<span class="level-next">${esc(t('level.allUnlocked'))}</span>`;
-  return `
-    <span class="level-next">
-      ${unlockPreview(next, 30)}
-      <span>${esc(t('level.next', { n: next.level, item: t(`avatar.${next.part}.${next.value}`) }))}</span>
-    </span>`;
-}
-
 /** The returning player's header: their avatar in its cover, the greeting and the level bar. */
 function playerHero(firstName, streak) {
   return `
-    <a class="player-hero" href="#/profile" aria-label="${esc(t('profile.edit'))}">
+    <div class="player-hero">
       <span class="player-hero-top">
-        ${avatar(state.profile?.avatar, 76)}
+        <a class="player-hero-avatar" href="#/profile" aria-label="${esc(t('profile.edit'))}">${avatar(state.profile?.avatar, 56)}</a>
         <span class="player-hero-hello">
           <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
           ${streak ? `<span class="sub">${ICONS.fire}${esc(tn('home.streak', streak))}</span>` : ''}
         </span>
       </span>
       ${levelBar()}
-      ${nextUnlockLine()}
-    </a>`;
+    </div>`;
 }
 
 function drawHome(firstName, stats, unlocked) {
   const streak = stats?.dayStreak || 0;
+  keepCovers(orderTopics(stats).slice(0, TOPIC_PREVIEW));
   app.innerHTML = `
     <section class="screen home has-tabbar">
       ${homeTopbar({ withAvatar: false })}
