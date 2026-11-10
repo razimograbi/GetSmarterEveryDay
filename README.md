@@ -658,15 +658,28 @@ level covers and translations. Arabic, English and Hebrew are the same video wit
 so an editor adds sound once and it fits all three. The files have no sound on purpose.
 
 - **Videos:** Main promo, Can you get all 3? and Levels and looks, each in 9:16, 1:1 or 16:9.
+- **Your videos:** the team can put their own together from the same scene blocks (`SCENE_KINDS`
+  in `studio.js`: hook, question with a tap, question the viewer guesses, level up, daily board,
+  duel, skins, covers, a text-only title card and the end card). Start blank or copy a built-in
+  video, then add, remove, reorder, duplicate and rename scenes. Up to 20 scenes a video. They
+  save with the project, under `custom`.
+- **Look:** five colour themes for the backdrop around the phone (the phone itself always shows the
+  real app's colours). Each video keeps its own.
 - **Editing:** turn scenes on or off, change their length, edit the words in all three languages
   (too-long text is flagged), choose the questions and set the link on the end card. Changes save
-  to the server. `{questions}`, `{topics}` and `{skins}` fill in live numbers.
+  to the server. `{questions}`, `{topics}`, `{skins}` and `{players}` fill in live numbers.
 - **Preview:** one language or all three side by side, with safe zones for the apps' own buttons.
-- **Record all 3 languages:** records each language in real time as MP4 (WebM if the browser can't)
-  and checks each file's size and length. Keep the window in front: if it stops drawing, the
-  recording stops and says so.
-- **For the editor:** a timing sheet (CSV) with every cut and place a sound could go, and subtitles
-  (SRT) in each language. **Save stills** exports the current frame as a PNG in each language.
+  Space plays and pauses, the arrow keys step a frame (a second with Shift), Home and End jump.
+- **Record:** choose which languages and sizes to record, then one click records them all in turn,
+  in real time, as MP4 (WebM if the browser can't), and checks each file's size and length. Keep
+  the window in front: if it stops drawing, the recording stops and says so.
+- **Post text:** a caption with hashtags for each language, saved with the video, with a copy
+  button. Until you write one, it suggests one made from the video's words and link.
+- **For the editor:** a timing sheet (CSV) with every cut and place a sound could go, subtitles
+  (SRT) in each language, and a **storyboard** (one PNG per language with a frame from every
+  scene). **Save stills** exports the current frame as a PNG in each language.
+- **Project backup:** download the whole project as JSON and load it again, here or on another
+  server.
 
 Only questions with a local picture (`npm run fetch-images`) and full Hebrew and Arabic text can be
 used, since a picture from another site would stop the canvas from being recorded.

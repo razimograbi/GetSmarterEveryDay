@@ -156,7 +156,7 @@ const isAdmin = (u) => !!u && (ADMINS.has(u.id.toLowerCase()) || (!!u.email && A
 // Who can open the Marketing Studio: comma-separated Google emails (or user ids such as dev:razi).
 const MARKETERS = new Set((process.env.MARKETING_USERS || 'razimograbi44@gmail.com').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 const isMarketer = (u) => !!u && (MARKETERS.has(u.id.toLowerCase()) || (!!u.email && MARKETERS.has(u.email.toLowerCase())));
-const MARKETING_PROJECT_MAX = 128 * 1024;
+const MARKETING_PROJECT_MAX = 256 * 1024; // the built-in videos plus the team's own, words and post text
 
 /** The Marketing Studio's routes refuse everyone else. Returns true once it has replied. */
 function refuseNonMarketer(res, user) {

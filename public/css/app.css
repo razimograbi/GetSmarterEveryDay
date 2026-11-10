@@ -1949,6 +1949,26 @@ button.quick, button.topic { width: 100%; border: 0; font: inherit; text-align: 
 .mk-scenes { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .mk-scenes li { display: grid; grid-template-columns: 1fr 62px 22px; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 10px; }
 .mk-scenes li.is-selected { background: #eef0ff; }
+.mk-scenes .mk-empty { display: block; padding: 8px 6px; color: var(--ink-2); font-size: 14px; }
+.mk-scene-tools { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 0 6px 6px; }
+.mk-scene-tools .link-btn { padding: 0; color: var(--cobalt); font-size: 13px; }
+.mk-scene-tools .link-btn:disabled { color: var(--ink-2); opacity: 0.5; cursor: default; }
+.mk-danger, .mk-scene-tools .mk-danger { color: var(--coral-deep); }
+.mk-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 10px; }
+.mk-add .mk-input { padding: 6px 8px; font-size: 14px; }
+.mk-h3 { margin: 14px 0 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-2); }
+.mk-h2-gap { margin-top: 18px !important; }
+.mk-field-gap { margin-top: 10px; }
+.mk-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mk-swatch { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink-2); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.mk-swatch i { display: block; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, var(--a), var(--b) 80%); box-shadow: inset 0 0 0 3px var(--c); }
+.mk-swatch[aria-pressed="true"] { border-color: var(--cobalt); background: #eef0ff; color: var(--ink); }
+.mk-pick { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 12px; }
+.mk-pick-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.mk-pick-group > span { font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.mk-copy { padding: 0 6px; color: var(--cobalt); font-size: 13px; font-weight: 700; }
+.mk-keys { margin: 8px 0 0; }
+.mk-field span small { font-weight: 500; color: var(--ink-2); }
 .mk-scenes li.is-off .mk-scene { opacity: 0.45; }
 .mk-scene { display: flex; justify-content: space-between; gap: 8px; min-height: 38px; align-items: center; padding: 0 6px; border: 0; background: none; color: var(--ink); font: inherit; font-weight: 700; text-align: start; cursor: pointer; }
 .mk-scene small { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }

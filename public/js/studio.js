@@ -26,6 +26,32 @@ export const SAFE_ZONE = { top: 250, bottom: 420, side: 70 };
 
 const copy = (en, he, ar) => ({ en, he, ar });
 
+// The colours around the phone. The phone's own screens always look like the real app.
+export const THEMES = {
+  cobalt: { name: 'Cobalt', base: '#2a3bd1', glow: '#3f54ee', deep: '#1b2799', accent: '#ffc531', button: { bg: '#ffc531', edge: '#d99a00', text: '#141833' } },
+  midnight: { name: 'Midnight', base: '#131c6e', glow: '#2a3bd1', deep: '#0b0e2a', accent: '#ffc531', button: { bg: '#ffc531', edge: '#d99a00', text: '#141833' } },
+  sunset: { name: 'Sunset', base: '#d9463a', glow: '#ff7a5c', deep: '#8a1f2b', accent: '#ffe08a', button: { bg: '#ffc531', edge: '#d99a00', text: '#141833' } },
+  forest: { name: 'Forest', base: '#0d8a57', glow: '#17b877', deep: '#0a5a3c', accent: '#ffe08a', button: { bg: '#ffc531', edge: '#d99a00', text: '#141833' } },
+  marigold: { name: 'Marigold', base: '#f0b000', glow: '#ffd05a', deep: '#c47f00', accent: '#131c6e', button: { bg: '#131c6e', edge: '#0b0e2a', text: '#ffffff' } },
+};
+
+/**
+ * The building blocks of a video. The built-in videos below are made of these, and the marketing
+ * team can put their own together from them. `question` kinds show one of the chosen questions.
+ */
+export const SCENE_KINDS = {
+  home: { label: 'Hook', about: 'The home screen', dur: 2600, copy: copy('How much do you really know?', 'כמה אתם באמת יודעים?', 'كم تعرف حقًا؟') },
+  tap: { label: 'Question', about: 'A finger taps the right answer', dur: 4800, question: true, copy: copy('See a picture. Beat the clock.', 'רואים תמונה. מנצחים את השעון.', 'شاهد الصورة واسبق الوقت.') },
+  guess: { label: 'Guess', about: 'Viewers answer before the reveal', dur: 5200, question: true, copy: copy('Can you get this one?', 'תצליחו לענות על זו?', 'هل تعرف هذه؟') },
+  levelup: { label: 'Level up', about: 'The level-up sheet and an unlock', dur: 3200, copy: copy('Level up. Unlock fiercer looks.', 'עולים רמה. פותחים דמויות חדשות.', 'ارفع مستواك وافتح شخصيات جديدة.') },
+  board: { label: 'Daily board', about: 'Today\'s leaderboard filling in', dur: 3400, copy: copy('One Daily for everyone. Who wins today?', 'אתגר יומי אחד לכולם. מי מנצח היום?', 'تحدٍّ يومي واحد للجميع. من يفوز اليوم؟') },
+  duel: { label: 'Duel', about: 'A duel won', dur: 3000, copy: copy('Challenge your friends.', 'אתגרו את החברים.', 'تحدَّ أصدقاءك.') },
+  skins: { label: 'Skins', about: 'The skins popping in', dur: 3800, copy: copy('{skins} skins to collect.', '{skins} דמויות לאסוף.', '{skins} شخصية لتجمعها.') },
+  tiers: { label: 'Covers', about: 'The level covers, Rookie to Legend', dur: 3600, copy: copy('From Rookie to Legend.', 'מטירון לאגדה.', 'من مبتدئ إلى أسطورة.') },
+  title: { label: 'Title card', about: 'Big words on their own, no phone', dur: 2400, copy: copy('Think fast.', 'לחשוב מהר.', 'فكّر بسرعة.') },
+  cta: { label: 'End card', about: 'Logo, words and the link', dur: 3000, copy: copy('Play free now', 'שחקו עכשיו בחינם', 'العب الآن مجانًا') },
+};
+
 export const TEMPLATES = {
   promo: {
     name: 'Main promo',
@@ -91,23 +117,70 @@ const pop = (p) => { const x = clamp(p); return 1 + 2.2 * (x - 1) ** 3 + 1.2 * (
 
 // ── Project ────────────────────────────────────────────────────
 
-export const defaultProject = () => ({ template: 'promo', format: 'story', url: '', copy: {}, off: {}, durs: {}, questions: {} });
+// Everything keyed by video id (`copy`, `off`, `durs`, `questions`, `look`, `posts`) works the same
+// for the built-in videos and for the team's own ones in `custom`.
+export const defaultProject = () => ({ template: 'promo', format: 'story', url: '', copy: {}, off: {}, durs: {}, questions: {}, look: {}, posts: {}, custom: {} });
+
+const CUSTOM_ID = /^c\d+$/;
+const SCENE_ID = /^[\w-]{1,24}$/;
 
 /** A saved project, with anything missing or no longer valid put back to its default. */
 export function normalizeProject(saved) {
   const p = { ...defaultProject(), ...(saved && typeof saved === 'object' ? saved : {}) };
-  if (!TEMPLATES[p.template]) p.template = 'promo';
+  for (const k of ['copy', 'off', 'durs', 'questions', 'look', 'posts', 'custom']) if (!p[k] || typeof p[k] !== 'object' || Array.isArray(p[k])) p[k] = {};
+  const custom = {};
+  for (const [id, v] of Object.entries(p.custom)) {
+    if (!CUSTOM_ID.test(id) || !v || typeof v !== 'object' || !Array.isArray(v.scenes)) continue;
+    const seen = new Set();
+    const scenes = [];
+    for (const s of v.scenes) {
+      if (!s || !SCENE_KINDS[s.kind] || typeof s.id !== 'string' || !SCENE_ID.test(s.id) || seen.has(s.id)) continue;
+      seen.add(s.id);
+      const scene = { id: s.id, kind: s.kind };
+      if (typeof s.label === 'string' && s.label.trim()) scene.label = s.label.trim().slice(0, 40);
+      scenes.push(scene);
+    }
+    custom[id] = { name: String(v.name || 'Untitled video').slice(0, 60), scenes };
+  }
+  p.custom = custom;
+  if (!videoOf(p)) p.template = 'promo';
   if (!FORMATS[p.format]) p.format = 'story';
-  for (const k of ['copy', 'off', 'durs', 'questions']) if (!p[k] || typeof p[k] !== 'object') p[k] = {};
+  if (typeof p.url !== 'string') p.url = '';
   return p;
 }
+
+/**
+ * The video `id` names: a built-in one, or one of the team's own put together from SCENE_KINDS.
+ * Both come out in the same shape, so everything else needn't know the difference.
+ */
+export function videoOf(project, id = project.template) {
+  if (TEMPLATES[id]) return TEMPLATES[id];
+  const own = project.custom?.[id];
+  if (!own) return null;
+  const counts = {};
+  for (const s of own.scenes) counts[s.kind] = (counts[s.kind] || 0) + 1;
+  const seen = {};
+  let slot = 0;
+  const scenes = own.scenes.map((s) => {
+    const kind = SCENE_KINDS[s.kind];
+    seen[s.kind] = (seen[s.kind] || 0) + 1;
+    const scene = { id: s.id, kind: s.kind, dur: kind.dur, copy: kind.copy, label: s.label || (counts[s.kind] > 1 ? `${kind.label} ${seen[s.kind]}` : kind.label) };
+    if (kind.question) scene.slot = slot++;
+    return scene;
+  });
+  const total = scenes.reduce((sum, s) => sum + (project.durs[id]?.[s.id] ?? s.dur), 0);
+  return { name: own.name, about: `${scenes.length} ${scenes.length === 1 ? 'scene' : 'scenes'}, ${(total / 1000).toFixed(0)}s`, questions: slot, scenes, custom: true };
+}
+
+/** The theme around the current video. */
+export const themeOf = (project) => THEMES[project.look?.[project.template]] ?? THEMES.cobalt;
 
 /** The scenes that are switched on, with when each one starts. */
 export function timeline(project) {
   const id = project.template;
   let at = 0;
   const scenes = [];
-  for (const s of TEMPLATES[id].scenes) {
+  for (const s of videoOf(project)?.scenes ?? []) {
     if (project.off[id]?.[s.id]) continue;
     const dur = project.durs[id]?.[s.id] ?? s.dur;
     scenes.push({ ...s, dur, start: at });
@@ -116,11 +189,11 @@ export function timeline(project) {
   return { scenes, total: at };
 }
 
-/** A scene's words in one language, with {questions}, {topics} and {skins} filled in. */
+/** A scene's words in one language, with {questions}, {topics}, {skins} and {players} filled in. */
 export function sceneText(project, kit, scene, lang, { raw = false } = {}) {
   const text = project.copy[project.template]?.[scene.id]?.[lang] ?? scene.copy[lang];
   if (raw) return text;
-  const vars = { questions: kit.counts.questions, topics: kit.counts.topics, skins: ANIMALS.length };
+  const vars = { questions: kit.counts.questions, topics: kit.counts.topics, skins: ANIMALS.length, players: kit.counts.players };
   return text.replace(/\{(\w+)\}/g, (m, k) => vars[k] ?? m);
 }
 
@@ -205,7 +278,7 @@ const PREFERRED = ['landmarks', 'flags', 'animals', 'food', 'paintings', 'countr
 
 /** The questions a video uses: the ones chosen for it, else good defaults from different topics. */
 export function videoQuestions(project, kit) {
-  const count = TEMPLATES[project.template].questions;
+  const count = videoOf(project)?.questions ?? 0;
   const chosen = project.questions[project.template] || [];
   const out = [];
   const used = new Set();
@@ -632,12 +705,12 @@ function drawScreen(g, scene, ms) {
 
 // ── A frame ────────────────────────────────────────────────────
 
-function background(ctx, W, H, ms) {
-  ctx.fillStyle = C.cobalt;
+function background(ctx, W, H, ms, theme) {
+  ctx.fillStyle = theme.base;
   ctx.fillRect(0, 0, W, H);
   const glow = ctx.createRadialGradient(W * 0.5, H * 0.32, 40, W * 0.5, H * 0.32, Math.max(W, H) * 0.75);
-  glow.addColorStop(0, '#3f54ee');
-  glow.addColorStop(1, C.deep);
+  glow.addColorStop(0, theme.glow);
+  glow.addColorStop(1, theme.deep);
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = 'rgba(255,255,255,.05)';
@@ -652,19 +725,21 @@ function background(ctx, W, H, ms) {
 }
 
 function layoutOf(format, W, H, rtl) {
+  // `title` is where a title card's words go: the whole frame, with no phone.
+  const title = { head: { x: W * 0.1, y: H * 0.22, w: W * 0.8, h: H * 0.56 }, align: 'center', minSize: 60 };
   if (format === 'wide') {
     const ph = H - 120;
     const pw = (ph * PHONE_W) / PHONE_H;
-    return { phone: { x: rtl ? 200 : W - 200 - pw, y: 60, w: pw, h: ph }, head: { x: rtl ? pw + 300 : 120, y: 200, w: W - pw - 420, h: H - 400 }, maxSize: 124, minSize: 60, align: 'start' };
+    return { phone: { x: rtl ? 200 : W - 200 - pw, y: 60, w: pw, h: ph }, head: { x: rtl ? pw + 300 : 120, y: 200, w: W - pw - 420, h: H - 400 }, maxSize: 124, minSize: 60, align: 'start', title: { ...title, maxSize: 180 } };
   }
   if (format === 'square') {
     const ph = H - 290;
-    return { phone: { x: (W - (ph * PHONE_W) / PHONE_H) / 2, y: 265, w: (ph * PHONE_W) / PHONE_H, h: ph }, head: { x: 70, y: 40, w: W - 140, h: 205 }, maxSize: 86, minSize: 40, align: 'center' };
+    return { phone: { x: (W - (ph * PHONE_W) / PHONE_H) / 2, y: 265, w: (ph * PHONE_W) / PHONE_H, h: ph }, head: { x: 70, y: 40, w: W - 140, h: 205 }, maxSize: 86, minSize: 40, align: 'center', title: { ...title, maxSize: 150 } };
   }
   const y = 500;
   const ph = H - y - 70;
   const pw = (ph * PHONE_W) / PHONE_H;
-  return { phone: { x: (W - pw) / 2, y, w: pw, h: ph }, head: { x: 70, y: 150, w: W - 140, h: 320 }, maxSize: 112, minSize: 52, align: 'center' };
+  return { phone: { x: (W - pw) / 2, y, w: pw, h: ph }, head: { x: 70, y: 150, w: W - 140, h: 320 }, maxSize: 112, minSize: 52, align: 'center', title: { ...title, maxSize: 170 } };
 }
 
 /** Fits words in a box: the largest size at which they wrap without breaking out of it. */
@@ -724,7 +799,7 @@ function drawPhone(g, box, paint) {
   ctx.restore();
 }
 
-function drawEndCard(g, scene, ms, W, H, format, text) {
+function drawEndCard(g, scene, ms, W, H, format, text, theme) {
   const { ctx, L } = g;
   const p = clamp(ms / scene.dur);
   const unit = Math.min(W, H / (format === 'story' ? 1.3 : 1));
@@ -749,7 +824,7 @@ function drawEndCard(g, scene, ms, W, H, format, text) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   ctx.font = fontOf(L, 'show', size, 700);
-  ctx.fillStyle = C.marigold;
+  ctx.fillStyle = theme.accent;
   const lh = size * 1.16;
   const top = box.y + (box.h - lines.length * lh) / 2;
   lines.forEach((line, i) => ctx.fillText(line, cx, top + lh * (i + 0.8)));
@@ -762,8 +837,8 @@ function drawEndCard(g, scene, ms, W, H, format, text) {
   ctx.globalAlpha = clamp((p - 0.28) * 6);
   ctx.translate(cx, by + bh / 2);
   ctx.scale(beat, beat);
-  fillBox(ctx, -bw / 2, -bh / 2 + 12, bw, bh, bh * 0.32, C.marigoldDeep);
-  fillBox(ctx, -bw / 2, -bh / 2, bw, bh, bh * 0.32, C.marigold);
+  fillBox(ctx, -bw / 2, -bh / 2 + 12, bw, bh, bh * 0.32, theme.button.edge);
+  fillBox(ctx, -bw / 2, -bh / 2, bw, bh, bh * 0.32, theme.button.bg);
   ctx.direction = 'ltr';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -772,7 +847,7 @@ function drawEndCard(g, scene, ms, W, H, format, text) {
     ctx.font = `800 ${urlSize}px "Schibsted Grotesk", system-ui, sans-serif`;
     urlSize -= 2;
   } while (ctx.measureText(g.url).width > bw * 0.88 && urlSize > 18);
-  ctx.fillStyle = C.text;
+  ctx.fillStyle = theme.button.text;
   ctx.fillText(g.url, 0, 0);
   ctx.restore();
 }
@@ -811,14 +886,18 @@ function painter(ctx, kit, project, lang) {
 }
 
 /** Paints the video at `ms` onto a canvas. `scale` lets the preview draw smaller than the real size. */
+// Scenes that show the phone. Title and end cards don't, so the phone rises in again after them.
+const hasPhone = (scene) => scene && scene.kind !== 'cta' && scene.kind !== 'title';
+
 export function drawFrame(ctx, project, kit, lang, ms, scale = 1) {
   const { w: W, h: H } = FORMATS[project.format];
   const { scenes, total } = timeline(project);
   const g = painter(ctx, kit, project, lang);
+  const theme = themeOf(project);
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.globalAlpha = 1;
   ctx.direction = g.L.dir;
-  background(ctx, W, H, ms);
+  background(ctx, W, H, ms, theme);
   if (!scenes.length) return;
   const now = clamp(ms, 0, total - 1);
   const index = Math.max(0, scenes.findLastIndex((s) => s.start <= now));
@@ -829,8 +908,8 @@ export function drawFrame(ctx, project, kit, lang, ms, scale = 1) {
   const layout = layoutOf(project.format, W, H, g.L.dir === 'rtl');
   const words = sceneText(project, kit, scene, lang);
 
-  if (scene.kind === 'cta') {
-    if (blend < 1 && previous && previous.kind !== 'cta') {
+  if (scene.kind === 'cta' || scene.kind === 'title') {
+    if (blend < 1 && hasPhone(previous)) {
       ctx.save();
       ctx.globalAlpha = 1 - blend;
       drawPhone(g, layout.phone, () => drawScreen(g, previous, previous.dur));
@@ -838,15 +917,16 @@ export function drawFrame(ctx, project, kit, lang, ms, scale = 1) {
     }
     ctx.save();
     ctx.globalAlpha = blend;
-    drawEndCard(g, scene, local, W, H, project.format, words);
+    if (scene.kind === 'cta') drawEndCard(g, scene, local, W, H, project.format, words, theme);
+    else drawHeadline(g, words, layout.title, clamp(local / 520));
     ctx.restore();
     return;
   }
   drawHeadline(g, words, layout, clamp(local / 520));
-  const riseIn = index === 0 ? easeOut(local / 620) : 1;
+  const riseIn = index === 0 || !hasPhone(previous) ? easeOut(local / 620) : 1;
   const box = { ...layout.phone, y: layout.phone.y + (1 - riseIn) * 160 };
   drawPhone(g, box, () => {
-    if (blend < 1 && previous) drawScreen(g, previous, previous.dur);
+    if (blend < 1 && hasPhone(previous)) drawScreen(g, previous, previous.dur);
     ctx.save();
     ctx.globalAlpha = blend;
     ctx.translate((1 - easeOut(blend)) * (g.L.dir === 'rtl' ? -46 : 46), 0);
@@ -864,8 +944,9 @@ export function fitProblems(ctx, project, kit) {
       const L = LANG[id];
       const layout = layoutOf(project.format, W, H, L.dir === 'rtl');
       const text = sceneText(project, kit, scene, id);
+      const box = scene.kind === 'title' ? layout.title : layout;
       if (!text.trim()) problems.push({ scene: scene.id, lang: id, why: 'empty' });
-      else if (scene.kind !== 'cta' && !fitHeadline(ctx, L, text, layout.head, layout.maxSize, layout.minSize).fits) problems.push({ scene: scene.id, lang: id, why: 'long' });
+      else if (scene.kind !== 'cta' && !fitHeadline(ctx, L, text, box.head, box.maxSize, box.minSize).fits) problems.push({ scene: scene.id, lang: id, why: 'long' });
     }
   }
   return problems;
