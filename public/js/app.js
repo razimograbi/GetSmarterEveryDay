@@ -1,9 +1,9 @@
 import { QUESTIONS, QUESTION_BY_ID } from '/shared/questions.js';
 import { coverSrc } from '/shared/covers.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, BOARD, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, XP, STAGE, STAGE_PICTURE_HOSTS, inQuickRounds, pointsFor, secondsFor, localDate, levelFor, levelProgress, tierFor, xpForRound,
+  roundCoins, MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, AUTO_DELAY, BACK_BUTTON, BOARD, REPORT_REASONS, REPORT_NOTE_MAX, MAX_POINTS, XP, STAGE, STAGE_PICTURE_HOSTS, inQuickRounds, pointsFor, secondsFor, localDate, levelFor, levelProgress, tierFor, xpForRound,
 } from '/shared/config.js';
-import { avatarUrl, avatarCode, backgroundCss, nextUnlock, parseAvatar, randomAvatar, unlockLevel, ANIMALS, EYES, BACKGROUNDS, EXTRAS, UNLOCKS } from '/shared/avatars.js';
+import { avatarUrl, avatarCode, backgroundCss, nextUnlock, parseAvatar, randomAvatar, unlockLevel, unlockPrice, itemKey, ANIMALS, EYES, BACKGROUNDS, EXTRAS, UNLOCKS } from '/shared/avatars.js';
 import { COUNTRIES } from '/shared/countries.js';
 import { pickLevel, subjectOf } from '/shared/levels.js';
 import { squareFor, copyText, shareText, shareImage, resultImage } from './share.js';
@@ -377,6 +377,7 @@ async function loadStats(force = false) {
   s.masteredIds = known(s.masteredIds);
   if (s.rounds > state.played) state.played = s.rounds; // e.g. a round finished on another device
   state.stats = s;
+  applyCoins(s.coins); // first: the level-up popup shows what the player can afford
   applyXp(s.xp);
   return s;
 }
@@ -391,6 +392,26 @@ function applyXp(xp) {
   p.level = level;
   showLevelUp();
 }
+
+/** Takes in the player's coins from the server, and shows them. */
+function applyCoins(coins) {
+  if (!state.profile || typeof coins !== 'number') return;
+  state.profile.coins = coins;
+  document.querySelectorAll('[data-coins]').forEach((el) => { el.textContent = coins; });
+}
+
+const ownsItem = (part, value) => unlockPrice(part, value) === 0 || (state.profile?.owned || []).includes(itemKey(part, value));
+
+/** Buys an item. The server decides whether the player can. */
+async function buyUnlock(part, value) {
+  const { coins, owned } = await api('/api/shop/buy', { method: 'POST', body: { part, value } });
+  state.profile.owned = owned;
+  applyCoins(coins);
+}
+
+const coinsEarned = (n) => (n > 0 ? `<p class="coins-earned" dir="ltr">${ICONS.coin}+${n}</p>` : '');
+
+const coinPill = () => (state.profile ? `<a class="coin-pill" href="#/profile" aria-label="${esc(t('coins.count', { n: state.profile.coins ?? 0 }))}">${ICONS.coin}<span data-coins dir="ltr">${state.profile.coins ?? 0}</span></a>` : '');
 
 /** "Level up!" with what it unlocked, once the player isn't in the middle of a round. */
 function showLevelUp() {
@@ -413,7 +434,8 @@ function showLevelUp() {
       ${unlocked.length ? `
         <h3 class="levelup-new">${esc(t('level.unlocked'))}</h3>
         <ul class="levelup-items">${unlocked.map((u) => `
-          <li>${unlockPreview(u, 64)}<span>${esc(t(`avatar.${u.part}.${u.value}`))}</span></li>`).join('')}</ul>` : `
+          <li>${unlockPreview(u, 64)}<span>${esc(t(`avatar.${u.part}.${u.value}`))}</span>${ownsItem(u.part, u.value) ? '' : `<button type="button" class="btn btn-small btn-marigold levelup-buy" data-part="${u.part}" data-value="${u.value}" dir="ltr" ${(p.coins ?? 0) < unlockPrice(u.part, u.value) ? 'disabled' : ''}>${ICONS.coin}${unlockPrice(u.part, u.value)}</button>`}</li>`).join('')}</ul>
+        ${unlocked.some((u) => !ownsItem(u.part, u.value)) ? `<p class="levelup-hint">${esc(t('level.buyHint'))}</p>` : ''}` : `
         <p>${esc(next ? t('level.nextAt', { n: next.level }) : t('level.allUnlocked'))}</p>`}
       <div class="sheet-actions">
         <button type="button" class="btn btn-ghost-ink" data-levelup-close>${esc(t('level.nice'))}</button>
@@ -426,7 +448,22 @@ function showLevelUp() {
     opener?.focus?.({ preventScroll: true });
   };
   scrim.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
-  scrim.addEventListener('click', (e) => {
+  scrim.addEventListener('click', async (e) => {
+    const buy = e.target.closest('.levelup-buy');
+    if (buy) {
+      buy.disabled = true;
+      try {
+        await buyUnlock(buy.dataset.part, buy.dataset.value);
+        buy.innerHTML = ICONS.check;
+        scrim.querySelectorAll('.levelup-buy').forEach((b) => {
+          if (!ownsItem(b.dataset.part, b.dataset.value)) b.disabled = state.profile.coins < unlockPrice(b.dataset.part, b.dataset.value);
+        });
+      } catch (err) {
+        window.alert(errMsg(err));
+        buy.disabled = false;
+      }
+      return;
+    }
     if (e.target === scrim || e.target.closest('[data-levelup-close]')) close();
     else if (e.target.closest('a')) {
       if (unlocked.length) profileTab = unlocked[0].part;
@@ -917,6 +954,7 @@ function homeTopbar({ withAvatar = true } = {}) {
     <header class="topbar">
       <span class="logo">Smarts</span>
       <span class="topbar-end">
+        ${coinPill()}
         <button type="button" class="lang-btn" data-lang-open aria-haspopup="dialog" aria-label="${esc(t('lang.change'))}">${ICONS.globe}<span lang="${current.id}">${esc(current.name)}</span></button>
         ${withAvatar ? `<a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>` : ''}
       </span>
@@ -2039,6 +2077,7 @@ async function saveRecord(record) {
   pendingSave = saving.catch(() => {});
   try {
     record.saved = await saving;
+    applyCoins(record.saved.coins);
     applyXp(record.saved.xp);
     forgetUnsent(record);
     loadStats(true).catch(() => {});
@@ -2134,6 +2173,7 @@ function showResults() {
         ${r.saved?.xpGained ? `
           <div class="xp-row">
             <p class="xp-earned" dir="ltr">+${r.saved.xpGained} XP</p>
+            ${coinsEarned(r.saved.coinsGained)}
             ${levelBar()}
           </div>` : ''}
         <p class="save-state ${r.error ? 'is-error' : ''}">
@@ -2251,7 +2291,10 @@ const squaresHtml = (squares) =>
 const topbar = () => `
   <header class="topbar">
     ${topbarStart()}
-    <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
+    <span class="topbar-end">
+      ${coinPill()}
+      <a href="#/progress" class="avatar-link" aria-label="${esc(t('home.yourProgress'))}">${avatar()}</a>
+    </span>
   </header>`;
 
 /** A note under share buttons: "Copied", "Saved"… */
@@ -2420,6 +2463,7 @@ function drawDailyResult(d, board) {
           <p class="result-score">${r.score}<small>/${max}</small></p>
           <p class="result-line">${esc(t('daily.rightOf', { right: r.correct ?? 0, total: d.count }))}${me ? ` · ${esc(t('daily.rank', { rank: me.rank, players: board.players }))}` : ''}</p>
           ${xpEarned('daily', r.score)}
+          ${coinsEarned(roundCoins('daily', r.score))}
           ${squaresHtml(squares)}
           <div class="share-row">
             <button class="btn btn-marigold" data-share>${ICONS.share}<span>${esc(t('share.share'))}</span></button>
@@ -2697,6 +2741,7 @@ function duelResultHtml(duel, max) {
       </div>
       <p class="result-line">${esc(t('duel.outOf', { max }))}</p>
       ${meSide ? xpEarned('duel', me.score) : ''}
+      ${meSide ? coinsEarned(duel.coins) : ''}
       ${decidedByTime ? `<p class="result-line">${t('duel.tieTime', { me: meSide ? esc(t('duel.you')) : personName(me), myTime: esc(secs(me.ms)), them: personName(them), theirTime: esc(secs(them.ms)) })}</p>` : ''}
       ${meSide ? `
         <div class="share-row">
@@ -3041,27 +3086,31 @@ function showProfile() {
   const code = () => avatarCode(draft);
   const itemName = (part, value) => t(`avatar.${part}.${value}`);
 
-  /** What stops this avatar being saved: its most demanding locked part. An avatar already worn always can be. */
+  /** What stops this avatar being saved: its most demanding part not owned yet. An avatar already worn always can be. */
   function blocker() {
     if (code() === p.avatar) return null;
-    const locked = Object.keys(draft).filter((part) => unlockLevel(part, draft[part]) > level)
+    const missing = Object.keys(draft).filter((part) => !ownsItem(part, draft[part]))
       .sort((a, b) => unlockLevel(b, draft[b]) - unlockLevel(a, draft[a]));
-    return locked.length ? { part: locked[0], value: draft[locked[0]], need: unlockLevel(locked[0], draft[locked[0]]) } : null;
+    if (!missing.length) return null;
+    const [part] = missing;
+    const need = unlockLevel(part, draft[part]);
+    return { part, value: draft[part], need, price: unlockPrice(part, draft[part]), buyable: need <= level };
   }
 
   function tile(part, value) {
     const need = unlockLevel(part, value);
     const locked = need > level;
-    const label = esc(locked ? `${itemName(part, value)} · ${t('profile.unlocksAt', { n: need })}` : itemName(part, value));
+    const price = !locked && !ownsItem(part, value) ? unlockPrice(part, value) : 0;
+    const label = esc(locked ? `${itemName(part, value)} · ${t('profile.unlocksAt', { n: need })}` : price ? t('profile.priceLabel', { item: itemName(part, value), price }) : itemName(part, value));
     const picture = part === 'bg'
       ? `<span class="swatch" style="background:${backgroundCss(value)}"></span>`
       : avatarImg(avatarCode({ ...draft, [part]: value }), 64);
-    return `<button type="button" class="avatar-choice ${locked ? 'is-locked' : ''}" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${label}" title="${label}">${picture}${locked ? `<span class="lock-chip" dir="ltr" aria-hidden="true">${ICONS.lock}${need}</span>` : ''}</button>`;
+    return `<button type="button" class="avatar-choice ${locked ? 'is-locked' : price ? 'is-buyable' : ''}" data-part="${part}" data-value="${value}" aria-pressed="${draft[part] === value}" aria-label="${label}" title="${label}">${picture}${locked ? `<span class="lock-chip" dir="ltr" aria-hidden="true">${ICONS.lock}${need}</span>` : price ? `<span class="lock-chip price-chip" dir="ltr" aria-hidden="true">${ICONS.coin}${price}</span>` : ''}</button>`;
   }
 
   /** The line above a list: how many are open and what's next. */
   function tabProgress(tab) {
-    const open = tab.values.filter((v) => unlockLevel(tab.id, v) <= level).length;
+    const open = tab.values.filter((v) => ownsItem(tab.id, v)).length;
     const next = UNLOCKS.find((u) => u.part === tab.id && u.level > level);
     return `<strong>${esc(t('profile.unlockedCount', { n: open, total: tab.values.length }))}</strong><span>${esc(next ? t('profile.nextHere', { item: itemName(next.part, next.value), n: next.level }) : t('profile.allHere'))}</span>`;
   }
@@ -3093,7 +3142,7 @@ function showProfile() {
           </div>
         </div>
         <div class="panel studio-panel" id="studio-panel" role="tabpanel" data-panel></div>
-        <p class="level-how" data-how>${esc(t('level.how', { finished: XP.finished, daily: XP.bonus.daily, duel: XP.bonus.duel, stage: XP.stageClear }))}</p>
+        <p class="level-how" data-how>${esc(t('level.how', { finished: XP.finished, daily: XP.bonus.daily, duel: XP.bonus.duel, stage: XP.stageClear }))} ${esc(t('coins.how'))}</p>
         <div class="panel profile-details" id="studio-details" role="tabpanel" data-details hidden>
           <label class="field">
             <span>${esc(t('profile.name'))}</span>
@@ -3136,12 +3185,14 @@ function showProfile() {
   function drawStatus() {
     const b = blocker();
     save.disabled = !!b;
-    save.textContent = b ? t('profile.saveLocked', { n: b.need }) : t('profile.save');
-    const key = b ? `${b.part}:${b.value}` : '';
+    save.textContent = !b ? t('profile.save') : b.buyable ? t('profile.saveBuy') : t('profile.saveLocked', { n: b.need });
+    const key = b ? `${b.part}:${b.value}:${p.coins}` : '';
     if (key === statusKey) return; // keeps the button under the player's finger and focus
     statusKey = key;
+    const short = b?.buyable ? b.price - (p.coins ?? 0) : 0;
     status.innerHTML = b
-      ? `<p class="studio-lock" role="status">${ICONS.lock}<span>${esc(t('profile.lockedItem', { item: itemName(b.part, b.value), n: b.need }))}</span></p>
+      ? `<p class="studio-lock" role="status">${b.buyable ? ICONS.coin : ICONS.lock}<span>${esc(b.buyable ? t('profile.buyItem', { item: itemName(b.part, b.value), price: b.price }) : t('profile.lockedItem', { item: itemName(b.part, b.value), n: b.need }))}</span></p>
+         ${b.buyable ? `<button type="button" class="btn btn-small btn-marigold" data-buy ${short > 0 ? 'disabled' : ''}>${esc(t('profile.buy', { price: b.price }))}</button>${short > 0 ? `<p class="studio-short">${esc(t('profile.needMore', { n: short }))}</p>` : ''}` : ''}
          <button type="button" class="btn btn-small btn-ghost" data-take-off>${esc(t('profile.takeOff'))}</button>`
       : `<button type="button" class="btn btn-small btn-ghost" data-random>${ICONS.dice}<span>${esc(t('profile.random'))}</span></button>`;
   }
@@ -3178,15 +3229,29 @@ function showProfile() {
     draw();
     panel.querySelector(`[data-value="${b.dataset.value}"]`)?.focus({ preventScroll: true });
   });
-  status.addEventListener('click', (e) => {
+  status.addEventListener('click', async (e) => {
+    const buy = e.target.closest('[data-buy]');
+    if (buy) {
+      const b = blocker();
+      buy.disabled = true;
+      try {
+        await buyUnlock(b.part, b.value);
+        statusKey = null;
+        draw();
+      } catch (err) {
+        buy.disabled = false;
+        msg.textContent = errMsg(err);
+      }
+      return;
+    }
     if (e.target.closest('[data-random]')) {
-      draft = parseAvatar(randomAvatar(undefined, level));
+      draft = parseAvatar(randomAvatar(undefined, level, new Set(state.profile.owned)));
       draw();
     } else if (e.target.closest('[data-take-off]')) {
       for (const part of Object.keys(draft)) {
-        if (unlockLevel(part, draft[part]) <= level) continue;
-        // Back to what's saved, or the first free choice if that's locked too (a part worn since before its unlock moved).
-        draft[part] = unlockLevel(part, saved[part]) <= level ? saved[part] : PROFILE_TABS.find((x) => x.id === part).values[0];
+        if (ownsItem(part, draft[part])) continue;
+        // Back to what's saved, or the first free choice if that isn't owned either.
+        draft[part] = ownsItem(part, saved[part]) ? saved[part] : PROFILE_TABS.find((x) => x.id === part).values[0];
       }
       draw();
       status.querySelector('[data-random]')?.focus({ preventScroll: true });

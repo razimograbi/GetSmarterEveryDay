@@ -119,6 +119,26 @@ export const MAX_POINTS = SCORING.base + SCORING.speedBonus;
 export const XP = { finished: 10, bonus: { daily: 20, duel: 10 }, stageClear: 50 };
 export const MAX_LEVEL = 99;
 
+// Coins: earned by playing, spent on what levels unlock (a level makes an item available; coins
+// buy it). All the numbers that set the balance are here.
+export const COINS = {
+  finished: 5, // on top of the round's score, when it scored anything
+  bonus: { daily: 15 },
+  duel: { win: 20, draw: 10, loss: 5 },
+  levelUp: 50,
+  stageClear: 50,
+  streak: { 7: 50, 30: 200 }, // day streaks: paid once per streak
+  quickFullPerDay: 20, // Quick and topic rounds pay half after this many in a day
+  price: { base: 30, perLevel: 12, skin: 1.5 }, // an item costs base + perLevel × its level; skins cost more
+};
+
+/** The coins a finished round earns. A round with no points earns none, so nothing pays for tapping through. */
+export function roundCoins(category, score, halved = false) {
+  if (score <= 0) return 0;
+  const coins = score + COINS.finished + (COINS.bonus[category] || 0);
+  return halved ? Math.ceil(coins / 2) : coins;
+}
+
 // Leveling: stages an admin writes on the dashboard and players clear in order. A stage is cleared
 // with at least `clearPercent` of its questions right. The first clear of each stage earns
 // XP.stageClear on top of the round's usual XP; a later try earns only the usual XP.
