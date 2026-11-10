@@ -3,10 +3,10 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, levelFor, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
+  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, COINS, levelFor, roundCoins, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
 } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
-import { avatarLevel, parseAvatar, randomAvatar } from '../shared/avatars.js';
+import { UNLOCKS, itemKey, parseAvatar, randomAvatar, unlockLevel, unlockPrice } from '../shared/avatars.js';
 import { isCountry } from '../shared/countries.js';
 import { reviewState } from './review.js';
 
@@ -226,6 +226,15 @@ export function rescaledXp(xp) {
   return xpForLevel(level) + Math.floor(share * (xpForLevel(level + 1) - xpForLevel(level)));
 }
 
+/** Gives a player, free, everything their level has unlocked and everything they're wearing. */
+export function grantUnlocked(db, userId, xp, avatar) {
+  const add = db.prepare('INSERT OR IGNORE INTO owned_items (user_id, item, price, created_at) VALUES (?, ?, 0, ?)');
+  const now = Date.now();
+  const level = levelFor(xp);
+  for (const u of UNLOCKS) if (u.level <= level) add.run(userId, itemKey(u.part, u.value), now);
+  for (const [part, value] of Object.entries(parseAvatar(avatar) ?? {})) if (unlockPrice(part, value) > 0) add.run(userId, itemKey(part, value), now);
+}
+
 // Numbered migrations, run once each in order. PRAGMA user_version remembers the last one done.
 const MIGRATIONS = [
   // 1: scoring changed from 100 + up to 50 per answer to 1 + up to 2. Old rounds are scored again
@@ -328,6 +337,30 @@ const MIGRATIONS = [
   (db) => {
     const set = db.prepare('UPDATE profiles SET xp = ? WHERE user_id = ?');
     for (const { user_id: id, xp } of db.prepare('SELECT user_id, xp FROM profiles').all()) set.run(rescaledXp(xp), id);
+  },
+  // 11: coins. The ledger keeps every coin earned or spent; its `ref` stops the same thing paying
+  // twice. Everything a player has already unlocked is theirs for free.
+  (db) => {
+    db.exec(`
+      ALTER TABLE profiles ADD COLUMN coins INTEGER NOT NULL DEFAULT 0 CHECK (coins >= 0);
+      CREATE TABLE coin_ledger (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount      INTEGER NOT NULL,
+        reason      TEXT NOT NULL,
+        ref         TEXT NOT NULL,
+        created_at  INTEGER NOT NULL,
+        UNIQUE (user_id, ref)
+      );
+      CREATE TABLE owned_items (
+        user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item        TEXT NOT NULL,
+        price       INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL,
+        PRIMARY KEY (user_id, item)
+      );
+    `);
+    for (const p of db.prepare('SELECT user_id, xp, avatar FROM profiles').all()) grantUnlocked(db, p.user_id, p.xp, p.avatar);
   },
 ];
 
@@ -524,7 +557,9 @@ export function exportUser(db, userId) {
     reports: db.prepare('SELECT question_id, reason, note, status, created_at FROM question_reports WHERE user_id = ? ORDER BY id').all(userId),
     events: db.prepare('SELECT name, props, created_at FROM events WHERE user_id = ? ORDER BY id').all(userId)
       .map((e) => ({ ...e, props: e.props ? JSON.parse(e.props) : null })),
-    profile: db.prepare('SELECT name, avatar, country, hidden, friend_code, xp, updated_at FROM profiles WHERE user_id = ?').get(userId) ?? null,
+    profile: db.prepare('SELECT name, avatar, country, hidden, friend_code, xp, coins, updated_at FROM profiles WHERE user_id = ?').get(userId) ?? null,
+    coins: db.prepare('SELECT amount, reason, created_at FROM coin_ledger WHERE user_id = ? ORDER BY id').all(userId),
+    ownedItems: db.prepare('SELECT item, price, created_at FROM owned_items WHERE user_id = ? ORDER BY created_at').all(userId),
     friends: db.prepare('SELECT p.name, f.created_at FROM friends f JOIN profiles p ON p.user_id = f.friend_id WHERE f.user_id = ? ORDER BY f.created_at').all(userId),
     daily: db.prepare('SELECT day, score, correct, total, ms, started_at, finished_at FROM daily_results WHERE user_id = ? ORDER BY day').all(userId),
     duels: db.prepare('SELECT id, category, challenger_id = ? AS you_challenged, challenger_score, opponent_score, created_at, finished_at FROM duels WHERE challenger_id = ? OR opponent_id = ? ORDER BY created_at')
@@ -671,6 +706,100 @@ export function backupDb(db, file) {
   db.prepare('VACUUM INTO ?').run(file);
 }
 
+// ── Coins ──────────────────────────────────────────────────────
+
+export const coinsOf = (db, userId) => db.prepare('SELECT coins FROM profiles WHERE user_id = ?').get(userId)?.coins ?? 0;
+
+/** Pays a player once for `ref`. Returns what was paid: nothing if `ref` was already paid. */
+function addCoins(db, userId, amount, reason, ref) {
+  if (amount <= 0) return 0;
+  const added = db.prepare('INSERT OR IGNORE INTO coin_ledger (user_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)').run(userId, amount, reason, ref, Date.now()).changes;
+  if (!added) return 0;
+  db.prepare('UPDATE profiles SET coins = coins + ? WHERE user_id = ?').run(amount, userId);
+  return amount;
+}
+
+const SERVER_PLAYED = "('daily', 'duel', 'stage')"; // the rounds whose answers the browser can't make up
+
+/** What a finished round pays: the round itself, any levels it reached and any streak it completed. */
+function payRound(db, userId, { roundId, category, score, fromLevel, toLevel }) {
+  let halved = false;
+  if (!['daily', 'duel', 'stage'].includes(category)) {
+    const today = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+    const { n } = db.prepare(`SELECT COUNT(*) AS n FROM rounds WHERE user_id = ? AND complete = 1 AND created_at >= ? AND category NOT IN ${SERVER_PLAYED}`).get(userId, today);
+    halved = n > COINS.quickFullPerDay;
+  }
+  let paid = addCoins(db, userId, roundCoins(category, score, halved), 'round', `round:${roundId}`);
+  for (let level = fromLevel + 1; level <= toLevel; level++) paid += addCoins(db, userId, COINS.levelUp, 'level', `level:${level}`);
+  const tz = db.prepare('SELECT tz_offset FROM profiles WHERE user_id = ?').get(userId)?.tz_offset ?? 0;
+  const { current } = dayStreaks(db, userId, tz);
+  const firstDay = Math.floor((Date.now() - tz * 60_000) / DAY_MS) - current + 1; // tells one streak from the next
+  for (const [days, amount] of Object.entries(COINS.streak)) if (current >= Number(days)) paid += addCoins(db, userId, amount, 'streak', `streak:${days}:${firstDay}`);
+  return paid;
+}
+
+/** 'challenger', 'opponent' or 'draw' once it's over: giving up loses, then more points win, then less time. */
+export function duelWinner(d) {
+  if (d.forfeitSide) return d.forfeitSide === 'challenger' ? 'opponent' : 'challenger';
+  const a = d.challenger;
+  const b = d.opponent;
+  if (a.score === null || b.score === null) return null;
+  if (a.score !== b.score) return a.score > b.score ? 'challenger' : 'opponent';
+  if (a.ms !== b.ms) return a.ms < b.ms ? 'challenger' : 'opponent';
+  return 'draw';
+}
+
+/** Pays both sides of a finished duel. Whoever gave up gets nothing; `winnerEarns` is false after a forfeit too early to count. */
+export function payDuel(db, id, { winnerEarns = true } = {}) {
+  const d = getDuel(db, id);
+  const winner = d && duelWinner(d);
+  if (!winner) return;
+  const pay = (side, amount) => {
+    const userId = side === 'challenger' ? d.challengerId : d.opponentId;
+    if (userId) addCoins(db, userId, amount, 'duel', `duel:${id}`);
+  };
+  inTransaction(db, () => {
+    if (winner === 'draw') {
+      pay('challenger', COINS.duel.draw);
+      pay('opponent', COINS.duel.draw);
+    } else {
+      if (winnerEarns) pay(winner, COINS.duel.win);
+      if (!d.forfeitSide) pay(winner === 'challenger' ? 'opponent' : 'challenger', COINS.duel.loss);
+    }
+  });
+}
+
+/** The coins this duel paid one of its players: for their round, and for the result. */
+export function duelCoinsEarned(db, id, side, userId) {
+  const round = db.prepare(`SELECT ${side === 'challenger' ? 'challenger_round' : 'opponent_round'} AS r FROM duels WHERE id = ?`).get(id)?.r;
+  return db.prepare('SELECT COALESCE(SUM(amount), 0) AS n FROM coin_ledger WHERE user_id = ? AND ref IN (?, ?)').get(userId, `duel:${id}`, `round:${round}`).n;
+}
+
+const ownedItems = (db, userId) => db.prepare('SELECT item FROM owned_items WHERE user_id = ?').all(userId).map((r) => r.item);
+
+/** A player's own profile, with what only they see: their coins and what they own. */
+export const ownProfile = (db, profile) => ({ ...profile, coins: coinsOf(db, profile.id), owned: ownedItems(db, profile.id) });
+
+/** Buys an item the player's level has unlocked. Buying something already owned costs nothing. */
+export function buyItem(db, userId, part, value) {
+  const price = unlockPrice(part, value);
+  if (price <= 0) throw badRequest('That item is free.');
+  return inTransaction(db, () => {
+    const item = itemKey(part, value);
+    const wallet = () => ({ coins: coinsOf(db, userId), owned: ownedItems(db, userId) });
+    if (db.prepare('SELECT 1 FROM owned_items WHERE user_id = ? AND item = ?').get(userId, item)) return wallet();
+    const level = getProfile(db, userId)?.level ?? 0;
+    const need = unlockLevel(part, value);
+    if (need > level) throw badRequest(`That item unlocks at level ${need}.`);
+    const paid = db.prepare('UPDATE profiles SET coins = coins - ? WHERE user_id = ? AND coins >= ?').run(price, userId, price).changes;
+    if (!paid) throw Object.assign(new Error('Not enough coins.'), { status: 409, code: 'notEnoughCoins' });
+    const now = Date.now();
+    db.prepare('INSERT INTO coin_ledger (user_id, amount, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)').run(userId, -price, 'buy', `buy:${item}`, now);
+    db.prepare('INSERT INTO owned_items (user_id, item, price, created_at) VALUES (?, ?, ?, ?)').run(userId, item, price, now);
+    return wallet();
+  });
+}
+
 /** Writes a round and its answers and adds its XP. Runs inside the caller's transaction. */
 function insertRound(db, userId, { mode, category, graded, complete = true, bonusXp = 0 }) {
   const now = Date.now();
@@ -685,7 +814,8 @@ function insertRound(db, userId, { mode, category, graded, complete = true, bonu
   for (const a of graded) ins.run(roundId, userId, a.id, a.cat, a.choice, a.correct ? 1 : 0, a.ms, now);
   const xpGained = complete ? xpForRound(category, score) + bonusXp : 0;
   const xp = db.prepare('UPDATE profiles SET xp = xp + ? WHERE user_id = ? RETURNING xp').get(xpGained, userId)?.xp ?? 0;
-  return { roundId: Number(roundId), score, correct, total: graded.length, xpGained, xp };
+  const coinsGained = complete ? payRound(db, userId, { roundId: Number(roundId), category, score, fromLevel: levelFor(xp - xpGained), toLevel: levelFor(xp) }) : 0;
+  return { roundId: Number(roundId), score, correct, total: graded.length, xpGained, xp, coinsGained, coins: coinsOf(db, userId) };
 }
 
 /** Runs `work` in one transaction: all of it is saved, or none. */
@@ -852,6 +982,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     dueMistakes,
     lastRoundIds,
     xp: getProfile(db, userId)?.xp ?? 0,
+    coins: coinsOf(db, userId),
   };
 }
 
@@ -905,8 +1036,11 @@ export function saveProfile(db, userId, changes) {
   }
   if ('avatar' in changes) {
     if (!parseAvatar(changes.avatar)) throw badRequest('Unknown avatar.');
-    const need = avatarLevel(changes.avatar);
-    if (changes.avatar !== p.avatar && need > p.level) throw badRequest(`That avatar unlocks at level ${need}.`);
+    if (changes.avatar !== p.avatar) {
+      const owned = new Set(ownedItems(db, userId));
+      const missing = Object.entries(parseAvatar(changes.avatar)).some(([part, value]) => unlockPrice(part, value) > 0 && !owned.has(itemKey(part, value)));
+      if (missing) throw badRequest('Buy that item before wearing it.');
+    }
     p.avatar = changes.avatar;
   }
   if ('country' in changes) {
@@ -1414,6 +1548,10 @@ export function finishStageTry(db, { userId, stageId, mode, graded, total, playe
     }
     const bonusXp = firstClear ? XP.stageClear : 0;
     const round = played ? insertRound(db, userId, { mode, category: 'stage', graded, complete: true, bonusXp }) : null;
+    if (round && firstClear) {
+      round.coinsGained += addCoins(db, userId, COINS.stageClear, 'stage', `stage:${stageId}`);
+      round.coins = coinsOf(db, userId);
+    }
     const score = round?.score ?? 0;
     if (exists) {
       db.prepare(`

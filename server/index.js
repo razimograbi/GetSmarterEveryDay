@@ -8,7 +8,7 @@ import {
   openDb, optimizeDb, upsertUser, deleteUser, saveRound, getStats, exportUser, finishedRounds,
   createSession, sessionUser, deleteSession, deleteUserSessions, purgeExpiredSessions,
   getSettings, saveSettings, saveReport, listReports, resolveReports, REPORT_STATUSES, logEvent, getRetention,
-  ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode, getMarketingProject, saveMarketingProject, playerCount,
+  buyItem, duelCoinsEarned, duelWinner, ownProfile, ensureProfile, getProfile, saveProfile, setTimezone, profileByCode, shownProfile, randomCode, getMarketingProject, saveMarketingProject, playerCount,
   addFriend, removeFriend, areFriends, listFriends,
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
   listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
@@ -187,7 +187,7 @@ const publicUser = (u) => u && {
 function signIn(res, user, locale = null) {
   const token = createSession(db, user.id, SESSION_TTL_MS);
   json(res, 200, {
-    user: publicUser(user), settings: getSettings(db, user.id), profile: ensureProfile(db, user), played: finishedRounds(db, user.id), locale,
+    user: publicUser(user), settings: getSettings(db, user.id), profile: ownProfile(db, ensureProfile(db, user)), played: finishedRounds(db, user.id), locale,
   }, {
     'Set-Cookie': sessionCookie(token, { secure: SECURE_COOKIES }),
   });
@@ -208,7 +208,7 @@ const routes = {
   'GET /api/me': (req, res) => {
     const user = currentUser(req);
     json(res, 200, {
-      user: publicUser(user), settings: user ? getSettings(db, user.id) : null, profile: user ? ensureProfile(db, user) : null,
+      user: publicUser(user), settings: user ? getSettings(db, user.id) : null, profile: user ? ownProfile(db, ensureProfile(db, user)) : null,
       played: user ? finishedRounds(db, user.id) : 0, // rounds finished: 0 shows the new-player home
       liveDuel: user ? matches.liveFor(user.id) : null, // a duel going on right now, to get back to
     });
@@ -314,6 +314,20 @@ const routes = {
     json(res, 200, { ok: true }, { 'Set-Cookie': clearedCookie() });
   },
 
+  // Buys something the player's level has unlocked. The server checks the level and the price.
+  'POST /api/shop/buy': async (req, res) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to buy this.' });
+    const { part, value } = await body(req);
+    ensureProfile(db, user);
+    try {
+      json(res, 200, buyItem(db, user.id, part, value));
+    } catch (err) {
+      if (err.code !== 'notEnoughCoins') throw err;
+      json(res, err.status, { error: err.message, code: err.code });
+    }
+  },
+
   'POST /api/rounds': async (req, res) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to save your progress.' });
@@ -398,7 +412,7 @@ const routes = {
     const changes = await body(req);
     if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return json(res, 400, { error: 'Send the profile as a JSON object.' });
     ensureProfile(db, user);
-    json(res, 200, { profile: saveProfile(db, user.id, changes) });
+    json(res, 200, { profile: ownProfile(db, saveProfile(db, user.id, changes)) });
   },
 
   'GET /api/friends': (req, res, url) => {
@@ -807,17 +821,6 @@ const dailyFor = (date) => getDaily(db, date, dailyNumber(date), (recent) => pic
 /** Questions any of these players met lately, so a new duel can stay away from them. */
 const seenByPlayers = (...userIds) => new Set(userIds.filter(Boolean).flatMap((id) => recentQuestionIds(db, id)));
 
-/** 'challenger', 'opponent' or 'draw' once it's over: giving up loses, then more points win, then less time. */
-function duelWinner(d) {
-  if (d.forfeitSide) return d.forfeitSide === 'challenger' ? 'opponent' : 'challenger';
-  const a = d.challenger;
-  const b = d.opponent;
-  if (a.score === null || b.score === null) return null;
-  if (a.score !== b.score) return a.score > b.score ? 'challenger' : 'opponent';
-  if (a.ms !== b.ms) return a.ms < b.ms ? 'challenger' : 'opponent';
-  return 'draw';
-}
-
 /** Where a duel stands for one player. Before it's over, nobody is told anything about the score. */
 function duelStatus(d, role, viewerId) {
   if (d.endReason === 'expired' || d.endReason === 'retired') return 'expired';
@@ -848,6 +851,7 @@ function duelView(d, viewerId, { brief = false } = {}) {
     invitedFriend: !d.opponentId && d.invitedId ? shownProfile(getProfile(db, d.invitedId) ?? { id: d.invitedId, name: null }) : null,
     createdAt: d.createdAt, finishedAt: d.finishedAt, count: d.questionIds.length || DUEL.questions,
     canRematch: !!role && matches.isOpen(d.id),
+    coins: role && d.finishedAt && !brief ? duelCoinsEarned(db, d.id, role, viewerId) : 0,
   };
   if (brief) return view;
   if (d.finishedAt && role && d[role].score !== null) {
@@ -925,6 +929,7 @@ const ROUTE_LIMITS = {
   'POST /api/auth/google': 'signIn',
   'POST /api/auth/dev': 'signIn',
   'POST /api/rounds': 'rounds',
+  'POST /api/shop/buy': 'rounds',
   'POST /api/questions': 'questions',
   'GET /api/account/export': 'export',
   'POST /api/reports': 'reports',

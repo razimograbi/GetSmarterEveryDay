@@ -7,14 +7,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createDuel, finishDuelSide, getDaily, getDuel, openDb, rescaledXp, upsertUser } from '../server/db.js';
+import { buyItem, coinsOf, createDuel, ensureProfile, finishDuelSide, getDaily, getDuel, grantUnlocked, openDb, ownProfile, payDuel, rescaledXp, saveProfile, saveRound, upsertUser } from '../server/db.js';
+import { avatarCode, parseAvatar, unlockPrice } from '../shared/avatars.js';
 import { createPlays } from '../server/play.js';
 import { serverNow } from '../server/clock.js';
 import { createMatches } from '../server/match.js';
 import { hasEnoughQuestions, pickQuestions } from '../server/pick.js';
 import { pictureKeepsSecret } from '../server/pictures.js';
 import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
-import { MATCH, PLAY, levelFor, xpForLevel } from '../shared/config.js';
+import { COINS, MATCH, PLAY, levelFor, roundCoins, xpForLevel } from '../shared/config.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'smarts-match-'));
 after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
@@ -429,6 +430,108 @@ test('levels cost more, but one finished round still reaches level 2', () => {
 test('moving to the costlier levels keeps every player on their level', () => {
   const oldLevel = (xp) => Math.min(99, Math.floor((1 + Math.sqrt(1 + (4 * xp) / 5)) / 2));
   for (const xp of [0, 1, 9, 10, 29, 30, 99, 100, 451, 1900, 12_250, 48_509, 48_510, 60_000]) assert.equal(levelFor(rescaledXp(xp)), oldLevel(xp), `xp ${xp}`);
+});
+
+// ── Coins ──
+const graded = (points) => [{ id: QUESTIONS[0].id, cat: QUESTIONS[0].cat, choice: 'x', correct: points > 0, ms: 1000, points }];
+const playRound = (id, points, category = 'mixed', complete = true) => saveRound(db, id, { mode: 'classic', category, graded: graded(points), complete });
+const give = (id, xp, coins) => db.prepare('UPDATE profiles SET xp = ?, coins = ? WHERE user_id = ?').run(xp, coins, id);
+const account = (id) => ensureProfile(db, { id, name: id });
+
+test('a round pays its score plus the finish bonus, and nothing for no points', () => {
+  account('ann');
+  assert.equal(roundCoins('mixed', 0), 0);
+  assert.equal(playRound('ann', 12).coinsGained, 12 + COINS.finished + COINS.levelUp); // this round also reaches level 2
+  assert.equal(playRound('ann', 3, 'daily').coinsGained, 3 + COINS.finished + COINS.bonus.daily);
+  const before = coinsOf(db, 'ann');
+  assert.equal(playRound('ann', 5, 'mixed', false).coinsGained, 0, 'a round left unfinished pays nothing');
+  assert.equal(coinsOf(db, 'ann'), before);
+});
+
+test('Quick rounds pay half after the daily limit, and the Daily does not', () => {
+  account('ann');
+  give('ann', 1_000_000, 0);
+  for (let i = 0; i < COINS.quickFullPerDay; i++) assert.equal(playRound('ann', 10).coinsGained, 15);
+  assert.equal(playRound('ann', 10).coinsGained, 8);
+  assert.equal(playRound('ann', 10, 'daily').coinsGained, 10 + COINS.finished + COINS.bonus.daily);
+});
+
+test('each level pays once', () => {
+  account('ann');
+  give('ann', xpForLevel(3) - 1, 0);
+  assert.equal(playRound('ann', 10).coinsGained, 15 + COINS.levelUp);
+  give('ann', xpForLevel(3) - 1, 0); // back below level 3
+  assert.equal(playRound('ann', 10).coinsGained, 15);
+});
+
+test('prices follow the level, skins cost more, free things stay free', () => {
+  assert.equal(unlockPrice('eyes', 'angry'), 50); // level 2
+  assert.equal(unlockPrice('extra', 'ascended'), 630); // level 50
+  assert.equal(unlockPrice('animal', 'dragon'), 950); // a skin at level 50
+  assert.equal(unlockPrice('animal', 'cat'), 0);
+});
+
+test('an item must be unlocked and paid for, and is only charged once', () => {
+  account('ann');
+  give('ann', 0, 1000);
+  assert.throws(() => buyItem(db, 'ann', 'eyes', 'angry'), /level 2/);
+  give('ann', xpForLevel(2), 40);
+  assert.throws(() => buyItem(db, 'ann', 'eyes', 'angry'), (e) => e.code === 'notEnoughCoins');
+  assert.equal(coinsOf(db, 'ann'), 40);
+  give('ann', xpForLevel(2), 120);
+  assert.equal(buyItem(db, 'ann', 'eyes', 'angry').coins, 70);
+  assert.equal(buyItem(db, 'ann', 'eyes', 'angry').coins, 70, 'buying twice costs nothing');
+  assert.deepEqual(ownProfile(db, ensureProfile(db, { id: 'ann', name: 'ann' })).owned, ['eyes:angry']);
+  assert.throws(() => buyItem(db, 'ann', 'animal', 'cat'), /free/);
+  assert.throws(() => buyItem(db, 'ann', 'nonsense', 'x'), /free/);
+});
+
+test('an avatar part can only be worn once it is bought', () => {
+  const p = account('ann');
+  give('ann', xpForLevel(2), 100);
+  const avatar = avatarCode({ ...parseAvatar(p.avatar), eyes: 'angry' });
+  assert.throws(() => saveProfile(db, 'ann', { avatar }), /Buy/);
+  buyItem(db, 'ann', 'eyes', 'angry');
+  assert.equal(saveProfile(db, 'ann', { avatar }).avatar, avatar);
+});
+
+test('existing players keep everything they had unlocked, for free', () => {
+  const p = account('ann');
+  grantUnlocked(db, 'ann', xpForLevel(3), p.avatar);
+  const { owned, coins } = ownProfile(db, p);
+  for (const item of ['eyes:angry', 'extra:tribal', 'animal:wolf']) assert.ok(owned.includes(item), item);
+  assert.ok(!owned.includes('bg:crimson'), 'level 4 is not reached yet');
+  assert.equal(coins, 0);
+});
+
+test('a played duel pays the winner more, and pays once', () => {
+  account('ann');
+  account('bob');
+  begin();
+  for (let idx = 0; idx < 10; idx++) playQuestion(idx);
+  assert.equal(coinsOf(db, 'ann'), COINS.duel.win);
+  assert.equal(coinsOf(db, 'bob'), COINS.duel.loss);
+  payDuel(db, duel.id);
+  assert.equal(coinsOf(db, 'ann'), COINS.duel.win);
+});
+
+test('whoever gives up gets no duel coins, and an early forfeit pays the winner nothing', () => {
+  account('ann');
+  account('bob');
+  begin();
+  for (let idx = 0; idx < 5; idx++) playQuestion(idx);
+  matches.leave(duel.id, 'ann', clock.t);
+  assert.equal(coinsOf(db, 'ann'), 0);
+  assert.equal(coinsOf(db, 'bob'), COINS.duel.win);
+});
+
+test('winning by a very early forfeit pays nothing', () => {
+  account('ann');
+  account('bob');
+  begin();
+  playQuestion(0);
+  matches.leave(duel.id, 'ann', clock.t);
+  assert.equal(coinsOf(db, 'bob'), 0);
 });
 
 test('a Daily picked before a question was removed plays without it', () => {

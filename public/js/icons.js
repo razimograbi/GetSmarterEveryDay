@@ -54,6 +54,7 @@ export const ICONS = {
   plus: i('<path d="M12 5v14M5 12h14"/>'),
   report: i('<path d="M4.5 5.5h15v10.5H10l-5.5 4.5z"/><path d="M12 8.5v3.5"/><circle cx="12" cy="14.2" r=".7" fill="currentColor"/>'),
   close: i('<path d="M6 6l12 12M18 6 6 18"/>'),
+  coin: i('<circle cx="12" cy="12" r="9.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="5.5" stroke="rgba(90,55,0,.55)" stroke-width="1.8"/>'),
   check: i('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'stroke-width="2.6"'),
   cross: i('<path d="M7 7l10 10M17 7 7 17"/>', 'stroke-width="2.6"'),
   clock: i('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),

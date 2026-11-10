@@ -1498,6 +1498,17 @@ code { unicode-bidi: isolate; direction: ltr; }
 
 /* Language button on the home screen */
 .topbar-end { display: flex; align-items: center; gap: 10px; }
+.coin-pill { display: inline-flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 12px 0 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; text-decoration: none; }
+.coin-pill svg { width: 20px; height: 20px; color: var(--marigold); }
+.coins-earned { display: flex; align-items: center; justify-content: center; gap: 5px; margin: 0; font-family: var(--font-show); font-size: 20px; line-height: 1.1; color: var(--marigold-deep); }
+.coins-earned svg { width: 20px; height: 20px; color: var(--marigold); }
+.price-chip { background: var(--marigold); color: var(--ink); }
+.price-chip svg { color: var(--marigold-deep); }
+.avatar-choice.is-buyable[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--marigold-deep); }
+.studio-short { margin: 0; font-size: 13px; font-weight: 650; }
+.levelup-buy { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; }
+.levelup-buy svg { width: 16px; height: 16px; color: var(--marigold-deep); }
+.levelup-hint { margin: 8px 0 0; font-size: 14px; color: var(--ink-2); }
 .lang-btn {
   display: flex;
   align-items: center;

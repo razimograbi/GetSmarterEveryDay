@@ -14,7 +14,7 @@
 // written to the database at every phase change, so they carry on after a restart.
 
 import {
-  claimDuel, endDuel, getDuel, liveDuelIds, releaseDuelSeat, saveDuelLive, setDuelQuestions,
+  claimDuel, endDuel, getDuel, liveDuelIds, payDuel, releaseDuelSeat, saveDuelLive, setDuelQuestions,
 } from './db.js';
 import { serverNow } from './clock.js';
 import { MATCH, PLAY, SCORING } from '../shared/config.js';
@@ -220,6 +220,10 @@ export function createMatches(db, { plays, pick, profileOf, reminders, clock = s
     const counted = reason === 'played' || reason === 'forfeit';
     const missed = counted ? seatsOf(m).find((s) => !present(s, t) && sideOf(m, s) !== m.leftBy) : null;
     endDuel(db, m.id, { reason, forfeitSide, unseenBy: missed?.userId ?? null });
+    if (counted) {
+      const winner = forfeitSide ? m.seats[otherSide(forfeitSide)] : null;
+      payDuel(db, m.id, { winnerEarns: !winner || (!!winner.play && playedCount(winner) >= MATCH.forfeitXpMin) });
+    }
     if (missed) tellAbsent(m, missed, forfeitSide);
   }
 

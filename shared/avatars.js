@@ -8,6 +8,8 @@
 // The first parts of each list are open to everyone. The rest unlock with the player's level and
 // are listed in the order they unlock (see UNLOCKS). Add-ons work on every skin.
 
+import { COINS } from './config.js';
+
 export const ANIMALS = [
   'cat', 'fox', 'bear', 'panda', 'koala', 'rabbit', 'owl', 'penguin', 'frog', 'lion', 'dog', 'monkey',
   'wolf', 'ninja', 'shark', 'cobra', 'robot', 'tiger', 'bull', 'alien', 'knight', 'panther', 'fiend', 'skull', 'phoenix', 'dragon',
@@ -68,6 +70,17 @@ const LEVEL_OF = new Map(UNLOCKS.map((u) => [`${u.part}:${u.value}`, u.level]));
 
 /** The level that unlocks one part of an avatar, such as ('animal', 'wolf'). 1 means it's open to everyone. */
 export const unlockLevel = (part, value) => LEVEL_OF.get(`${part}:${value}`) ?? 1;
+
+/** What one part of an avatar costs in coins. 0 means it's free for everyone. */
+export function unlockPrice(part, value) {
+  const level = unlockLevel(part, value);
+  if (level <= 1) return 0;
+  const price = (COINS.price.base + COINS.price.perLevel * level) * (part === 'animal' ? COINS.price.skin : 1);
+  return Math.round(price / 10) * 10;
+}
+
+/** How an item is named in a player's list of what they own. */
+export const itemKey = (part, value) => `${part}:${value}`;
 
 /** The level a whole avatar needs: its most demanding part. */
 export function avatarLevel(code) {
@@ -729,11 +742,11 @@ export const avatarCode = ({ animal, eyes: eye, bg, extra: ex }) => `${animal}-$
  * An avatar picked from `seed` (a user id), so every new player starts with their own. Any skin
  * can come up, but only add-ons open at `level`.
  */
-export function randomAvatar(seed = String(Math.random()), level = 1) {
+export function randomAvatar(seed = String(Math.random()), level = 1, owned = null) {
   let h = 2166136261;
   for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
   const pick = (part, list) => {
-    const open = list.filter((value) => unlockLevel(part, value) <= level);
+    const open = list.filter((value) => unlockLevel(part, value) <= level && (!owned || unlockPrice(part, value) === 0 || owned.has(itemKey(part, value))));
     h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0;
     return open[h % open.length];
   };
