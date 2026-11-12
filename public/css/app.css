@@ -1949,6 +1949,26 @@ button.quick, button.topic { width: 100%; border: 0; font: inherit; text-align: 
 .mk-scenes { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .mk-scenes li { display: grid; grid-template-columns: 1fr 62px 22px; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 10px; }
 .mk-scenes li.is-selected { background: #eef0ff; }
+.mk-scenes .mk-empty { display: block; padding: 8px 6px; color: var(--ink-2); font-size: 14px; }
+.mk-scene-tools { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 10px; padding: 0 6px 6px; }
+.mk-scene-tools .link-btn { padding: 0; color: var(--cobalt); font-size: 13px; }
+.mk-scene-tools .link-btn:disabled { color: var(--ink-2); opacity: 0.5; cursor: default; }
+.mk-danger, .mk-scene-tools .mk-danger { color: var(--coral-deep); }
+.mk-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 10px; }
+.mk-add .mk-input { padding: 6px 8px; font-size: 14px; }
+.mk-h3 { margin: 14px 0 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: var(--ink-2); }
+.mk-h2-gap { margin-top: 18px !important; }
+.mk-field-gap { margin-top: 10px; }
+.mk-swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.mk-swatch { display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink-2); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.mk-swatch i { display: block; width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 50% 35%, var(--a), var(--b) 80%); box-shadow: inset 0 0 0 3px var(--c); }
+.mk-swatch[aria-pressed="true"] { border-color: var(--cobalt); background: #eef0ff; color: var(--ink); }
+.mk-pick { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 12px; }
+.mk-pick-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.mk-pick-group > span { font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.mk-copy { padding: 0 6px; color: var(--cobalt); font-size: 13px; font-weight: 700; }
+.mk-keys { margin: 8px 0 0; }
+.mk-field span small { font-weight: 500; color: var(--ink-2); }
 .mk-scenes li.is-off .mk-scene { opacity: 0.45; }
 .mk-scene { display: flex; justify-content: space-between; gap: 8px; min-height: 38px; align-items: center; padding: 0 6px; border: 0; background: none; color: var(--ink); font: inherit; font-weight: 700; text-align: start; cursor: pointer; }
 .mk-scene small { color: var(--ink-2); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -2174,3 +2194,134 @@ button.quick, button.topic { width: 100%; border: 0; font: inherit; text-align: 
   .lobby-dots span, .btn.is-offer { animation: none; opacity: 1; }
   .play-score.is-bump, .lr-verdict { animation: none; }
 }
+
+/* ── Levels ──────────────────────────────────────────────────────
+   Ten built-in rounds (server/quests.js). A level shows the photo of its topic; a finished one
+   gets a tick, and a trophy when it was finished on the first try. */
+
+.quest-photo { flex: none; position: relative; display: block; width: 76px; height: 76px; border-radius: 18px; background: var(--cobalt-ink); }
+.quest-photo img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.quest-photo.is-big { width: 124px; height: 124px; border-radius: 30px; box-shadow: 0 0 0 4px var(--marigold), 0 10px 24px rgba(20, 24, 51, 0.22); }
+.quest-badge { position: absolute; inset-block-end: -6px; inset-inline-end: -6px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--mint); color: #fff; box-shadow: 0 0 0 3px var(--paper); }
+.quest-badge.is-ace { background: var(--marigold); color: var(--ink); }
+.quest-badge svg { width: 17px; height: 17px; }
+.quest-photo.is-big .quest-badge { width: 40px; height: 40px; }
+.quest-photo.is-big .quest-badge svg { width: 22px; height: 22px; }
+.quest-lock { position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit; background: rgba(19, 28, 110, 0.4); color: #fff; }
+.quest-lock svg { width: 26px; height: 26px; }
+.quest-mystery { display: grid; place-items: center; width: 100%; height: 100%; border-radius: inherit; border: 2px dashed rgba(255, 255, 255, 0.45); color: var(--marigold); font-family: var(--font-show); font-size: 36px; }
+.quest-mystery svg { width: 34px; height: 34px; }
+
+.quest-prize { display: inline-flex; align-items: center; gap: 6px; }
+.quest-xp, .quest-coins, .quest-x2 { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 800; line-height: 1.4; white-space: nowrap; }
+.quest-xp { background: var(--cobalt); color: #fff; }
+.quest-coins { background: #fff1c4; color: var(--ink); }
+.quest-coins svg { width: 14px; height: 14px; color: var(--marigold-deep); }
+.quest-x2 { background: var(--coral); color: #fff; }
+.quest-card-prize { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+
+/* On the home screen: the next level, on dark so it stands apart from the paper rows. */
+.quest-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: var(--r-card);
+  background: linear-gradient(135deg, var(--cobalt-ink), #0c1250);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 5px 0 #080c3a, inset 0 0 0 2px var(--marigold);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.quest-card:active { transform: translateY(4px); box-shadow: 0 1px 0 #080c3a, inset 0 0 0 2px var(--marigold); }
+.quest-card .quest-badge { box-shadow: 0 0 0 3px var(--cobalt-ink); }
+.quest-card-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.quest-card-text small { font-size: 12px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--marigold); }
+.quest-card-text strong { font-size: 19px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.quest-card-sub { font-size: 14px; color: var(--on-cobalt-2); }
+.quest-card-go, .quest-go { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--marigold); color: var(--ink); box-shadow: 0 3px 0 var(--marigold-deep); }
+.quest-card-go svg, .quest-go svg { width: 22px; height: 22px; transform: scaleX(var(--flip)); }
+.quest-card-go { animation: quest-nudge 1.6s ease-in-out infinite; }
+@keyframes quest-nudge { 50% { transform: scale(1.12); } }
+.quest-dots { display: flex; gap: 4px; margin-top: 8px; }
+.quest-dots i { flex: 1; max-width: 22px; height: 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.22); }
+.quest-dots i.is-done { background: var(--mint); }
+.quest-dots i.is-ace { background: var(--marigold); }
+.quest-dots i.is-open { background: #fff; }
+
+/* The map: one tile per level, joined by a line. */
+.quest-path { position: relative; list-style: none; display: grid; gap: 14px; margin: 16px 0 0; padding: 0; }
+.quest-path::before { content: ""; position: absolute; inset-block: 40px; inset-inline-start: 50px; width: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.25); }
+.quest-node { position: relative; }
+.quest-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 100px;
+  padding: 12px 14px 12px 12px;
+  border-radius: 22px;
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: var(--ledge);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+a.quest-tile:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--cobalt-deep); }
+.quest-node.is-open .quest-tile { box-shadow: var(--ledge), inset 0 0 0 3px var(--marigold); }
+.quest-node.is-locked .quest-tile, .quest-node.is-upcoming .quest-tile { background: var(--cobalt-ink); color: var(--on-cobalt-2); box-shadow: none; }
+.quest-node.is-upcoming .quest-tile { border: 2px dashed rgba(255, 255, 255, 0.3); background: var(--cobalt); }
+.quest-node.is-locked .quest-aced { color: #7be3b5; }
+.quest-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.quest-text small { font-size: 12px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); }
+.quest-text strong { font-size: 18px; font-weight: 750; line-height: 1.25; overflow-wrap: anywhere; }
+.quest-text > span { font-size: 14px; color: var(--ink-2); }
+.quest-node.is-locked .quest-text small, .quest-node.is-locked .quest-text > span,
+.quest-node.is-upcoming .quest-text small, .quest-node.is-upcoming .quest-text > span { color: var(--on-cobalt-2); }
+.quest-node.is-upcoming .quest-text strong { color: #fff; }
+.quest-state { flex: none; margin: 0; padding: 4px 10px; border-radius: 999px; background: #d7f5e7; color: var(--mint-deep); font-size: 13px; font-weight: 800; white-space: nowrap; }
+.quest-state.is-ace { background: var(--marigold); color: var(--ink); }
+.quest-text > .quest-aced, .quest-aced { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--mint-deep); }
+.quest-aced-faces { flex: none; display: flex; }
+.quest-aced-faces .avatar { width: 22px; height: 22px; box-shadow: 0 0 0 2px var(--paper); }
+.quest-aced-faces .avatar + .avatar { margin-inline-start: -7px; }
+
+/* One level: what it pays, or how the try just played went. */
+.quest-page { position: relative; display: grid; justify-items: center; gap: 8px; margin-top: 30px; padding: 22px 20px; text-align: center; overflow: hidden; }
+.quest-page .btn { width: 100%; }
+.quest-page .eyebrow { margin-top: 12px; }
+.quest-name { margin: 0; font-family: var(--font-show); font-size: 30px; font-weight: 400; line-height: 1.1; }
+.quest-page .stage-verdict { margin-top: 10px; }
+.quest-page .stage-verdict.is-won { color: var(--mint-deep); }
+.quest-box { display: grid; gap: 8px; width: 100%; margin: 10px 0 6px; padding: 12px 14px; border-radius: 16px; background: var(--paper-2); }
+.quest-box div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; }
+.quest-box dt { display: flex; align-items: center; gap: 6px; }
+.quest-box dd { margin: 0; }
+.quest-box .is-first { padding-top: 8px; border-top: 1px dashed var(--line); }
+.quest-rules { width: 100%; margin: 4px 0 8px; padding-inline-start: 20px; text-align: start; font-size: 14px; color: var(--ink-2); }
+.quest-rules li + li { margin-top: 3px; }
+.quest-won { margin: 2px 0 6px; }
+.quest-won .quest-xp, .quest-won .quest-coins { padding: 6px 16px; font-size: 20px; animation: deal-score 420ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+.quest-won .quest-coins { animation-delay: 160ms; }
+.quest-won .quest-coins svg { width: 20px; height: 20px; }
+.quest-doubled { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 14px; border-radius: 999px; background: var(--marigold); font-weight: 800; }
+.quest-doubled svg { width: 20px; height: 20px; }
+.quest-kept { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 0; font-weight: 700; color: var(--ink-2); }
+.quest-page .quest-aced { justify-content: center; margin: 2px 0 8px; }
+
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti i { position: absolute; top: -14px; inset-inline-start: var(--x); width: 9px; height: 14px; border-radius: 2px; background: var(--c); transform: rotate(var(--r)); animation: confetti-fall var(--t) cubic-bezier(0.3, 0.6, 0.6, 1) var(--d) both; }
+@keyframes confetti-fall { to { top: 105%; transform: rotate(calc(var(--r) + 540deg)); opacity: 0.2; } }
+
+/* In a level: its last question says so, and a run that just ended offers to go on. */
+.retry-chip.is-final { background: var(--coral); color: #fff; }
+.pips.is-many { gap: 2px; }
+.dock.is-stacked { flex-wrap: wrap; }
+.dock.is-stacked .dock-msg { flex: 1 1 100%; }
+.dock-actions { flex: 1 1 100%; display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.dock-actions .btn { min-width: 0; }
+.quest-ad { --bg: #2b3157; --fg: #fff; --edge: #0b0e24; gap: 8px; padding-inline: 12px; font-size: 15px; line-height: 1.2; }
+.quest-ad svg { flex: none; width: 18px; height: 18px; color: var(--marigold); }
+.quest-ad-note { flex: 1 1 100%; margin: 0; font-size: 14px; color: rgba(255, 255, 255, 0.75); }
+
+@media (prefers-reduced-motion: reduce) { .quest-card-go, .quest-won .quest-xp, .quest-won .quest-coins { animation: none; } }

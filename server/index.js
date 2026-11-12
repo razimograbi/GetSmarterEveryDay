@@ -13,6 +13,7 @@ import {
   getDaily, dailyResult, startDaily, finishDaily, dailyBoard, friendsBeaten, purgeOldPlays,
   listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
   stagePath, stageRound, openStagePlay, finishStageTry,
+  questResults, friendsFirstTry, openQuestPlay, finishQuestTry,
   createDuel, getDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, openRematch, recentQuestionIds, roundAnswers,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
@@ -22,12 +23,13 @@ import {
 import { rateLimiter, clientIp, capacityGate } from './ratelimit.js';
 import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
 import {
-  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber,
+  MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, QUEST, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber, questPrize,
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
 import { hasEnoughQuestions, pickQuestions } from './pick.js';
 import { BROWSER_BANK, contentFor } from './bank.js';
 import { createPlays } from './play.js';
+import { QUESTS, QUEST_BY_ID, questQuestions } from './quests.js';
 import { createMatches } from './match.js';
 import { loadVapidKeys, createReminders } from './push.js';
 
@@ -83,7 +85,7 @@ if (PRODUCTION && !process.env.VAPID_SUBJECT) console.warn('  VAPID_SUBJECT is n
 const reminders = createReminders({ db, keys: loadVapidKeys(join(DATA_DIR, 'vapid.json')), subject: VAPID_SUBJECT });
 reminders.start();
 
-const plays = createPlays(db, { onFinish: finishFixedRound });
+const plays = createPlays(db, { onFinish: finishFixedRound, endsOnMiss: (play) => play.kind === 'quest' }); // a level ends at its first wrong answer
 setInterval(() => plays.endStale(), 60_000).unref();
 
 // Live duels (server/match.js). Questions are picked when one starts, when both players are known.
@@ -156,7 +158,7 @@ const isAdmin = (u) => !!u && (ADMINS.has(u.id.toLowerCase()) || (!!u.email && A
 // Who can open the Marketing Studio: comma-separated Google emails (or user ids such as dev:razi).
 const MARKETERS = new Set((process.env.MARKETING_USERS || 'razimograbi44@gmail.com').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
 const isMarketer = (u) => !!u && (MARKETERS.has(u.id.toLowerCase()) || (!!u.email && MARKETERS.has(u.email.toLowerCase())));
-const MARKETING_PROJECT_MAX = 128 * 1024;
+const MARKETING_PROJECT_MAX = 256 * 1024; // the built-in videos plus the team's own, words and post text
 
 /** The Marketing Studio's routes refuse everyone else. Returns true once it has replied. */
 function refuseNonMarketer(res, user) {
@@ -500,6 +502,13 @@ const routes = {
     json(res, 200, { stages: stagePath(db, user.id) });
   },
 
+  // The Levels as this player stands on them: never the questions.
+  'GET /api/quests': (req, res) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to see the levels.' });
+    json(res, 200, { levels: questPath(user.id) });
+  },
+
   'GET /api/admin/stages': adminRoute(() => ({ stages: listStages(db) })),
   'POST /api/admin/stages': adminRoute((input) => ({ stage: createStage(db, input) })),
 
@@ -681,6 +690,34 @@ const paramRoutes = [
     json(res, 200, { ok: true });
   }, 'stages'],
 
+  // Starts a try at a level, or picks up the one this player has open. A finished level can't be played again.
+  ['POST', new RegExp(`^/api/quests/${ID_PATH}/start$`), (req, res, url, rawId) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    ensureProfile(db, user);
+    const id = Number(rawId);
+    const level = questPath(user.id).find((l) => l.id === id);
+    if (!level) return json(res, 404, { error: 'That level does not exist.' });
+    if (level.status === 'locked') return json(res, 403, { error: 'Finish the level before this one first.' });
+    if (level.status === 'done') return json(res, 409, { error: 'You have already finished this level.', code: 'done' });
+    let play = openQuestPlay(db, id, user.id);
+    if (!play) {
+      const questionIds = questQuestions(QUEST_BY_ID.get(id));
+      if (!questionIds.length) return json(res, 409, { error: 'This level is not available right now.', code: 'unavailable' });
+      play = plays.begin({ kind: 'quest', ref: `${id}:${randomUUID()}`, userId: user.id, questionIds });
+    }
+    json(res, 200, { level, play: plays.view(play) });
+  }, 'stages'],
+
+  // Ends the player's open try where it stands (they left): the question on screen counts as wrong.
+  ['POST', new RegExp(`^/api/quests/${ID_PATH}/finish$`), (req, res, url, rawId) => {
+    const user = currentUser(req);
+    if (!user) return json(res, 401, { error: 'Sign in to play.' });
+    const play = openQuestPlay(db, Number(rawId), user.id);
+    if (!play || !plays.finish(play)) return json(res, 409, { error: 'This try has already ended.' });
+    json(res, 200, { ok: true });
+  }, 'stages'],
+
   // The Leveling dashboard. Every one of these checks for an admin (see adminRoute).
   ['GET', new RegExp(`^/api/admin/stages/${ID_PATH}$`), adminRoute((input, id) => stageForAdmin(db, id))],
   ['PUT', new RegExp(`^/api/admin/stages/${ID_PATH}$`), adminRoute((input, id) => ({ stage: updateStage(db, id, input) }))],
@@ -788,9 +825,43 @@ function finishStage(play, graded) {
   if (r.round) logEvent(db, play.userId, 'round_finished', { mode: DEFAULT_MODE, category: 'stage', stage: stageId, correct: r.correct, total: r.total, score: r.score, cleared: r.cleared, firstClear: r.firstClear });
 }
 
-/** A Daily, duel or Leveling round has ended on the server: saves the result and tells whoever should hear. */
+/**
+ * The Levels as one player stands on them. A level opens when the one before it is finished, and
+ * a finished one stays finished. `aced` are friends who finished it on their first try.
+ */
+function questPath(userId) {
+  const mine = questResults(db, userId);
+  const aced = friendsFirstTry(db, userId);
+  let unlocked = true;
+  return QUESTS.map((quest, i) => {
+    const r = mine.get(quest.id);
+    const done = !!r?.completedAt;
+    const status = done ? 'done' : unlocked ? 'open' : 'locked';
+    unlocked &&= done;
+    const count = questQuestions(quest).length;
+    const friends = aced.get(quest.id) ?? [];
+    const lastWon = done && r.last?.at === r.completedAt; // the try that finished it was the last one
+    return {
+      id: quest.id, n: i + 1, topic: quest.topic, cover: quest.cover, count, status,
+      attempts: r?.attempts ?? 0, best: r?.best ?? 0, firstTry: !!r?.firstTry,
+      last: r?.last ? { ...r.last, completed: lastWon, firstTry: lastWon && r.firstTry } : null,
+      prize: questPrize(count), firstTryPrize: questPrize(count, true),
+      aced: friends.slice(0, QUEST.acedShown), acedCount: friends.length,
+    };
+  });
+}
+
+/** A try at a level has ended on the server: saves it with its prize. */
+function finishQuest(play, graded) {
+  const questId = Number(play.ref.split(':')[0]);
+  const r = finishQuestTry(db, { userId: play.userId, questId, mode: DEFAULT_MODE, graded, total: play.questionIds.length });
+  if (r.round) logEvent(db, play.userId, 'round_finished', { mode: DEFAULT_MODE, category: 'quest', level: questId, correct: r.solved, total: r.total, score: r.round.score, completed: r.completed, firstTry: r.firstTry });
+}
+
+/** A Daily, duel, Leveling or Levels round has ended on the server: saves the result and tells whoever should hear. */
 function finishFixedRound(play, graded, skippedMs, { xp }) {
   if (play.kind === 'stage') return finishStage(play, graded);
+  if (play.kind === 'quest') return finishQuest(play, graded);
   const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs, xp);
   if (play.kind === 'daily') {
     finishDaily(db, play.ref, play.userId, { ...saved, total: play.questionIds.length });
@@ -907,7 +978,7 @@ const LIMITS = {
   duels: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // joining duels
   live: rateLimiter({ limit: 200, windowMs: MINUTE }), // everything a browser says during a live duel
   duelCreate: rateLimiter({ limit: 30, windowMs: 60 * MINUTE }), // new duels and rematches
-  stages: rateLimiter({ limit: 40, windowMs: 10 * MINUTE }), // starts and early finishes of Leveling tries
+  stages: rateLimiter({ limit: 60, windowMs: 10 * MINUTE }), // starts and early finishes of Leveling and Levels tries
   static: rateLimiter({ limit: 600, windowMs: MINUTE }), // pages, scripts and pictures from one IP
 };
 

@@ -94,6 +94,8 @@ const currency = (slug, title, answer, wrong, hide) => ({ ...wiki('currencies', 
 const dog = wiki('dogs', 'Which dog breed is this?');
 const food = wiki('food', 'What dish is this?');
 const instrument = wiki('music', 'What instrument is this?');
+// `hide` blurs writing on the picture that names the gun.
+const gun = (slug, title, answer, wrong, hide) => ({ ...wiki('guns', 'Which gun is this?')(slug, title, answer, wrong), visual: { type: 'wiki', title, ...(hide && { hide }) } });
 
 const country = (iso, answer, wrong) => ({
   id: `country-${iso}`,
@@ -1675,6 +1677,38 @@ export const QUESTIONS = [
   famous('malala-yousafzai', 'Malala Yousafzai', 'Malala Yousafzai', ['Greta Thunberg', 'Mother Teresa', 'Benazir Bhutto', 'Indira Gandhi']),
   famous('ernest-hemingway', 'Ernest Hemingway', 'Ernest Hemingway', ['Leo Tolstoy', 'Mark Twain', 'Karl Marx', 'Ernest Shackleton']),
   famous('greta-thunberg', 'Greta Thunberg', 'Greta Thunberg', ['Malala Yousafzai', 'Emma Watson', 'Billie Eilish', 'Anne Frank']),
+
+  // ── Guns ── well-known ones only, each next to very different guns, so the topic stays easy.
+  gun('ak-47', 'AK-47', 'AK-47', ['Uzi', 'Glock', 'Musket', 'Bazooka']),
+  gun('m16', 'M16 rifle', 'M16', ['Revolver', 'Tommy gun', 'Cannon', 'Flare gun']),
+  gun('uzi', 'Uzi', 'Uzi', ['Musket', 'Sniper rifle', 'Desert Eagle', 'Gatling gun']),
+  gun('desert-eagle', 'Desert Eagle', 'Desert Eagle', ['Water gun', 'Uzi', 'Winchester rifle', 'Minigun']),
+  gun('glock', 'Glock', 'Glock', ['Revolver', 'AK-47', 'Flare gun', 'Tommy gun']),
+  gun('tommy-gun', 'Thompson submachine gun', 'Tommy gun', ['Bazooka', 'Glock', 'Musket', 'Taser']),
+  gun('rpg-7', 'RPG-7', 'RPG-7', ['Sniper rifle', 'Cannon', 'Tommy gun', 'Revolver']),
+  gun('minigun', 'Minigun', 'Minigun', ['Musket', 'Luger', 'Bazooka', 'Paintball gun']),
+  gun('musket', 'Musket', 'Musket', ['M16', 'Minigun', 'Revolver', 'RPG-7'], [[0.03, 0.02, 0.62, 0.11]]),
+  gun('gatling', 'Gatling gun', 'Gatling gun', ['Bazooka', 'Musket', 'Desert Eagle', 'M4 carbine']),
+  gun('bazooka', 'Bazooka', 'Bazooka', ['Gatling gun', 'Sniper rifle', 'Uzi', 'Cannon']),
+  gun('flare-gun', 'Flare gun', 'Flare gun', ['Taser', 'Glock', 'Water gun', 'Luger']),
+  gun('revolver', 'Revolver', 'Revolver', ['Glock', 'Uzi', 'Flare gun', 'Musket']),
+  gun('water-gun', 'Water gun', 'Water gun', ['Paintball gun', 'Taser', 'Flare gun', 'P90']),
+  gun('taser', 'Taser', 'Taser', ['Flare gun', 'Water gun', 'Revolver', 'Glock'], [[0.79, 0.7, 0.16, 0.16], [0.01, 0.13, 0.06, 0.32]]),
+  gun('cannon', 'Cannon', 'Cannon', ['Gatling gun', 'Bazooka', 'Musket', 'Minigun']),
+  gun('double-barrel', 'Double-barreled shotgun', 'Double-barreled shotgun', ['Sniper rifle', 'Musket', 'AK-47', 'Revolver']),
+  gun('m4', 'M4 carbine', 'M4 carbine', ['Tommy gun', 'Winchester rifle', 'Uzi', 'Musket']),
+  gun('m1911', 'M1911 pistol', 'Colt M1911', ['Revolver', 'Uzi', 'Flare gun', 'Taser'], [[0.05, 0.19, 0.4, 0.1], [0.05, 0.69, 0.4, 0.1]]),
+  gun('mp5', 'Heckler & Koch MP5', 'MP5', ['Desert Eagle', 'Musket', 'Barrett M82', 'Double-barreled shotgun']),
+  gun('p90', 'FN P90', 'P90', ['AK-47', 'Revolver', 'Winchester rifle', 'Luger']),
+  gun('barrett', 'Barrett M82', 'Barrett M82', ['Uzi', 'Tommy gun', 'Musket', 'Double-barreled shotgun']),
+  gun('luger', 'Luger pistol', 'Luger', ['Revolver', 'Taser', 'Desert Eagle', 'Uzi']),
+  gun('peacemaker', 'Colt Single Action Army', 'Colt Peacemaker', ['Glock', 'Luger', 'Flare gun', 'Desert Eagle']),
+  gun('shotgun', 'Shotgun', 'Pump-action shotgun', ['Sniper rifle', 'Musket', 'Tommy gun', 'Bazooka'], [[0.62, 0.4, 0.31, 0.57]]), // the boxes say what's in them
+  gun('m1-garand', 'M1 Garand', 'M1 Garand', ['AK-47', 'Uzi', 'Double-barreled shotgun', 'P90']),
+  gun('mp40', 'MP 40', 'MP 40', ['Winchester rifle', 'Glock', 'M16', 'Musket']),
+  gun('tavor', 'IWI Tavor', 'Tavor', ['AK-47', 'Tommy gun', 'Winchester rifle', 'Uzi']),
+  gun('paintball', 'Paintball marker', 'Paintball gun', ['Water gun', 'Taser', 'Minigun', 'Revolver']),
+  gun('sniper-rifle', 'Sniper rifle', 'Sniper rifle', ['Tommy gun', 'Double-barreled shotgun', 'Bazooka', 'Uzi']),
 
   // ── Beauty products ──
   beauty('lipstick', 'File:Applying red lipstick - model Eve Casini.jpg', 'Lipstick', ['Lip gloss', 'Lip liner', 'Lip balm', 'Blush']),

@@ -12,5 +12,6 @@ import sayno from './q-sayno.js';
 import more from './q-more.js';
 import sport from './q-sport.js';
 import extra from './q-extra.js';
+import guns from './q-guns.js';
 
-export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno, ...more, ...sport, ...extra } };
+export default { ui, cats, questions: { ...geo, ...signs, ...nature, ...culture, ...history, ...sapiens, ...habits, ...sayno, ...more, ...sport, ...extra, ...guns } };

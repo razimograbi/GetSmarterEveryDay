@@ -151,6 +151,28 @@ export const STAGE_PICTURE_HOSTS = ['flagcdn.com', 'upload.wikimedia.org', 'thum
 /** Whether this many right answers clear a stage of `total` questions. */
 export const stageCleared = (correct, total) => total > 0 && correct * 100 >= total * STAGE.clearPercent;
 
+// The Levels: ten built-in rounds of bank questions, played in order (server/quests.js; "quest" in
+// the code, because "level" already means a player's own level). One wrong answer, running out of
+// time or leaving ends the try. Finishing a level pays base + perQuestion × its questions, and
+// `firstTry` times that when the player's very first try does it. A try that ends early pays
+// `failShare` for each question solved, rounded down: always less than the number solved.
+export const QUEST = {
+  xp: { base: 20, perQuestion: 8 },
+  coins: { base: 20, perQuestion: 6 },
+  firstTry: 2,
+  failShare: 0.5,
+  acedShown: 3, // friends named on a level for finishing it first try
+};
+
+/** What finishing a level of `questions` questions pays: { xp, coins }. */
+export function questPrize(questions, firstTry = false) {
+  const times = firstTry ? QUEST.firstTry : 1;
+  return { xp: (QUEST.xp.base + QUEST.xp.perQuestion * questions) * times, coins: (QUEST.coins.base + QUEST.coins.perQuestion * questions) * times };
+}
+
+/** What a try that ended early pays, in XP and in coins, for the questions it solved. */
+export const questConsolation = (solved) => Math.floor(solved * QUEST.failShare);
+
 // A level's tier sets the cover around the player's avatar (public/js/covers.js).
 export const LEVEL_TIERS = [
   { id: 'rookie', from: 1 },
@@ -203,6 +225,7 @@ export const CATEGORIES = [
   { id: 'clubs', name: 'Football clubs', blurb: 'Know the club by its crest', hue: '#087F5B' },
   { id: 'footballers', name: 'Football players', blurb: 'From Pelé to Lamine Yamal', hue: '#A61E4D', quick: false }, // own tile only: not in Quick, Daily or mixed duels
   { id: 'currencies', name: 'Currencies', blurb: 'Know the money by its look', hue: '#5C940D' },
+  { id: 'guns', name: 'Guns', blurb: 'From revolver to bazooka', hue: '#495057' },
   // Topics with their own question wording, some with a photo: a little more time to read.
   { id: 'history', name: 'History', blurb: 'Wars, revolutions and turning points', hue: '#5C677D', seconds: 20 },
   { id: 'trivia', name: 'Interesting questions', blurb: 'Records, rankings and surprises', hue: '#9C36B5', seconds: 20 },

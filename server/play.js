@@ -1,4 +1,4 @@
-// Daily, duel and Leveling rounds, played on the server, because other players see the results.
+// Daily, duel, Leveling and Levels rounds, played on the server, because other players see the results.
 // In a duel, server/match.js opens and grades the questions of both players together.
 //
 // The browser asks to open one question at a time, and only then gets its text and options. The
@@ -22,7 +22,11 @@ const DOWNLOADED = new Set(['wiki', 'flag', 'country', 'image', 'map']);
 
 const conflict = (message, extra = {}) => Object.assign(new Error(message), { status: 409, ...extra });
 
-export function createPlays(db, { onFinish }) {
+/**
+ * `endsOnMiss(play)` says whether a round is over at its first wrong answer (the Levels). Such a
+ * round never counts a question the player didn't reach, and its questions can't be skipped.
+ */
+export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
   // A Leveling round carries its own copy of its questions (they're written on the admin
   // dashboard and can change or go away while someone is playing). The others use the bank.
   const questionOf = (play, id) => play.content?.[id] ?? QUESTION_BY_ID.get(id);
@@ -83,11 +87,13 @@ export function createPlays(db, { onFinish }) {
     if (!closePlay(db, play.id)) return false;
     const skipped = play.answers.filter((a) => a.skipped);
     const graded = play.answers.filter((a) => !a.skipped);
-    if (!playedOnly) {
-      for (const id of play.questionIds.slice(play.answers.length)) {
-        const q = questionOf(play, id);
-        graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
-      }
+    // What counts as wrong: everything left, or nothing (a forfeited duel), or in a round that
+    // ends on a miss only the question that was on screen, since the others were never seen.
+    const open = play.openedAt !== null && play.answers.length < play.questionIds.length ? 1 : 0;
+    const reached = endsOnMiss(play) ? play.answers.length + open : playedOnly ? play.answers.length : play.questionIds.length;
+    for (const id of play.questionIds.slice(play.answers.length, reached)) {
+      const q = questionOf(play, id);
+      graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
     }
     // A question skipped because its picture failed scores nothing and is left out of the answers,
     // but costs its full time: skipping the hard ones must not win ties.
@@ -147,6 +153,10 @@ export function createPlays(db, { onFinish }) {
     play.openedAt = null;
     recordPlayAnswer(db, play.id, play.idx, play.answers);
     if (play.idx >= play.questionIds.length) finish(play);
+    else if (!correct && endsOnMiss(play)) {
+      finish(play);
+      play.finishedAt ??= Date.now(); // so the reply says the round is over
+    }
     return outcome(play, idx, a);
   }
 
@@ -158,6 +168,7 @@ export function createPlays(db, { onFinish }) {
   function skip(play, idx, { force = false } = {}) {
     if (idx < play.idx && play.answers[idx]?.skipped) return skipped(play, idx);
     if (play.finishedAt) throw conflict('This round has ended.', { ended: true });
+    if (endsOnMiss(play) && !force) throw conflict('Questions of a level cannot be skipped.'); // or a hard one could be skipped by blocking its picture
     if (idx !== play.idx || (play.openedAt !== null && !force)) throw conflict('That question can no longer be skipped.');
     const q = questionAt(play, idx);
     play.answers.push({ id: q.id, cat: q.cat, skipped: true, correct: false, points: 0 });
