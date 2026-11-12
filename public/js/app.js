@@ -23,7 +23,9 @@ const state = {
   daily: null, // today's Daily and the player's result, for the home screen
   duels: null, // the player's duels, for the home screen
   stages: null, // the published Leveling stages as this player stands on them
-  fixedRound: null, // a Daily or Leveling try about to be played
+  quests: null, // the Levels as this player stands on them
+  questPlayed: null, // { id, attempts }: the level just tried, so its page opens on how the try went
+  fixedRound: null, // a Daily, Leveling or Levels try about to be played
   duelFriend: null, // the friend a new duel is for
   played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
   justUnlocked: false, // the first round was just finished: say once what the home screen gained
@@ -319,7 +321,7 @@ async function route() {
   showLevelUp();
 
   const [, page, arg, sub] = (location.hash || '#/').split('/');
-  if (page === 'play' && (arg === 'daily' || arg === 'stage')) {
+  if (page === 'play' && (arg === 'daily' || arg === 'stage' || arg === 'quest')) {
     const fixed = state.fixedRound;
     state.fixedRound = null;
     return fixed?.kind === arg ? startRound(arg, fixed) : go('#/', { replace: true });
@@ -327,6 +329,7 @@ async function route() {
   if (page === 'play' && (arg === 'mixed' || arg === 'review' || CATEGORY_BY_ID[arg])) return startRound(arg);
   if (page === 'daily') return showDaily();
   if (page === 'leveling') return arg ? showStageResult(Number(arg)) : showLeveling();
+  if (page === 'levels') return arg ? showQuest(Number(arg)) : showQuests();
   if (page === 'duel' && arg === 'new') return showDuelNew();
   if (page === 'duel' && arg) return showDuel(arg);
   if (page === 'friends') return showFriends();
@@ -681,6 +684,8 @@ function signedOut() {
   state.profile = null;
   state.stats = null;
   state.stages = null;
+  state.quests = null;
+  state.questPlayed = null;
   state.daily = null;
   state.duels = null;
   state.played = 0;
@@ -1030,6 +1035,7 @@ function drawHome(firstName, stats, unlocked) {
       ${playerHero(firstName, streak)}
       ${duelAlerts()}
       ${playCta(t('home.quickPlay'), t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
+      ${questCard()}
       <div class="home-rows">
         ${dailyRow(state.daily)}
         ${levelingRow()}
@@ -1079,6 +1085,7 @@ async function showHome() {
       state.daily?.day === today() ? null : loadDaily().catch(() => null),
       api('/api/duels').then((r) => (state.duels = r.duels)).catch(() => null),
       loadStages().catch(() => null),
+      loadQuests().catch(() => null),
     ]);
     if (nav === navId) draw(stats);
   } catch (err) {
@@ -1089,7 +1096,7 @@ async function showHome() {
 // ── Round ──────────────────────────────────────────────────────
 
 const roundTitle = (cat) =>
-  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : cat === 'daily' ? t('round.daily') : cat === 'duel' ? t('round.duel') : cat === 'stage' ? t('round.stage')
+  cat === 'mixed' ? t('round.quick') : cat === 'review' ? t('round.review') : cat === 'daily' ? t('round.daily') : cat === 'duel' ? t('round.duel') : cat === 'stage' ? t('round.stage') : cat === 'quest' ? t('round.quest')
     : CATEGORY_BY_ID[cat] ? catName(CATEGORY_BY_ID[cat]) : cat;
 
 const diffLevel = (d) => (d <= 3 ? 'easy' : d <= 6 ? 'medium' : 'hard');
@@ -1227,7 +1234,11 @@ async function startRound(cat, fixed = null) {
     saved: false, // set once answers have been sent to the server
     swaps: 0, // questions replaced because their picture wouldn't load
     ended: false, // a Daily or duel the server has already finished
+    failed: false, // a level that ended on a wrong answer
   };
+  const quest = fixed?.kind === 'quest'; // a level: one wrong answer ends it, and nothing can be skipped
+  const solvedCount = () => round.results.filter((r) => r.correct).length;
+  const scoreText = () => (quest ? `${solvedCount()}/${round.questions.length}` : round.score);
   fixed?.play.results.forEach((r, i) => {
     round.results.push({ q: round.questions[i], choice: null, correct: r.correct, ms: 0, points: r.points, skipped: !!r.skipped });
     round.score += r.points;
@@ -1240,7 +1251,7 @@ async function startRound(cat, fixed = null) {
     <section class="screen play">
       <header class="play-top">
         <button class="icon-btn" data-quit aria-label="${esc(t('play.quit'))}">${ICONS.close}</button>
-        <ol class="pips" aria-label="${esc(t('play.progress', { title }))}">
+        <ol class="pips${round.questions.length > 15 ? ' is-many' : ''}" aria-label="${esc(t('play.progress', { title }))}">
           ${round.questions.map((_, i) => {
             const r = round.results[i];
             return `<li${r ? ` class="${r.skipped ? 'is-skipped' : r.correct ? 'is-right' : 'is-wrong'}"` : ''}></li>`;
@@ -1249,7 +1260,7 @@ async function startRound(cat, fixed = null) {
         <button class="auto-toggle" data-auto aria-haspopup="dialog" aria-expanded="false">
           <span class="auto-switch" aria-hidden="true"></span><span class="auto-label" data-auto-label></span>
         </button>
-        <span class="play-score" aria-label="${esc(t('play.score'))}"><span data-score>${round.score}</span></span>
+        <span class="play-score" aria-label="${esc(t('play.score'))}"><span data-score dir="ltr">${scoreText()}</span></span>
       </header>
       <div class="fuse-row">
         <div class="fuse" role="timer" aria-label="${esc(t('play.timeLeft'))}"><span class="fuse-fill"></span><span class="fuse-spark"></span></div>
@@ -1473,7 +1484,8 @@ async function startRound(cat, fixed = null) {
     // A new player's very first question says what to do. The clock isn't paused for it,
     // so a first Daily or duel scores the same as anyone's.
     const firstHint = isNew() && round.idx === 0 ? `<p class="first-hint">${esc(t('play.firstHint'))}</p>` : '';
-    const retryChip = round.comingBack.has(q.id) ? `<p class="retry-chip">${esc(t('play.retry'))}</p>` : '';
+    const lastOfLevel = quest && round.questions.length > 1 && round.idx === round.questions.length - 1;
+    const retryChip = round.comingBack.has(q.id) ? `<p class="retry-chip">${esc(t('play.retry'))}</p>` : lastOfLevel ? `<p class="retry-chip is-final">${esc(t('quest.playFinal'))}</p>` : '';
     stage.innerHTML = `
       ${retryChip}
       ${head}
@@ -1521,6 +1533,13 @@ async function startRound(cat, fixed = null) {
         round.questions[round.idx] = replacement;
         return showQuestion();
       }
+    }
+
+    // A level can't skip a question (or blocking a picture would skip the hard ones): nothing has
+    // been opened yet, so the run is safe and the picture can be loaded again.
+    if (!ok && quest) {
+      retryCall = showQuestion;
+      return showDock(`<p class="dock-msg">${esc(t('quest.playNoPicture'))}</p><button class="btn btn-marigold btn-next" data-retry><span>${esc(t('quest.playReload'))}</span></button>`);
     }
 
     if (!ok && round.fixed) {
@@ -1614,8 +1633,9 @@ async function startRound(cat, fixed = null) {
     round.bestStreak = Math.max(round.bestStreak, round.streak);
     round.results.push({ q, choice, correct, ms, points, skipped: false, away });
     keepOpenRound();
+    if (quest && !correct) round.failed = true; // the server has ended the try
 
-    scoreEl.textContent = round.score;
+    scoreEl.textContent = scoreText();
     pips[round.idx].classList.add(correct ? 'is-right' : 'is-wrong');
     fuseRow.classList.add('is-done');
 
@@ -1637,15 +1657,29 @@ async function startRound(cat, fixed = null) {
     const long = shown.length > 22;
     const ans = `<b class="${long ? 'is-long' : ''}"${q.cat === 'stage' ? ' dir="auto"' : ''}>${esc(shown)}</b>`;
     const reveal = t(long ? 'q.answerIs' : 'q.its', { answer: ans });
+    const last = round.idx === round.questions.length - 1;
+    const rightText = !quest ? t('q.right', { points }) : last ? esc(t('quest.playCleared')) : t('quest.playRight', { done: solvedCount(), total: round.questions.length });
+    const over = round.failed ? `${esc(t('quest.playOver'))} ` : '';
     const msg = correct
-      ? `<p class="dock-msg is-right">${ICONS.check}<span>${t('q.right', { points })}</span></p>`
+      ? `<p class="dock-msg is-right">${ICONS.check}<span>${rightText}</span></p>`
       : away
         ? `<p class="dock-msg is-wrong">${ICONS.cross}<span>${esc(t('q.away'))} ${reveal}</span></p>`
       : choice === null
         ? `<p class="dock-msg is-wrong">${ICONS.clock}<span>${esc(t('q.outOfTime'))} ${reveal}</span></p>`
-        : `<p class="dock-msg is-wrong">${ICONS.cross}<span>${reveal}</span></p>`;
-    const last = round.idx === round.questions.length - 1;
-    showDock(`${msg}${reportBtn(q)}<button class="btn btn-marigold btn-next" data-next><span>${esc(t(last ? 'q.seeResults' : 'q.next'))}</span></button>`);
+        : `<p class="dock-msg is-wrong">${ICONS.cross}<span>${over}${reveal}</span></p>`;
+    if (round.failed) {
+      // The run is over. Watching an ad will let it go on; until there are ads the button only says so.
+      track('ad_offered', { where: 'level', level: round.fixed.level.id });
+      dock.classList.add('is-stacked');
+      showDock(`${msg}
+        <div class="dock-actions">
+          <button class="btn quest-ad" data-ad>${ICONS.play}<span>${esc(t('quest.adOffer'))}</span></button>
+          <button class="btn btn-marigold btn-next" data-next><span>${esc(t('quest.playResult'))}</span></button>
+        </div>
+        <p class="quest-ad-note" data-ad-note hidden>${esc(t('quest.adSoon'))}</p>`);
+    } else {
+      showDock(`${msg}${reportBtn(q)}<button class="btn btn-marigold btn-next" data-next><span>${esc(t(last ? 'q.seeResults' : 'q.next'))}</span></button>`);
+    }
 
     // Keep the right answer visible above the result bar on short screens.
     const rightBtn = stage.querySelector('.answer.is-correct');
@@ -1662,7 +1696,7 @@ async function startRound(cat, fixed = null) {
     clearTimeout(advanceTimer);
     const btn = dock.querySelector('.btn-next');
     btn?.classList.remove('is-counting');
-    if (!current?.outcome || pausedAt || !autoNextOn()) return;
+    if (!current?.outcome || pausedAt || !autoNextOn() || round.failed) return; // a level that just ended waits on its offer
     // Read when the countdown starts and fixed until it ends; settings can only change
     // while the game is paused, and a paused countdown is restarted with the new value.
     const ms = autoDelaySeconds() * 1000;
@@ -1745,7 +1779,7 @@ async function startRound(cat, fixed = null) {
     if (!alive || pausedAt || !current?.outcome) return;
     current = null;
     round.idx += 1;
-    if (round.idx >= round.questions.length) return finish();
+    if (round.failed || round.idx >= round.questions.length) return finish();
     showQuestion();
   }
 
@@ -1842,9 +1876,9 @@ async function startRound(cat, fixed = null) {
     if (!autoSheet.hidden) closeAuto();
     const answered = new Set(round.results.map((r) => r.q.id));
     const left = round.questions.filter((q) => !answered.has(q.id)).length;
-    $('[data-quit-note]').textContent = round.fixed
-      ? tn({ daily: 'quit.daily', stage: 'quit.stage' }[round.fixed.kind], left)
-      : tn('quit.note', left);
+    $('[data-quit-note]').textContent = quest ? t('quit.quest')
+      : round.fixed ? tn({ daily: 'quit.daily', stage: 'quit.stage' }[round.fixed.kind], left)
+        : tn('quit.note', left);
     pause({ hide: true }); // the clock stops, so the question can't be read meanwhile
     quitSheet.hidden = false;
     quitSheet.querySelector('[data-keep]').focus();
@@ -1898,6 +1932,7 @@ async function startRound(cat, fixed = null) {
     if (t.classList.contains('answer')) return current && answer(current.options[Number(t.dataset.i)]);
     if (t.hasAttribute('data-next')) return next();
     if (t.hasAttribute('data-retry')) return retryCall?.();
+    if (t.hasAttribute('data-ad')) return void (dock.querySelector('[data-ad-note]').hidden = false);
     if (t.hasAttribute('data-report')) return reportCurrent(t);
     if (t.hasAttribute('data-auto')) return openAuto();
     if (t.hasAttribute('data-auto-done')) return closeAuto();
@@ -2905,6 +2940,237 @@ async function showStageResult(id) {
     </section>
     ${tabbar('home')}`;
   bindStageButtons();
+}
+
+// ── Levels ─────────────────────────────────────────────────────
+// Ten built-in rounds played in order on the server (server/quests.js). The code calls them quests:
+// "level" is the player's own level. One wrong answer ends a try, and a finished level stays finished.
+
+async function loadQuests() {
+  state.quests = (await api('/api/quests')).levels;
+  return state.quests;
+}
+
+const questName = (l) => t(`quest.name.${l.id}`);
+const questLabel = (l) => `${t('quest.level', { n: l.n })}: ${questName(l)}`;
+
+/** "+60 XP" and "+50" coins. */
+const prizePills = (p) => `<span class="quest-prize" dir="ltr"><span class="quest-xp">+${p.xp} XP</span><span class="quest-coins">${ICONS.coin}+${p.coins}</span></span>`;
+
+/** What finishing the level would pay now: doubled while the first try is still ahead. */
+const prizeNow = (l) => (l.attempts ? l.prize : l.firstTryPrize);
+
+/** A level's photo, with a tick once it's finished (a trophy for a first try) or a lock. */
+function questPhoto(l, size = '') {
+  const badge = l.status === 'done' ? `<span class="quest-badge ${l.firstTry ? 'is-ace' : ''}">${l.firstTry ? ICONS.trophy : ICONS.check}</span>`
+    : l.status === 'locked' ? `<span class="quest-lock">${ICONS.lock}</span>` : '';
+  return `<span class="quest-photo ${size}"><img src="${coverSrc(l.cover)}" alt="" loading="lazy" decoding="sync">${badge}</span>`;
+}
+
+/** Friends who finished the level on their first try: their avatars and names. */
+function acedLine(l) {
+  if (!l.aced.length) return '';
+  const names = l.aced.slice(0, 2).map((p) => `<bdi>${esc(p.name)}</bdi>`).join(', ');
+  const more = l.acedCount - Math.min(2, l.aced.length);
+  return `
+    <span class="quest-aced">
+      <span class="quest-aced-faces">${l.aced.map((p) => avatarImg(p.avatar, 22)).join('')}</span>
+      <span>${t('quest.acedBy', { names: more > 0 ? t('quest.acedMore', { names, n: more }) : names })}</span>
+    </span>`;
+}
+
+/** The Levels on the home screen: the next level with its photo and prize, and a dot per level. */
+function questCard() {
+  const levels = state.quests;
+  if (!levels?.length) return '';
+  const next = levels.find((l) => l.status === 'open');
+  const done = levels.filter((l) => l.status === 'done').length;
+  const dots = `<span class="quest-dots" aria-hidden="true">${levels.map((l) => `<i class="is-${l.status}${l.firstTry ? ' is-ace' : ''}"></i>`).join('')}</span>`;
+  const head = `<small>${esc(t('quest.title'))} · <span dir="ltr">${done}/${levels.length}</span></small>`;
+  if (!next) {
+    return `
+      <a class="quest-card" href="#/levels">
+        <span class="quest-photo"><span class="quest-mystery">${ICONS.trophy}</span></span>
+        <span class="quest-card-text">${head}<strong>${esc(t('quest.homeDone'))}</strong><span class="quest-card-sub">${esc(t('quest.homeDoneSub'))}</span>${dots}</span>
+      </a>`;
+  }
+  return `
+    <a class="quest-card" href="#/levels/${next.id}">
+      ${questPhoto(next)}
+      <span class="quest-card-text">
+        ${head}
+        <strong>${esc(questLabel(next))}</strong>
+        <span class="quest-card-prize">${prizePills(prizeNow(next))}${next.attempts ? '' : `<span class="quest-x2">${esc(t('quest.double'))}</span>`}</span>
+        ${dots}
+      </span>
+      <span class="quest-card-go" aria-hidden="true">${ICONS.play}</span>
+    </a>`;
+}
+
+/** Loads the levels for one of their screens. Null when the screen has already dealt with it. */
+async function questsForScreen(nav) {
+  try {
+    await pendingSave; // a try that just ended must be in the answer
+    const levels = await loadQuests();
+    return nav === navId ? levels : null;
+  } catch (err) {
+    if (nav !== navId) return null;
+    if (err.status === 401) signOut();
+    else app.querySelector('.sub').textContent = t('quest.loadFailed', { error: errMsg(err) });
+    return null;
+  }
+}
+
+const questsLoading = () => `
+  <section class="screen quests has-tabbar">${topbar()}<h1 class="greeting">${esc(t('quest.title'))}</h1><p class="sub">${esc(t('quest.loading'))}</p></section>
+  ${tabbar('home')}`;
+
+function questNode(l) {
+  const line = l.status === 'locked' ? t('quest.locked', { n: l.n - 1 })
+    : [tn('leveling.questions', l.count), l.status === 'open' && l.attempts ? t('quest.best', { c: l.best, t: l.count }) : ''].filter(Boolean).join(' · ');
+  const end = l.status === 'done' ? `<span class="quest-state ${l.firstTry ? 'is-ace' : ''}">${esc(t(l.firstTry ? 'quest.aced' : 'quest.done'))}</span>`
+    : l.status === 'open' ? `<span class="quest-go" aria-hidden="true">${ICONS.play}</span>` : '';
+  const inside = `
+    ${questPhoto(l)}
+    <span class="quest-text">
+      <small>${esc(t('quest.level', { n: l.n }))}</small>
+      <strong>${esc(questName(l))}</strong>
+      <span>${esc(line)}</span>
+      ${l.status === 'open' ? `<span class="quest-card-prize">${prizePills(prizeNow(l))}${l.attempts ? '' : `<span class="quest-x2">${esc(t('quest.double'))}</span>`}</span>` : ''}
+      ${acedLine(l)}
+    </span>
+    ${end}`;
+  return `<li class="quest-node is-${l.status}">${l.status === 'locked' ? `<div class="quest-tile">${inside}</div>` : `<a class="quest-tile" href="#/levels/${l.id}">${inside}</a>`}</li>`;
+}
+
+/** The map of levels, with one more after the last that says more are coming. */
+async function showQuests() {
+  const nav = navId;
+  app.innerHTML = questsLoading();
+  const levels = await questsForScreen(nav);
+  if (!levels) return;
+  const done = levels.filter((l) => l.status === 'done').length;
+  app.innerHTML = `
+    <section class="screen quests has-tabbar">
+      ${topbar()}
+      <h1 class="greeting">${esc(t('quest.title'))}</h1>
+      <p class="sub">${esc(t('quest.intro'))}</p>
+      <p class="stage-progress">${esc(t('quest.progress', { c: done, t: levels.length }))}</p>
+      <ol class="quest-path">
+        ${levels.map(questNode).join('')}
+        <li class="quest-node is-upcoming">
+          <div class="quest-tile">
+            <span class="quest-photo"><span class="quest-mystery">?</span></span>
+            <span class="quest-text"><small>${esc(t('quest.level', { n: levels.length + 1 }))}</small><strong>${esc(t('quest.upcoming'))}</strong><span>${esc(t('quest.upcomingSub'))}</span></span>
+          </div>
+        </li>
+      </ol>
+    </section>
+    ${tabbar('home')}`;
+  app.querySelector('.quest-node.is-open')?.scrollIntoView({ block: 'center', behavior: 'auto' });
+}
+
+/** Starts a try at a level, or picks up the one still open. */
+async function playQuest(id) {
+  const { play, level } = await api(`/api/quests/${id}/start`, { method: 'POST' });
+  track('round_started', { mode: DEFAULT_MODE, category: 'quest' });
+  state.questPlayed = { id, attempts: level.attempts };
+  playFixed({ kind: 'quest', title: questLabel(level), after: `#/levels/${id}`, play, endpoint: `/api/quests/${id}/finish`, extra: {}, level });
+}
+
+/** Bits of paper falling over a finished level. */
+function confetti() {
+  if (reduceMotion()) return '';
+  const colours = ['var(--marigold)', 'var(--mint)', 'var(--coral)', '#fff', 'var(--cobalt-soft)'];
+  return `<span class="confetti" aria-hidden="true">${Array.from({ length: 28 }, (_, i) =>
+    `<i style="--x:${Math.round(Math.random() * 100)}%;--d:${Math.round(Math.random() * 900)}ms;--t:${1400 + Math.round(Math.random() * 1400)}ms;--c:${colours[i % colours.length]};--r:${Math.round(Math.random() * 360)}deg"></i>`).join('')}</span>`;
+}
+
+/**
+ * One level: what it is and what it pays, or, right after a try, how the try went. A try that
+ * ended early never lists the level's questions: only the one that ended it was shown its answer.
+ */
+async function showQuest(id) {
+  const nav = navId;
+  app.innerHTML = questsLoading();
+  const levels = await questsForScreen(nav);
+  if (!levels) return;
+  const at = levels.findIndex((l) => l.id === id);
+  const l = levels[at];
+  if (!l) return go('#/levels', { replace: true });
+  const next = levels[at + 1];
+  const played = state.questPlayed?.id === id && l.attempts > state.questPlayed.attempts ? l.last : null; // the try just played
+  state.questPlayed = null;
+
+  const start = (label) => `<button class="btn btn-marigold btn-block" data-play-quest="${id}">${esc(label)}</button>`;
+  const nextLink = next ? `<a class="btn btn-marigold btn-block" href="#/levels/${next.id}">${esc(t('quest.next'))}</a>` : '';
+  const prizeBox = `
+    <dl class="quest-box">
+      <div><dt>${esc(t('quest.prize'))}</dt><dd>${prizePills(l.prize)}</dd></div>
+      ${l.attempts ? '' : `<div class="is-first"><dt>${esc(t('quest.prizeFirst'))} <span class="quest-x2" dir="ltr">×2</span></dt><dd>${prizePills(l.firstTryPrize)}</dd></div>`}
+    </dl>`;
+
+  let body;
+  if (played?.completed) {
+    body = `
+      ${confetti()}
+      <h1 class="stage-verdict is-won">${esc(t(played.firstTry ? 'quest.resAced' : 'quest.resDone'))}</h1>
+      <p class="result-score" dir="ltr">${played.solved}<small>/${played.total}</small></p>
+      <p class="result-line">${esc(t('quest.resEarned'))}</p>
+      <p class="quest-won">${prizePills(played)}</p>
+      ${played.firstTry ? `<p class="quest-doubled">${ICONS.trophy}<span>${esc(t('quest.resDoubled'))}</span></p>` : ''}
+      ${nextLink}`;
+  } else if (played) {
+    const close = played.solved > 0 && played.total - played.solved <= 2; // nearly there: say so
+    body = `
+      <h1 class="stage-verdict">${esc(t(close ? 'quest.resClose' : 'quest.resFailed'))}</h1>
+      <p class="result-score" dir="ltr">${played.solved}<small>/${played.total}</small></p>
+      <p class="result-line">${esc(t('quest.resLeft', { solved: played.solved, total: played.total }))}</p>
+      ${played.xp || played.coins ? `<p class="quest-kept"><span>${esc(t('quest.resEarned'))}</span>${prizePills(played)}</p>` : ''}
+      ${prizeBox}
+      ${acedLine(l)}
+      ${start(t('quest.again'))}`;
+  } else if (l.status === 'done') {
+    body = `
+      <p class="quest-state ${l.firstTry ? 'is-ace' : ''}">${esc(t(l.firstTry ? 'quest.aced' : 'quest.done'))}</p>
+      <p class="result-line">${esc(t('quest.doneNote'))}</p>
+      ${acedLine(l)}
+      ${nextLink}`;
+  } else if (l.status === 'locked') {
+    body = `<p class="result-line">${esc(t('quest.locked', { n: l.n - 1 }))}</p>`;
+  } else {
+    body = `
+      <p class="result-line">${esc(tn('leveling.questions', l.count))}${l.attempts ? ` · ${esc(t('quest.best', { c: l.best, t: l.count }))}` : ''}</p>
+      ${prizeBox}
+      <ul class="quest-rules"><li>${esc(t('quest.ruleMiss'))}</li><li>${esc(t('quest.ruleLeave'))}</li><li>${esc(t('quest.ruleOnce'))}</li></ul>
+      ${acedLine(l)}
+      ${l.count ? start(t(l.attempts ? 'quest.again' : 'quest.start')) : `<p class="challenge-sub">${esc(t('quest.unavailable'))}</p>`}`;
+  }
+
+  app.innerHTML = `
+    <section class="screen quests has-tabbar">
+      ${topbar()}
+      <div class="panel quest-page is-${l.status}">
+        ${questPhoto(l, 'is-big')}
+        <p class="eyebrow">${esc(t('quest.level', { n: l.n }))}</p>
+        <h2 class="quest-name">${esc(questName(l))}</h2>
+        ${body}
+        <a class="btn btn-ghost-ink btn-block" href="#/levels">${esc(t('quest.all'))}</a>
+      </div>
+    </section>
+    ${tabbar('home')}`;
+  app.querySelector('[data-play-quest]')?.addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      await playQuest(id);
+    } catch (err) {
+      if (err.status === 401) return signOut();
+      if (err.status === 403 || err.status === 404 || err.status === 409) return route(); // it changed meanwhile: draw it as it stands
+      b.disabled = false;
+      window.alert(errMsg(err));
+    }
+  });
 }
 
 // ── Friends ────────────────────────────────────────────────────

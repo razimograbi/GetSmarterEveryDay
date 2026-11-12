@@ -29,6 +29,7 @@ export const COVERS = {
   clubs: 'File:Camp Nou aerial (cropped).jpg',
   footballers: 'File:Norberto Alonso 1984.jpg',
   currencies: 'File:Euro coins and banknotes (cropped).jpg',
+  guns: 'File:Handgun collection.JPG',
   history: 'File:Pyramids of the Giza Necropolis.jpg',
   trivia: 'File:Gold question mark 3d.png',
   unexpected: 'File:Hieronymus Bosch 051.jpg',

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-09",
+  "generated": "2026-11-12",
   "files": [
     {
       "file": "United Nations Flags - cropped.jpg",
@@ -1775,11 +1775,11 @@
       ]
     },
     {
-      "file": "Red Panda, Gentle Tree-Dweller of the Himalayas.jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:Red_Panda,_Gentle_Tree-Dweller_of_the_Himalayas.jpg",
-      "author": "Sunuwargr",
-      "license": "CC BY-SA 4.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "file": "Red Panda (24986761703).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Red_Panda_(24986761703).jpg",
+      "author": "Mathias Appel",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
       "nonFree": false,
       "topics": [
         "animals"
@@ -7991,6 +7991,17 @@
       ]
     },
     {
+      "file": "Henri Matisse - Dance II (Hermitage Museum).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Henri_Matisse_-_Dance_II_(Hermitage_Museum).jpg",
+      "author": "Henri Matisse",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "paintings"
+      ]
+    },
+    {
       "file": "Ilia Efimovich Repin (1844-1930) - Volga Boatmen (1870-1873).jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Ilia_Efimovich_Repin_(1844-1930)_-_Volga_Boatmen_(1870-1873).jpg",
       "author": "Ilya Repin",
@@ -8236,17 +8247,6 @@
       "file": "Madame X (Madame Pierre Gautreau), John Singer Sargent, 1884 (unfree frame crop).jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Madame_X_(Madame_Pierre_Gautreau),_John_Singer_Sargent,_1884_(unfree_frame_crop).jpg",
       "author": "John Singer Sargent (American, Florence 1856–1925 London) (1856 - 1925) – Artist Details on Google Art Project",
-      "license": "Public domain",
-      "licenseUrl": null,
-      "nonFree": false,
-      "topics": [
-        "paintings"
-      ]
-    },
-    {
-      "file": "Matissedance.jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:Matissedance.jpg",
-      "author": "Henri Matisse",
       "license": "Public domain",
       "licenseUrl": null,
       "nonFree": false,
@@ -9168,11 +9168,11 @@
       ]
     },
     {
-      "file": "Ariana Grande promoting Wicked (2024).jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:Ariana_Grande_promoting_Wicked_(2024).jpg",
-      "author": "Barbie Simons",
-      "license": "CC BY 3.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+      "file": "Ariana Grande Eternal Sunshine Tour singing (cropped).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Ariana_Grande_Eternal_Sunshine_Tour_singing_(cropped).jpg",
+      "author": "Saturnmondays",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
       "nonFree": false,
       "topics": [
         "people"
@@ -9807,17 +9807,6 @@
       ]
     },
     {
-      "file": "New Year's Eve from President of Ukraine Volodymyr Zelensky (31-12-2025) (cropped).jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:New_Year%27s_Eve_from_President_of_Ukraine_Volodymyr_Zelensky_(31-12-2025)_(cropped).jpg",
-      "author": "Press Service of the President of Ukraine",
-      "license": "CC BY 4.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
-      "nonFree": false,
-      "topics": [
-        "people"
-      ]
-    },
-    {
       "file": "Novak Djokovic Paris 2024 Olympic Games (cropped).jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Novak_Djokovic_Paris_2024_Olympic_Games_(cropped).jpg",
       "author": "Andymiah",
@@ -10141,6 +10130,17 @@
       "file": "Vladimir Putin (2026 02 23) (cropped).jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Vladimir_Putin_(2026_02_23)_(cropped).jpg",
       "author": "Kremlin.ru",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+      "nonFree": false,
+      "topics": [
+        "people"
+      ]
+    },
+    {
+      "file": "Volodymyr Zelensky 2022 official portrait (cropped).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Volodymyr_Zelensky_2022_official_portrait_(cropped).jpg",
+      "author": "Press Service of the President of Ukraine",
       "license": "CC BY 4.0",
       "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
       "nonFree": false,
@@ -10963,6 +10963,17 @@
       ]
     },
     {
+      "file": "Nail svg hariadhi.svg",
+      "page": "https://commons.wikimedia.org/wiki/File:Nail_svg_hariadhi.svg",
+      "author": "Hariadhi",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "beauty"
+      ]
+    },
+    {
       "file": "Namee Park - eyelash extensions 1 (cropped).png",
       "page": "https://commons.wikimedia.org/wiki/File:Namee_Park_-_eyelash_extensions_1_(cropped).png",
       "author": "Namee Park",
@@ -11265,17 +11276,6 @@
       "author": "Moose Photos ( https://www.pexels.com/@moose-photos-170195/ )",
       "license": "CC0",
       "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-      "nonFree": false,
-      "topics": [
-        "beauty"
-      ]
-    },
-    {
-      "file": "Професионална Ноктопластика.JPG",
-      "page": "https://commons.wikimedia.org/wiki/File:%D0%9F%D1%80%D0%BE%D1%84%D0%B5%D1%81%D0%B8%D0%BE%D0%BD%D0%B0%D0%BB%D0%BD%D0%B0_%D0%9D%D0%BE%D0%BA%D1%82%D0%BE%D0%BF%D0%BB%D0%B0%D1%81%D1%82%D0%B8%D0%BA%D0%B0.JPG",
-      "author": "Bvasilev1",
-      "license": "CC BY 4.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
       "nonFree": false,
       "topics": [
         "beauty"
@@ -14073,6 +14073,347 @@
       "nonFree": false,
       "topics": [
         "currencies"
+      ]
+    },
+    {
+      "file": "(Saint-Lys) Fauconneau de 1589.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:(Saint-Lys)_Fauconneau_de_1589.jpg",
+      "author": "Didier Descouens",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "1956prime2.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:1956prime2.jpg",
+      "author": "Mike Cumpston",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "AK-47 type II noBG.png",
+      "page": "https://commons.wikimedia.org/wiki/File:AK-47_type_II_noBG.png",
+      "author": "User:Nemo5576",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Barrett-M82A1-Independence-Day-2017-IZE-048-white.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Barrett-M82A1-Independence-Day-2017-IZE-048-white.jpg",
+      "author": "MathKnight and Zachi Evenor",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Campbell Thompson.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Campbell_Thompson.jpg",
+      "author": "Hmaag",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "DesertEagle 50AE.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:DesertEagle_50AE.jpg",
+      "author": "Bobbfwed",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Flint-Lock Musket, from the Arms of All Nations series (N3) for Allen & Ginter Cigarettes Brands MET DP828710.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Flint-Lock_Musket,_from_the_Arms_of_All_Nations_series_(N3)_for_Allen_%26_Ginter_Cigarettes_Brands_MET_DP828710.jpg",
+      "author": "Allen & Ginter",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Fort Laramie National Historic Site Gatling gun 16-9-2014 15-26-03.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Fort_Laramie_National_Historic_Site_Gatling_gun_16-9-2014_15-26-03.jpg",
+      "author": "Paul Hermans",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Glock 17 (6825676904) без фона.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Glock_17_(6825676904)_%D0%B1%D0%B5%D0%B7_%D1%84%D0%BE%D0%BD%D0%B0.jpg",
+      "author": "Askild Antonsen",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Handgun collection.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:Handgun_collection.JPG",
+      "author": "Joshuashearn",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Heckler & Koch MP5-1.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Heckler_%26_Koch_MP5-1.jpg",
+      "author": "Heckler_&_Koch_MP5.jpg : Samuli Silvennoinen derivative work: Hic et nunc",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "HH-60G M134.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:HH-60G_M134.jpg",
+      "author": "Noah Wulf",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "IWI-Tavor-TAR-21w1.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:IWI-Tavor-TAR-21w1.jpg",
+      "author": "MathKnight",
+      "license": "CC BY 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Luger IMG 6768-retouched.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Luger_IMG_6768-retouched.jpg",
+      "author": "Luger_IMG_6768.jpg : Rama",
+      "license": "CC BY-SA 2.0 fr",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/fr/deed.en",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M&Prevolver.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:M%26Prevolver.jpg",
+      "author": "The original uploader was Olegvolk at English Wikipedia .",
+      "license": "CC BY 2.5",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M1 Garand rifle USA noBG new.png",
+      "page": "https://commons.wikimedia.org/wiki/File:M1_Garand_rifle_USA_noBG_new.png",
+      "author": "Armémuseum (The Swedish Army Museum)",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M16A2 noBG.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:M16A2_noBG.jpg",
+      "author": "Armémuseum (The Swedish Army Museum)",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M1911 and M1911A1 pistols.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:M1911_and_M1911A1_pistols.JPG",
+      "author": "Dkamm at English Wikipedia",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M24-Sniper-Weapon-System.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:M24-Sniper-Weapon-System.jpg",
+      "author": "User:MathKnight , User:Bukvoed and PEO Soldier, US Army website",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M870wingmaster.JPEG",
+      "page": "https://commons.wikimedia.org/wiki/File:M870wingmaster.JPEG",
+      "author": "DoD photo by: PHAN MILNE/PHAN DILLON",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "MP 40 AYF 2.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:MP_40_AYF_2.JPG",
+      "author": "Quickload at English Wikipedia",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "P90 Official No Bg.png",
+      "page": "https://commons.wikimedia.org/wiki/File:P90_Official_No_Bg.png",
+      "author": "FN HERSTAL",
+      "license": "CC BY 2.5",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Paintball Gun and Equipment.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Paintball_Gun_and_Equipment.jpg",
+      "author": "Bob McGrath from Potsdam, US",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "PEO M4 Carbine RAS M68 CCO.png",
+      "page": "https://commons.wikimedia.org/wiki/File:PEO_M4_Carbine_RAS_M68_CCO.png",
+      "author": "Photo Courtesy of PEO Soldier",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Police issue X26 TASER-white.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Police_issue_X26_TASER-white.jpg",
+      "author": "Junglecat",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "RPG-7 detached.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:RPG-7_detached.jpg",
+      "author": "Michal Maňas",
+      "license": "CC BY 2.5",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "ShotgunAction.JPG",
+      "page": "https://commons.wikimedia.org/wiki/File:ShotgunAction.JPG",
+      "author": "The original uploader was Commander Zulu at English Wikipedia .",
+      "license": "Attribution",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Single shot,12 Gauge, flare gun.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Single_shot,12_Gauge,_flare_gun.jpg",
+      "author": "P. Ubriaco",
+      "license": "CC BY 2.5",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.5",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Soldier with Bazooka M1.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Soldier_with_Bazooka_M1.jpg",
+      "author": "U.S. Army Signal Corps photograph..",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "The girls fight with water cannons!.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:The_girls_fight_with_water_cannons!.jpg",
+      "author": "MIKI Yoshihito from Sapporo City, Hokkaido, Japan",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Uzi of the israeli armed forces.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Uzi_of_the_israeli_armed_forces.jpg",
+      "author": "Uziel Galishto",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
       ]
     },
     {

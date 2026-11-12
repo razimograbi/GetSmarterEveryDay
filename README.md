@@ -3,13 +3,13 @@
 A picture quiz built for phones (it works on laptops too). Sign in with Google, play
 10-question rounds against a 15-second clock, and track what you've mastered.
 
-**2,125 questions in 28 topics:** flags (100), capitals (100), seas & oceans (25),
+**2,155 questions in 29 topics:** flags (100), capitals (100), seas & oceans (25),
 road signs (100: 20 European, 80 Israeli), animals (100), cars (100), programming languages (20), landmarks (100),
 dog breeds (100), world food (100), countries (100), chemical elements (40),
 musical instruments (100), paintings (100), human body (100), famous people (100),
 beauty products (100), professions (50),
 company logos (100, symbol-only logos that don't spell the name), football clubs (40),
-football players (40), currencies (20), history (100),
+football players (40), currencies (20), guns (30, well-known ones only), history (100),
 interesting questions (100) and not what you think (100, where the obvious answer is
 wrong), which mix photo and text-only questions, and three book topics with text-only questions:
 *Sapiens* by Yuval Noah Harari (30), *Atomic Habits* by James Clear (30) and
@@ -112,7 +112,9 @@ scripts/
 | POST | `/api/duels/:id/join`, `/rematch` | Take the seat of a duel that's waiting, start or join a rematch |
 | GET | `/api/duels/:id/stream`, `/state` | A live duel as you see it: pushed as it changes (Server-Sent Events), or once |
 | POST | `/api/duels/:id/ready`, `/seen`, `/answer`, `/beat`, `/leave` | What a player does in a live duel (see Live duels) |
-| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily or Leveling question at a time (see Fair play) |
+| POST | `/api/plays/:id/open`, `/answer`, `/skip` | `{ idx, choice? }` → one Daily, Leveling or Levels question at a time (see Fair play) |
+| GET | `/api/quests` | The ten Levels as this player stands on them, with friends who finished each on their first try (never the questions) |
+| POST | `/api/quests/:id/start`, `/finish` | Start or pick up a try at the open level (refused once it's finished), end the open try now |
 | GET | `/api/stages` | The published Leveling stages as this player stands on them (never the questions) |
 | POST | `/api/stages/:id/start`, `/finish` | Start or pick up a try at an open stage, end the open try now |
 | GET/POST | `/api/admin/stages` | Admins only: list the stages / `{ title }` → a new draft |
@@ -345,7 +347,7 @@ create `public/lang/<id>/`, add its Google Fonts link to `FONTS` in `i18n.js` an
 
 Everything is stored in one SQLite file, `data/smarts.db` (or `$DATA_DIR/smarts.db`):
 users, sessions, settings, rounds, answers, question reports, events, profiles, friends,
-the Daily's questions and results, duels, Leveling stages and push subscriptions. Schema changes that need
+the Daily's questions and results, duels, Leveling stages, the Levels and push subscriptions. Schema changes that need
 more than a new table run once, in order, from `MIGRATIONS` in `server/db.js`
 (`PRAGMA user_version` remembers which have run).
 
@@ -525,9 +527,59 @@ set to the wrong time plays the same as any other.
 The whole design relies on one server process, like the rate limits. `npm test` plays all of this
 with simulated players and a fake clock.
 
+### Levels (the built-in path)
+
+Ten rounds that ship with the game, played in order, plus an eleventh tile that says more are
+coming. The code calls them **quests** (`server/quests.js`, the `quest_results` table,
+`/api/quests`), because "level" already means a player's own level and `shared/levels.js` builds
+Quick rounds. Players reach them from the dark card under the Quick round button, or at `#/levels`.
+
+| Level | Topic | Questions | Prize | On the first try |
+|---|---|---|---|---|
+| 1 First Flags | Flags | 5 | 60 XP, 50 coins | 120 XP, 100 coins |
+| 2 Animal Kingdom | Animals | 6 | 68 XP, 56 coins | 136 XP, 112 coins |
+| 3 Lock and Load | Guns | 7 | 76 XP, 62 coins | 152 XP, 124 coins |
+| 4 Tasty Bites | World food | 8 | 84 XP, 68 coins | 168 XP, 136 coins |
+| 5 Brand Spotter | Company logos | 10 | 100 XP, 80 coins | 200 XP, 160 coins |
+| 6 Wonders of the World | Landmarks | 10 | 100 XP, 80 coins | 200 XP, 160 coins |
+| 7 Capital Cities | Capitals | 12 | 116 XP, 92 coins | 232 XP, 184 coins |
+| 8 Famous Faces | Famous people | 15 | 140 XP, 110 coins | 280 XP, 220 coins |
+| 9 Sound Check | Instruments | 20 | 180 XP, 140 coins | 360 XP, 280 coins |
+| 10 World Tour | Flags | 30 | 260 XP, 200 coins | 520 XP, 400 coins |
+
+- **The questions are written out** in `server/quests.js`, one topic per level for now, in playing
+  order. No question is in two levels. The first levels use only the easiest questions of their
+  topic (difficulty 0 and 1) and end on a medium one; later levels climb slowly. That file never
+  reaches the browser, because a question's id often says its answer.
+- **One mistake ends the try.** A wrong answer, running out of time (the server's clock) or
+  leaving ends it there. Only the questions the player reached are saved, and the only answer they
+  are shown is the one of the question that ended it: nothing about the rest of the level is sent.
+  A question can't be skipped; if its picture doesn't load, the player loads it again before the
+  clock has started.
+- **What a try pays** (`QUEST` in `shared/config.js`): finishing pays 20 XP + 8 a question and
+  20 coins + 6 a question, far more than a Quick round. A try that ends early pays half an XP and
+  half a coin for each question solved, rounded down, so always less than the number solved.
+- **First try.** Finishing a level on the very first try doubles the prize, and is remembered
+  (`quest_results.first_try`): the level then shows a trophy instead of a tick. A level also names
+  up to three friends who finished it on their first try. Starting a try and leaving before the
+  first question appears isn't a try.
+- **Once.** A finished level can't be played again; the server refuses to start it.
+- **The ad offer.** When a try ends on a wrong answer the player is offered "Watch an ad to keep
+  going". There are no ads yet, so the button only says they're coming, and the browser logs
+  `ad_offered` so the offer can be counted. Making it real means letting the server reopen the
+  try once an ad network confirms the ad was watched (`ad_watched`).
+- **Pictures.** Like the Daily and duels, a level leaves out any question whose picture has no
+  copy on the server, so run `npm run fetch-images` after deploying.
+
+`npm run validate` checks the levels (real questions, the right topic, none twice) and
+`tests/quests.test.js` plays them.
+
+To add a level, add it to `QUESTS` with the next id, give it a name in the three language files
+(`quest.name.<id>`), and pick a topic photo for `cover`.
+
 ### Leveling
 
-A path of **stages** that admins write on the dashboard (**Progress → Leveling stages**,
+Separate from the built-in Levels above: a path of **stages** that admins write on the dashboard (**Progress → Leveling stages**,
 `#/admin/stages`). Smarts ships with none: until a stage is published, players see no sign of it.
 
 A stage has a name and 5 to 20 questions (`STAGE` in `shared/config.js`). A question has a prompt,
@@ -590,7 +642,7 @@ The names are listed in `EVENTS` in `shared/config.js`:
 | `round_started` | browser | a round's questions are picked and it begins |
 | `round_finished` | server | a whole round is saved (quitting halfway isn't counted) |
 | `helper_used` | browser | for later: a hint, skip, extra life or streak saver is used |
-| `ad_offered` | browser | for later: a "Watch ad" button is shown |
+| `ad_offered` | browser | a "Watch an ad to keep going" button is shown, when a try at a level ends on a wrong answer |
 | `ad_watched` | server | for later: the ad network confirms an ad was watched to the end |
 | `purchase` | server | for later: the payment provider confirms a purchase |
 

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, COINS, levelFor, roundCoins, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
+  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, COINS, questConsolation, questPrize, levelFor, roundCoins, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
 } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { UNLOCKS, itemKey, parseAvatar, randomAvatar, unlockLevel, unlockPrice } from '../shared/avatars.js';
@@ -362,6 +362,25 @@ const MIGRATIONS = [
     `);
     for (const p of db.prepare('SELECT user_id, xp, avatar FROM profiles').all()) grantUnlocked(db, p.user_id, p.xp, p.avatar);
   },
+  // 12: the Levels (server/quests.js). One row per player and level. completed_at is set once, by
+  // the try that finishes the level; first_try says that try was the player's first.
+  (db) => db.exec(`
+    CREATE TABLE quest_results (
+      user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      quest_id      INTEGER NOT NULL,
+      attempts      INTEGER NOT NULL DEFAULT 0,
+      best_solved   INTEGER NOT NULL DEFAULT 0,
+      completed_at  INTEGER,
+      first_try     INTEGER NOT NULL DEFAULT 0,
+      last_solved   INTEGER NOT NULL DEFAULT 0,
+      last_total    INTEGER NOT NULL DEFAULT 0,
+      last_xp       INTEGER NOT NULL DEFAULT 0,
+      last_coins    INTEGER NOT NULL DEFAULT 0,
+      last_at       INTEGER,
+      PRIMARY KEY (user_id, quest_id)
+    ) WITHOUT ROWID;
+    CREATE INDEX quest_results_aced ON quest_results(quest_id) WHERE first_try = 1;
+  `),
 ];
 
 /** The Marketing Studio's project, or null before anything was saved. */
@@ -567,6 +586,7 @@ export function exportUser(db, userId) {
     leveling: db.prepare(`
       SELECT s.title, r.attempts, r.best_correct, r.best_total, r.best_score, r.cleared_at, r.last_at
       FROM stage_results r JOIN stages s ON s.id = r.stage_id WHERE r.user_id = ? ORDER BY s.position`).all(userId),
+    levels: db.prepare('SELECT quest_id AS level, attempts, best_solved, completed_at, first_try, last_at FROM quest_results WHERE user_id = ? ORDER BY quest_id').all(userId),
     reminderDevices: db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(userId).n,
   };
 }
@@ -719,17 +739,20 @@ function addCoins(db, userId, amount, reason, ref) {
   return amount;
 }
 
-const SERVER_PLAYED = "('daily', 'duel', 'stage')"; // the rounds whose answers the browser can't make up
+const SERVER_PLAYED = "('daily', 'duel', 'stage', 'quest')"; // the rounds whose answers the browser can't make up
 
-/** What a finished round pays: the round itself, any levels it reached and any streak it completed. */
-function payRound(db, userId, { roundId, category, score, fromLevel, toLevel }) {
+/**
+ * What a finished round pays: the round itself, any levels it reached and any streak it completed.
+ * `coins` replaces what the round itself pays, for rounds with their own prize (the Levels).
+ */
+function payRound(db, userId, { roundId, category, score, fromLevel, toLevel, coins = null }) {
   let halved = false;
-  if (!['daily', 'duel', 'stage'].includes(category)) {
+  if (!['daily', 'duel', 'stage', 'quest'].includes(category)) {
     const today = Math.floor(Date.now() / DAY_MS) * DAY_MS;
     const { n } = db.prepare(`SELECT COUNT(*) AS n FROM rounds WHERE user_id = ? AND complete = 1 AND created_at >= ? AND category NOT IN ${SERVER_PLAYED}`).get(userId, today);
     halved = n > COINS.quickFullPerDay;
   }
-  let paid = addCoins(db, userId, roundCoins(category, score, halved), 'round', `round:${roundId}`);
+  let paid = addCoins(db, userId, coins ?? roundCoins(category, score, halved), 'round', `round:${roundId}`);
   for (let level = fromLevel + 1; level <= toLevel; level++) paid += addCoins(db, userId, COINS.levelUp, 'level', `level:${level}`);
   const tz = db.prepare('SELECT tz_offset FROM profiles WHERE user_id = ?').get(userId)?.tz_offset ?? 0;
   const { current } = dayStreaks(db, userId, tz);
@@ -800,8 +823,11 @@ export function buyItem(db, userId, part, value) {
   });
 }
 
-/** Writes a round and its answers and adds its XP. Runs inside the caller's transaction. */
-function insertRound(db, userId, { mode, category, graded, complete = true, bonusXp = 0 }) {
+/**
+ * Writes a round and its answers and adds its XP. Runs inside the caller's transaction.
+ * `prize` ({ xp, coins }) replaces what the round would usually earn, for the Levels.
+ */
+function insertRound(db, userId, { mode, category, graded, complete = true, bonusXp = 0, prize = null }) {
   const now = Date.now();
   const score = graded.reduce((s, a) => s + a.points, 0);
   const correct = graded.filter((a) => a.correct).length;
@@ -812,9 +838,9 @@ function insertRound(db, userId, { mode, category, graded, complete = true, bonu
     'INSERT INTO answers (round_id, user_id, question_id, category, choice, correct, ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   );
   for (const a of graded) ins.run(roundId, userId, a.id, a.cat, a.choice, a.correct ? 1 : 0, a.ms, now);
-  const xpGained = complete ? xpForRound(category, score) + bonusXp : 0;
+  const xpGained = !complete ? 0 : prize ? prize.xp : xpForRound(category, score) + bonusXp;
   const xp = db.prepare('UPDATE profiles SET xp = xp + ? WHERE user_id = ? RETURNING xp').get(xpGained, userId)?.xp ?? 0;
-  const coinsGained = complete ? payRound(db, userId, { roundId: Number(roundId), category, score, fromLevel: levelFor(xp - xpGained), toLevel: levelFor(xp) }) : 0;
+  const coinsGained = complete ? payRound(db, userId, { roundId: Number(roundId), category, score, fromLevel: levelFor(xp - xpGained), toLevel: levelFor(xp), coins: prize?.coins }) : 0;
   return { roundId: Number(roundId), score, correct, total: graded.length, xpGained, xp, coinsGained, coins: coinsOf(db, userId) };
 }
 
@@ -1563,6 +1589,70 @@ export function finishStageTry(db, { userId, stageId, mode, graded, total, playe
       `).run(correct, total, score, (round?.xpGained ?? 0) - bonusXp, bonusXp, Date.now(), score, correct, score, total, score, userId, stageId);
     }
     return { round, correct, total, score, cleared, firstClear, bonusXp };
+  });
+}
+
+// ── The Levels (quests) ────────────────────────────────────────
+// Built-in rounds of bank questions (server/quests.js), played on the server. A try's `ref` is
+// "<level id>:<random>", because a level can be tried until it's finished.
+
+const toQuestResult = (r) => ({
+  attempts: r.attempts, best: r.best_solved, completedAt: r.completed_at, firstTry: r.first_try === 1,
+  last: r.last_at === null ? null : { solved: r.last_solved, total: r.last_total, xp: r.last_xp, coins: r.last_coins, at: r.last_at },
+});
+
+/** How the player stands on each level they've tried: a Map from level id. */
+export function questResults(db, userId) {
+  return new Map(db.prepare('SELECT * FROM quest_results WHERE user_id = ?').all(userId).map((r) => [r.quest_id, toQuestResult(r)]));
+}
+
+/** The player's friends who finished a level on their first try: a Map from level id to their profiles, newest first. */
+export function friendsFirstTry(db, userId) {
+  const rows = db.prepare(`
+    SELECT r.quest_id, p.user_id, p.name, p.avatar, p.country, p.hidden, p.friend_code, p.tz_offset, p.xp
+    FROM friends f
+    JOIN quest_results r ON r.user_id = f.friend_id AND r.first_try = 1
+    JOIN profiles p ON p.user_id = f.friend_id
+    WHERE f.user_id = ? ORDER BY r.completed_at DESC
+  `).all(userId);
+  const byQuest = new Map();
+  for (const r of rows) {
+    if (!byQuest.has(r.quest_id)) byQuest.set(r.quest_id, []);
+    byQuest.get(r.quest_id).push(shownProfile(toProfile(r)));
+  }
+  return byQuest;
+}
+
+/** The try this player has open on this level, if any. */
+export const openQuestPlay = (db, questId, userId) =>
+  toPlay(db.prepare("SELECT * FROM plays WHERE kind = 'quest' AND user_id = ? AND ref LIKE ? AND finished_at IS NULL").get(userId, `${questId}:%`)) ?? null;
+
+/**
+ * Saves a try at a level in one transaction: the round, what it pays and the player's record.
+ * `graded` holds only the questions the player reached, and `total` is how many the level has:
+ * the level is finished when every one was answered right. A try that saw no question isn't one.
+ * The prize goes to the try that sets completed_at, which only one can; `first_try` when that was
+ * the player's first.
+ */
+export function finishQuestTry(db, { userId, questId, mode, graded, total }) {
+  return inTransaction(db, () => {
+    const solved = graded.filter((a) => a.correct).length;
+    if (!graded.length) return { round: null, solved, total, completed: false, firstTry: false, xp: 0, coins: 0 };
+    db.prepare('INSERT OR IGNORE INTO quest_results (user_id, quest_id) VALUES (?, ?)').run(userId, questId);
+    const before = db.prepare('SELECT attempts, completed_at FROM quest_results WHERE user_id = ? AND quest_id = ?').get(userId, questId);
+    const completed = solved === total && before.completed_at === null;
+    const firstTry = completed && before.attempts === 0;
+    const consolation = before.completed_at === null ? questConsolation(solved) : 0;
+    const prize = completed ? questPrize(total, firstTry) : { xp: consolation, coins: consolation };
+    const round = insertRound(db, userId, { mode, category: 'quest', graded, complete: true, prize });
+    const now = Date.now();
+    db.prepare(`
+      UPDATE quest_results SET attempts = attempts + 1, best_solved = MAX(best_solved, ?),
+        completed_at = CASE WHEN ? THEN ? ELSE completed_at END, first_try = CASE WHEN ? THEN 1 ELSE first_try END,
+        last_solved = ?, last_total = ?, last_xp = ?, last_coins = ?, last_at = ?
+      WHERE user_id = ? AND quest_id = ?
+    `).run(solved, completed ? 1 : 0, now, firstTry ? 1 : 0, solved, total, prize.xp, prize.coins, now, userId, questId);
+    return { round, solved, total, completed, firstTry, xp: prize.xp, coins: prize.coins };
   });
 }
 

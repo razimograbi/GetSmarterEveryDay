@@ -7,10 +7,12 @@
 //    "Similar" = every option's character length is within 25% of the longest,
 //    and every option's word count is within 4 words of the longest.
 //  - every question has a difficulty from 0 to 10 (shared/difficulty.js)
+//  - the Levels (server/quests.js) use real questions of their topic, and none twice
 
 import { existsSync } from 'node:fs';
 import { QUESTIONS, DIFFICULTY_PROBLEMS } from '../shared/questions.js';
 import { CATEGORIES } from '../shared/config.js';
+import { QUESTS, questProblems } from '../server/quests.js';
 
 const PUBLIC = new URL('../public/', import.meta.url);
 
@@ -24,7 +26,7 @@ const ids = new Set();
 const cats = new Set(CATEGORIES.map((c) => c.id));
 const perCat = {};
 
-errors.push(...DIFFICULTY_PROBLEMS);
+errors.push(...DIFFICULTY_PROBLEMS, ...questProblems());
 for (const q of QUESTIONS) if (q.difficulty === undefined) errors.push(`${q.id}: no difficulty in shared/difficulty.js`);
 
 for (const q of QUESTIONS) {
@@ -169,5 +171,6 @@ if (errors.length) {
   for (const e of errors) console.error('  - ' + e);
   process.exit(1);
 }
+console.log(`Levels: ${QUESTS.length}, with ${QUESTS.reduce((n, l) => n + l.questions.length, 0)} questions`);
 console.log(`Translations: ${translationSummary.join(', ')}`);
 console.log('\nAll questions pass.');

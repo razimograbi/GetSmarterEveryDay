@@ -27,6 +27,7 @@ export const ICONS = {
   logos: i('<circle cx="8" cy="8" r="4.5"/><rect x="12.5" y="12.5" width="8" height="8" rx="1.5"/><path d="M4 20.5 8 14l4 6.5z"/>'),
   clubs: i('<path d="M12 3 4.5 5.5v6c0 4.6 3.2 8 7.5 9.5 4.3-1.5 7.5-4.9 7.5-9.5v-6z"/><path d="M12 3v18"/><path d="M4.5 11h15"/>'),
   footballers: i('<circle cx="12" cy="12" r="9"/><path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4z"/><path d="M12 3v4.5M16 10.4l4.3-1.4M14.5 15.1l2.6 3.8M9.5 15.1l-2.6 3.8M8 10.4 3.7 9"/>'),
+  guns: i('<circle cx="12" cy="12" r="7"/><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
   currencies: i('<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.8"/><path d="M6 9.5v5M18 9.5v5"/>'),
   unexpected: i('<path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><circle cx="12" cy="17.5" r=".6" fill="currentColor"/><path d="M4 4l2 2M20 4l-2 2M12 2v2"/>'),
   history: i('<path d="M7 3h10"/><path d="M7 21h10"/><path d="M8 3c0 5 8 5 8 9s-8 4-8 9"/><path d="M16 3c0 5-8 5-8 9s8 4 8 9"/><path d="M10 18.5h4"/>'),
@@ -49,6 +50,7 @@ export const ICONS = {
   dice: i('<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/>'),
   edit: i('<path d="M4 20h4L19.5 8.5a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   leveling: i('<path d="M3.5 20.5h5v-5h4v-5h4v-5h4"/>'),
+  quest: i('<path d="M3.5 20.5h5v-5h4v-5h4v-5h4"/>'), // a round of the Levels, in lists of rounds
   lock: i('<rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke-width="2.6"/>'),
   bell: i('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'),
   plus: i('<path d="M12 5v14M5 12h14"/>'),
@@ -56,6 +58,7 @@ export const ICONS = {
   close: i('<path d="M6 6l12 12M18 6 6 18"/>'),
   coin: i('<circle cx="12" cy="12" r="9.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="5.5" stroke="rgba(90,55,0,.55)" stroke-width="1.8"/>'),
   check: i('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 'stroke-width="2.6"'),
+  play: i('<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>'),
   cross: i('<path d="M7 7l10 10M17 7 7 17"/>', 'stroke-width="2.6"'),
   clock: i('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
 };
