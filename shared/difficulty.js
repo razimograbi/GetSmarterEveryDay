@@ -296,8 +296,11 @@ export const DIFFICULTY = {
     thb:6 sar:4 cny:4`,
   guns: `
     ak-47:1 m16:2 uzi:1 desert-eagle:2 glock:2 tommy-gun:2 rpg-7:2 minigun:2 musket:2 gatling:2
-    bazooka:1 flare-gun:3 revolver:0 water-gun:0 taser:1 cannon:0 double-barrel:2 m4:3 m1911:3 mp5:3
-    p90:3 barrett:3 luger:3 peacemaker:3 shotgun:2 m1-garand:3 mp40:3 tavor:3 paintball:2 sniper-rifle:1`,
+    bazooka:1 flare-gun:3 revolver:0 taser:1 double-barrel:2 m4:3 m1911:3 mp5:3
+    p90:3 barrett:3 luger:3 peacemaker:3 shotgun:2 m1-garand:3 mp40:3 tavor:3 paintball:2 sniper-rifle:1
+    winchester:3 flintlock-pistol:2 blunderbuss:3 m79:2 sawed-off:2 derringer:3 walther-ppk:3 m60:3
+    hand-cannon:3 colt-python:3 beretta-92:4 spas-12:5 steyr-aug:5 galil:5 dragunov:5 mosin-nagant:6
+    kar98k:5 ppsh-41:5 mac-10:4 m249:5`,
   history: `
     balfour:6 partition:5 israel-independence:2 nakba:3 six-day:3 yom-kippur:4 camp-david:3 intifada:6
     oslo:4 syria-war:5 assad:2 palmyra:6 sykes-picot:5 lebanon-war:7 taif:7 beirut-blast:4 hariri:5

@@ -15,7 +15,7 @@ import { pictureKeepsSecret } from './pictures.js';
 export const QUESTS = [
   { id: 1, topic: 'flags', cover: 'flags', questions: ['flag-jp', 'flag-us', 'flag-gb', 'flag-fr', 'flag-za'] },
   { id: 2, topic: 'animals', cover: 'animals', questions: ['animals-lion', 'animals-elephant', 'animals-giraffe', 'animals-penguin', 'animals-dolphin', 'animals-alpaca', 'animals-capybara'] },
-  { id: 3, topic: 'guns', cover: 'guns', questions: ['guns-revolver', 'guns-water-gun', 'guns-cannon', 'guns-ak-47', 'guns-bazooka', 'guns-uzi', 'guns-tavor'] },
+  { id: 3, topic: 'guns', cover: 'guns', questions: ['guns-revolver', 'guns-ak-47', 'guns-bazooka', 'guns-uzi', 'guns-taser', 'guns-sniper-rifle', 'guns-mac-10'] },
   { id: 4, topic: 'food', cover: 'food', questions: ['food-pizza', 'food-hamburger', 'food-sushi', 'food-croissant', 'food-ice-cream', 'food-french-fries', 'food-peking-duck', 'food-pad-thai'] },
   {
     id: 5, topic: 'logos', cover: 'logos',

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-12",
+  "generated": "2026-11-13",
   "files": [
     {
       "file": "United Nations Flags - cropped.jpg",
@@ -9168,11 +9168,11 @@
       ]
     },
     {
-      "file": "Ariana Grande Eternal Sunshine Tour singing (cropped).jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:Ariana_Grande_Eternal_Sunshine_Tour_singing_(cropped).jpg",
-      "author": "Saturnmondays",
-      "license": "CC BY 4.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+      "file": "ArianaGrande-byPhilipRomano.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:ArianaGrande-byPhilipRomano.jpg",
+      "author": "PhilipRomano",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
       "nonFree": false,
       "topics": [
         "people"
@@ -9718,11 +9718,11 @@
       ]
     },
     {
-      "file": "Michael jordan admad rashad (51276390562) (cropped).jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:Michael_jordan_admad_rashad_(51276390562)_(cropped).jpg",
-      "author": "Zach Catanzareti Photo",
-      "license": "CC BY 2.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "file": "Michael Jordan in 2014.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Michael_Jordan_in_2014.jpg",
+      "author": "DOD photo by D. Myles Cullen",
+      "license": "Public domain",
+      "licenseUrl": null,
       "nonFree": false,
       "topics": [
         "people"
@@ -14076,17 +14076,6 @@
       ]
     },
     {
-      "file": "(Saint-Lys) Fauconneau de 1589.jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:(Saint-Lys)_Fauconneau_de_1589.jpg",
-      "author": "Didier Descouens",
-      "license": "Public domain",
-      "licenseUrl": null,
-      "nonFree": false,
-      "topics": [
-        "guns"
-      ]
-    },
-    {
       "file": "1956prime2.jpg",
       "page": "https://commons.wikimedia.org/wiki/File:1956prime2.jpg",
       "author": "Mike Cumpston",
@@ -14120,11 +14109,44 @@
       ]
     },
     {
+      "file": "Berretta M9 (no background).png",
+      "page": "https://commons.wikimedia.org/wiki/File:Berretta_M9_(no_background).png",
+      "author": "Curiosandrelics",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Brass Flintlock Blunderbuss, UK, C.1700s (48708532636).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Brass_Flintlock_Blunderbuss,_UK,_C.1700s_(48708532636).jpg",
+      "author": "Auckland Museum Collections from Auckland, Aotearoa New Zealand",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "Campbell Thompson.jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Campbell_Thompson.jpg",
       "author": "Hmaag",
       "license": "CC BY-SA 3.0",
       "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Colt Python 2020 4 inch.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Colt_Python_2020_4_inch.jpg",
+      "author": "Coati077",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
       "nonFree": false,
       "topics": [
         "guns"
@@ -14142,6 +14164,17 @@
       ]
     },
     {
+      "file": "Dictionnaire raisonné du mobilier français de l’époque carlovingienne à la Renaissance, tome 6 - 357.png",
+      "page": "https://commons.wikimedia.org/wiki/File:Dictionnaire_raisonn%C3%A9_du_mobilier_fran%C3%A7ais_de_l%E2%80%99%C3%A9poque_carlovingienne_%C3%A0_la_Renaissance,_tome_6_-_357.png",
+      "author": "Viollet-le-Duc",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "Flint-Lock Musket, from the Arms of All Nations series (N3) for Allen & Ginter Cigarettes Brands MET DP828710.jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Flint-Lock_Musket,_from_the_Arms_of_All_Nations_series_(N3)_for_Allen_%26_Ginter_Cigarettes_Brands_MET_DP828710.jpg",
       "author": "Allen & Ginter",
@@ -14153,9 +14186,42 @@
       ]
     },
     {
+      "file": "Flintlock Pistol c.1830.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Flintlock_Pistol_c.1830.jpg",
+      "author": "Tim Sheerman-Chase",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "Fort Laramie National Historic Site Gatling gun 16-9-2014 15-26-03.jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Fort_Laramie_National_Historic_Site_Gatling_gun_16-9-2014_15-26-03.jpg",
       "author": "Paul Hermans",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Franchi SPAS 12 Grip Safety.jpeg",
+      "page": "https://commons.wikimedia.org/wiki/File:Franchi_SPAS_12_Grip_Safety.jpeg",
+      "author": "ModicumofKnowledge ( talk ) ( Uploads )",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Galil noBG.png",
+      "page": "https://commons.wikimedia.org/wiki/File:Galil_noBG.png",
+      "author": "Péter Boné",
       "license": "CC BY-SA 4.0",
       "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
       "nonFree": false,
@@ -14219,11 +14285,33 @@
       ]
     },
     {
+      "file": "Kar 98K AM021488 noBG.png",
+      "page": "https://commons.wikimedia.org/wiki/File:Kar_98K_AM021488_noBG.png",
+      "author": "Armémuseum (The Swedish Army Museum)",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "Luger IMG 6768-retouched.jpg",
       "page": "https://commons.wikimedia.org/wiki/File:Luger_IMG_6768-retouched.jpg",
       "author": "Luger_IMG_6768.jpg : Rama",
       "license": "CC BY-SA 2.0 fr",
       "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/fr/deed.en",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Lupara.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Lupara.jpg",
+      "author": "Bluedog",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
       "nonFree": false,
       "topics": [
         "guns"
@@ -14285,11 +14373,55 @@
       ]
     },
     {
+      "file": "M60.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:M60.jpg",
+      "author": null,
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "M79 Grenade Launcher (7414625716).jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:M79_Grenade_Launcher_(7414625716).jpg",
+      "author": "US Air Force from USA",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "M870wingmaster.JPEG",
       "page": "https://commons.wikimedia.org/wiki/File:M870wingmaster.JPEG",
       "author": "DoD photo by: PHAN MILNE/PHAN DILLON",
       "license": "Public domain",
       "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Mac 10 Sideimage.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Mac_10_Sideimage.jpg",
+      "author": "Mrclean47",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Mosin-remove-bg.png",
+      "page": "https://commons.wikimedia.org/wiki/File:Mosin-remove-bg.png",
+      "author": "Armémuseum (The Swedish Army Museum)",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
       "nonFree": false,
       "topics": [
         "guns"
@@ -14329,6 +14461,17 @@
       ]
     },
     {
+      "file": "PEO M249 Para ACOG.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:PEO_M249_Para_ACOG.jpg",
+      "author": "Photo Courtesy of PEO Soldier",
+      "license": "Public domain",
+      "licenseUrl": null,
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
       "file": "PEO M4 Carbine RAS M68 CCO.png",
       "page": "https://commons.wikimedia.org/wiki/File:PEO_M4_Carbine_RAS_M68_CCO.png",
       "author": "Photo Courtesy of PEO Soldier",
@@ -14345,6 +14488,28 @@
       "author": "Junglecat",
       "license": "CC BY-SA 3.0",
       "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "PPSh-41 from soviet.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:PPSh-41_from_soviet.jpg",
+      "author": "Lposka",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Remington Elliot .32 S-n 2793 L DSC8176.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Remington_Elliot_.32_S-n_2793_L_DSC8176.jpg",
+      "author": "Self Loader",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
       "nonFree": false,
       "topics": [
         "guns"
@@ -14395,11 +14560,22 @@
       ]
     },
     {
-      "file": "The girls fight with water cannons!.jpg",
-      "page": "https://commons.wikimedia.org/wiki/File:The_girls_fight_with_water_cannons!.jpg",
-      "author": "MIKI Yoshihito from Sapporo City, Hokkaido, Japan",
-      "license": "CC BY 2.0",
-      "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+      "file": "Steyr-AUG-A3-SF.webp",
+      "page": "https://commons.wikimedia.org/wiki/File:Steyr-AUG-A3-SF.webp",
+      "author": "Alexdelarge15",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "SVD Dragunov.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:SVD_Dragunov.jpg",
+      "author": "Hokos",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
       "nonFree": false,
       "topics": [
         "guns"
@@ -14411,6 +14587,28 @@
       "author": "Uziel Galishto",
       "license": "CC BY-SA 3.0",
       "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Walther PPK-L noBG.png",
+      "page": "https://commons.wikimedia.org/wiki/File:Walther_PPK-L_noBG.png",
+      "author": "Michael Sullivan",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+      "nonFree": false,
+      "topics": [
+        "guns"
+      ]
+    },
+    {
+      "file": "Winchester 1873 Rifle.jpg",
+      "page": "https://commons.wikimedia.org/wiki/File:Winchester_1873_Rifle.jpg",
+      "author": "Hmaag",
+      "license": "CC0",
+      "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
       "nonFree": false,
       "topics": [
         "guns"
