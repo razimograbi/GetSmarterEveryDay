@@ -537,19 +537,20 @@ Quick rounds. Players reach them from the dark card under the Quick round button
 | Level | Topic | Questions | Prize | On the first try |
 |---|---|---|---|---|
 | 1 First Flags | Flags | 5 | 60 XP, 50 coins | 120 XP, 100 coins |
-| 2 Animal Kingdom | Animals | 6 | 68 XP, 56 coins | 136 XP, 112 coins |
+| 2 Animal Kingdom | Animals | 7 | 76 XP, 62 coins | 152 XP, 124 coins |
 | 3 Lock and Load | Guns | 7 | 76 XP, 62 coins | 152 XP, 124 coins |
 | 4 Tasty Bites | World food | 8 | 84 XP, 68 coins | 168 XP, 136 coins |
 | 5 Brand Spotter | Company logos | 10 | 100 XP, 80 coins | 200 XP, 160 coins |
-| 6 Wonders of the World | Landmarks | 10 | 100 XP, 80 coins | 200 XP, 160 coins |
+| 6 Wonders of the World | Landmarks | 11 | 108 XP, 86 coins | 216 XP, 172 coins |
 | 7 Capital Cities | Capitals | 12 | 116 XP, 92 coins | 232 XP, 184 coins |
 | 8 Famous Faces | Famous people | 15 | 140 XP, 110 coins | 280 XP, 220 coins |
-| 9 Sound Check | Instruments | 20 | 180 XP, 140 coins | 360 XP, 280 coins |
+| 9 Sound Check | Instruments | 10 | 100 XP, 80 coins | 200 XP, 160 coins |
 | 10 World Tour | Flags | 30 | 260 XP, 200 coins | 520 XP, 400 coins |
 
 - **The questions are written out** in `server/quests.js`, one topic per level for now, in playing
   order. No question is in two levels. The first levels use only the easiest questions of their
-  topic (difficulty 0 and 1) and end on a medium one; later levels climb slowly. That file never
+  topic (difficulty 0 and 1) and end on one or two medium ones. Later levels mostly add a medium
+  or a hard question at the end; Sound Check (9) is a deliberate breather of easy instruments. That file never
   reaches the browser, because a question's id often says its answer.
 - **One mistake ends the try.** A wrong answer, running out of time (the server's clock) or
   leaving ends it there. Only the questions the player reached are saved, and the only answer they

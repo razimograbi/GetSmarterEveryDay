@@ -6,7 +6,7 @@
 //
 // Each level takes its questions from one topic for now (`topic` could become a list later), plays
 // them in the order written here, and no question is in two levels (`npm run validate` checks).
-// The first levels use only the easiest questions of their topic and end on a medium one.
+// The first levels use only the easiest questions of their topic and end on a medium one or two.
 // `cover` is the topic whose photo the level shows (public/topics/).
 
 import { QUESTION_BY_ID } from '../shared/questions.js';
@@ -14,24 +14,24 @@ import { pictureKeepsSecret } from './pictures.js';
 
 export const QUESTS = [
   { id: 1, topic: 'flags', cover: 'flags', questions: ['flag-jp', 'flag-us', 'flag-gb', 'flag-fr', 'flag-za'] },
-  { id: 2, topic: 'animals', cover: 'animals', questions: ['animals-lion', 'animals-elephant', 'animals-giraffe', 'animals-penguin', 'animals-dolphin', 'animals-capybara'] },
+  { id: 2, topic: 'animals', cover: 'animals', questions: ['animals-lion', 'animals-elephant', 'animals-giraffe', 'animals-penguin', 'animals-dolphin', 'animals-alpaca', 'animals-capybara'] },
   { id: 3, topic: 'guns', cover: 'guns', questions: ['guns-revolver', 'guns-water-gun', 'guns-cannon', 'guns-ak-47', 'guns-bazooka', 'guns-uzi', 'guns-tavor'] },
-  { id: 4, topic: 'food', cover: 'food', questions: ['food-pizza', 'food-hamburger', 'food-sushi', 'food-croissant', 'food-ice-cream', 'food-french-fries', 'food-doughnut', 'food-pad-thai'] },
+  { id: 4, topic: 'food', cover: 'food', questions: ['food-pizza', 'food-hamburger', 'food-sushi', 'food-croissant', 'food-ice-cream', 'food-french-fries', 'food-peking-duck', 'food-pad-thai'] },
   {
     id: 5, topic: 'logos', cover: 'logos',
-    questions: ['logos-apple', 'logos-nike', 'logos-youtube', 'logos-mcdonald-s', 'logos-instagram', 'logos-facebook', 'logos-google', 'logos-whatsapp', 'logos-netflix', 'logos-mitsubishi'],
+    questions: ['logos-apple', 'logos-nike', 'logos-youtube', 'logos-mcdonald-s', 'logos-instagram', 'logos-facebook', 'logos-google', 'logos-mitsubishi', 'logos-dropbox', 'logos-infiniti'],
   },
   {
     id: 6, topic: 'landmarks', cover: 'landmarks',
     questions: [
       'landmarks-eiffel', 'landmarks-liberty', 'landmarks-giza', 'landmarks-pisa', 'landmarks-great-wall', 'landmarks-big-ben', 'landmarks-taj-mahal', 'landmarks-colosseum',
-      'landmarks-golden-gate', 'landmarks-sagrada',
+      'landmarks-golden-gate', 'landmarks-sagrada', 'landmarks-potala',
     ],
   },
   {
     id: 7, topic: 'capitals', cover: 'capitals',
     questions: [
-      'capital-fr', 'capital-gb', 'capital-it', 'capital-jp', 'capital-es', 'capital-ru', 'capital-eg', 'capital-cn', 'capital-de', 'capital-gr', 'capital-us', 'capital-ca',
+      'capital-fr', 'capital-gb', 'capital-it', 'capital-jp', 'capital-es', 'capital-ru', 'capital-eg', 'capital-cn', 'capital-de', 'capital-us', 'capital-tr', 'capital-ca',
     ],
   },
   {
@@ -44,8 +44,7 @@ export const QUESTS = [
   {
     id: 9, topic: 'music', cover: 'music',
     questions: [
-      'music-piano', 'music-guitar', 'music-drum-kit', 'music-electric-guitar', 'music-triangle', 'music-maracas', 'music-gong', 'music-recorder', 'music-whistle', 'music-violin',
-      'music-harp', 'music-trumpet', 'music-flute', 'music-saxophone', 'music-accordion', 'music-bagpipes', 'music-tambourine', 'music-harmonica', 'music-xylophone', 'music-didgeridoo',
+      'music-piano', 'music-guitar', 'music-drum-kit', 'music-electric-guitar', 'music-triangle', 'music-maracas', 'music-whistle', 'music-violin', 'music-trumpet', 'music-harp',
     ],
   },
   {
