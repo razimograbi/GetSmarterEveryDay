@@ -131,7 +131,7 @@ for (const batch of chunks(files, 50)) {
 
 // Topic order as on the home screen, then by file name.
 const order = Object.fromEntries(CATEGORIES.map((c, i) => [c.id, i]));
-credits.sort((a, b) => order[a.topics[0]] - order[b.topics[0]] || a.file.localeCompare(b.file));
+credits.sort((a, b) => (order[a.topics[0]] ?? 999) - (order[b.topics[0]] ?? 999) || a.file.localeCompare(b.file)); // home-screen photos last
 await writeFile(OUT, `${JSON.stringify({ generated: new Date().toISOString().slice(0, 10), files: credits }, null, 2)}\n`);
 
 console.log(`\n\nSaved ${credits.length} credits to legal/credits.json.`);

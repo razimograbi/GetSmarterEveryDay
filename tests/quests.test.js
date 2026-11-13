@@ -96,10 +96,10 @@ test('a try that ends early pays less than the number of questions solved', () =
   solve(play, 3);
   answer(play, wrongOf(play.questionIds[3]));
   const r = saved[0];
-  assert.equal(r.xp, questConsolation(3));
+  assert.deepEqual({ xp: r.xp, coins: r.coins }, questConsolation(3));
   assert.ok(r.xp < 3 && r.coins < 3);
   assert.equal(getProfile(db, 'ann').xp, r.xp);
-  assert.equal(db.prepare("SELECT amount FROM coin_ledger WHERE user_id = 'ann' AND ref = ?").get(`round:${r.round.roundId}`).amount, r.coins);
+  assert.equal(db.prepare("SELECT amount FROM coin_ledger WHERE user_id = 'ann' AND ref = ?").get(`round:${r.round.roundId}`)?.amount ?? 0, r.coins); // a small run can pay no coins at all
 });
 
 test('running out of time ends the try', () => {

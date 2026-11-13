@@ -35,6 +35,7 @@ const TEXT = {
     noLicense: 'Licence: see the file page',
     by: 'by',
     otherTitle: 'Other pictures and data',
+    screensTitle: 'Home screen',
     other: [
       'Flags: <a href="https://flagcdn.com">flagcdn.com</a>. National flags are in the public domain.',
       'Country outlines: drawn from <a href="https://www.naturalearthdata.com">Natural Earth</a> map data (public domain), via <a href="https://github.com/topojson/world-atlas">world-atlas</a> (ISC licence).',
@@ -59,6 +60,7 @@ const TEXT = {
     noLicense: 'רישיון: ראו בדף הקובץ',
     by: 'מאת',
     otherTitle: 'תמונות ונתונים נוספים',
+    screensTitle: 'מסך הבית',
     other: [
       'דגלים: <a href="https://flagcdn.com">flagcdn.com</a>. דגלי מדינות הם נחלת הכלל.',
       'קווי מתאר של מדינות: מנתוני המפות של <a href="https://www.naturalearthdata.com">Natural Earth</a> (נחלת הכלל), דרך <a href="https://github.com/topojson/world-atlas">world-atlas</a> (רישיון ISC).',
@@ -83,6 +85,7 @@ const TEXT = {
     noLicense: 'الرخصة: انظر صفحة الملف',
     by: 'بواسطة',
     otherTitle: 'صور وبيانات أخرى',
+    screensTitle: 'الشاشة الرئيسية',
     other: [
       'الأعلام: <a href="https://flagcdn.com">flagcdn.com</a>. أعلام الدول ملك عام.',
       'حدود الدول: مرسومة من بيانات خرائط <a href="https://www.naturalearthdata.com">Natural Earth</a> (ملك عام)، عبر <a href="https://github.com/topojson/world-atlas">world-atlas</a> (رخصة ISC).',
@@ -162,7 +165,8 @@ async function render(page, lang) {
 function creditsBody(lang, { generated, files }) {
   const T = TEXT[lang];
   const byTopic = new Map(CATEGORIES.map((c) => [c.id, []]));
-  for (const f of files) byTopic.get(f.topics[0])?.push(f);
+  const screens = []; // photos that aren't a topic's, such as the Daily's on the home screen
+  for (const f of files) (byTopic.get(f.topics[0]) ?? screens).push(f);
   const item = (f) => {
     const license = f.license
       ? (f.licenseUrl ? `<a href="${esc(f.licenseUrl)}">${esc(f.license)}</a>` : esc(f.license))
@@ -171,7 +175,9 @@ function creditsBody(lang, { generated, files }) {
   };
   const sections = [...byTopic].filter(([, list]) => list.length).map(([id, list]) => `
   <h2>${esc(catName(lang, id))}</h2>
-  <ul class="credits">${list.map(item).join('')}</ul>`).join('');
+  <ul class="credits">${list.map(item).join('')}</ul>`).join('') + (screens.length ? `
+  <h2>${esc(T.screensTitle)}</h2>
+  <ul class="credits">${screens.map(item).join('')}</ul>` : '');
   return `
   <h1>${esc(T.credits)}</h1>
   <p class="updated">${esc(fill(T.checked, { date: generated, n: files.length }))}</p>

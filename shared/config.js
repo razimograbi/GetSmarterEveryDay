@@ -156,11 +156,13 @@ export const stageCleared = (correct, total) => total > 0 && correct * 100 >= to
 // time or leaving ends the try. Finishing a level pays base + perQuestion × its questions, and
 // `firstTry` times that when the player's very first try does it. A try that ends early pays
 // `failShare` for each question solved, rounded down: always less than the number solved.
+// Coins are kept low (a 10-question level pays 25, about a Quick round), so levels can't flood
+// the shop; the XP is what makes them worth it.
 export const QUEST = {
   xp: { base: 20, perQuestion: 8 },
-  coins: { base: 20, perQuestion: 6 },
+  coins: { base: 5, perQuestion: 2 },
   firstTry: 2,
-  failShare: 0.5,
+  failShare: { xp: 0.5, coins: 0.25 },
   acedShown: 3, // friends named on a level for finishing it first try
 };
 
@@ -170,8 +172,8 @@ export function questPrize(questions, firstTry = false) {
   return { xp: (QUEST.xp.base + QUEST.xp.perQuestion * questions) * times, coins: (QUEST.coins.base + QUEST.coins.perQuestion * questions) * times };
 }
 
-/** What a try that ended early pays, in XP and in coins, for the questions it solved. */
-export const questConsolation = (solved) => Math.floor(solved * QUEST.failShare);
+/** What a try that ended early pays for the questions it solved: { xp, coins }. */
+export const questConsolation = (solved) => ({ xp: Math.floor(solved * QUEST.failShare.xp), coins: Math.floor(solved * QUEST.failShare.coins) });
 
 // A level's tier sets the cover around the player's avatar (public/js/covers.js).
 export const LEVEL_TIERS = [

@@ -28,18 +28,18 @@ const state = {
   fixedRound: null, // a Daily, Leveling or Levels try about to be played
   duelFriend: null, // the friend a new duel is for
   played: 0, // rounds finished, from the server at sign-in; 0 means a new player (see isNew)
-  justUnlocked: false, // the first round was just finished: say once what the home screen gained
+  justUnlocked: false, // the first round was just finished: its results suggest the Daily
   newFriend: null, // a new player who added a friend from an invite link: offered as a duel at home
   levelUp: null, // { from, to }: levels gained that haven't been celebrated yet
 };
 
 /**
- * A player who hasn't finished a round yet. They get a simpler home screen with one button,
- * a "how it works" strip wherever their first round starts, and no tab bar.
+ * A player who hasn't finished a round yet. They see the same home screen as everyone, plus a
+ * "how it works" strip wherever their first round starts.
  */
 const isNew = () => !state.played;
 
-/** Counts a finished round. The first one unlocks the full home screen. */
+/** Counts a finished round. After the first, the results screen points to the Daily and duels. */
 function countFinished() {
   if (!state.played) state.justUnlocked = true;
   state.played += 1;
@@ -804,9 +804,8 @@ function markReported(btn, q) {
 /** The signed-in player's own avatar (or any avatar code). */
 const avatar = (code = state.profile?.avatar, size = 36) => coveredAvatar({ avatar: code, level: state.profile?.level }, size);
 
-/** The tab bar. New players don't get one until their first round (see isNew); the logo leads home. */
+/** The tab bar. */
 function tabbar(active) {
-  if (isNew()) return '';
   return `
     <nav class="tabbar" aria-label="Main">
       <a href="#/" class="${active === 'home' ? 'is-active' : ''}" ${active === 'home' ? 'aria-current="page"' : ''}>${ICONS.home}<span>${esc(t('tab.home'))}</span></a>
@@ -824,8 +823,6 @@ let topicsOpen = false;
 // Topics the player has answered most come first, so the preview shows their own topics.
 // Kept between draws: stats are briefly missing after a round, and the list shouldn't jump.
 let topicOrder = CATEGORIES;
-// "Unlocked: …" shows on the first home screen after the first round. A language change redraws it.
-let lastUnlocked = false;
 
 function orderTopics(stats) {
   if (!stats) return topicOrder;
@@ -852,9 +849,9 @@ const playCta = (label, sub) => `
   </a>`;
 
 /** A quieter row under the big button: icon, title, a line or a badge, and a chevron. */
-const homeRow = ({ href = null, data = '', icon, title, sub = '', badge = '' }) => `
+const homeRow = ({ href = null, data = '', icon, photo = null, title, sub = '', badge = '' }) => `
   ${href ? `<a class="home-row" href="${href}"` : `<button type="button" class="home-row" ${data}`}>
-    <span class="home-row-icon">${icon}</span>
+    ${photo ? `<span class="home-row-photo"><img src="${coverSrc(photo)}" alt="" decoding="sync"></span>` : `<span class="home-row-icon">${icon}</span>`}
     <span class="home-row-text">
       <span class="home-row-title"><strong>${title}</strong>${badge ? `<span class="home-row-badge">${esc(badge)}</span>` : ''}</span>
       ${sub ? `<span class="home-row-sub">${sub}</span>` : ''}
@@ -869,6 +866,7 @@ function dailyRow(d) {
   return homeRow({
     href: '#/daily',
     icon: ICONS.daily,
+    photo: 'daily',
     title: esc(n ? t('daily.title', { n }) : t('daily.titlePlain')),
     sub: esc(played ? `${t('daily.youScored', { score: d.result.score, max: d.count * MAX_POINTS })} · ${t('daily.seeBoard')}` : t('daily.rowDesc')),
     badge: played ? '' : t('daily.newToday'),
@@ -966,51 +964,7 @@ function homeTopbar({ withAvatar = true } = {}) {
     </header>`;
 }
 
-/**
- * A new player's home: how the game works and one button. The Daily, duels and the tab bar
- * come after the first round; the avatar stays, for the account settings.
- */
-function drawNewHome(firstName) {
-  const quickTopics = CATEGORIES.filter((c) => !c.book && c.quick !== false).slice(0, TOPIC_PREVIEW);
-  const friend = state.newFriend;
-  keepCovers(quickTopics);
-  app.innerHTML = `
-    <section class="screen home home-new">
-      ${homeTopbar()}
-      <h1 class="greeting">${esc(t('home.hi', { name: firstName }))}</h1>
-      ${duelAlerts()}
-      ${howItWorks()}
-      ${playCta(t('home.firstPlay'), t('home.firstPlaySub', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
-      ${friend ? homeRow({
-        data: 'data-duel-friend', icon: ICONS.duel,
-        title: t('home.duelFriend', { name: `<bdi>${esc(friend.name)}</bdi>` }), sub: esc(t('duel.cardDesc')),
-      }) : ''}
-      <h2 class="home-or">${esc(t('home.topics'))}</h2>
-      <div class="topic-tiles">
-        ${quickTopics.map((c) => `<a class="topic-tile" href="#/play/${c.id}" style="--hue:${c.hue}"><img src="${coverSrc(c.id)}" alt="" decoding="sync"><span>${esc(catName(c))}</span></a>`).join('')}
-      </div>
-      <button type="button" class="see-all" aria-controls="topic-list" aria-expanded="${topicsOpen}">
-        <span>${esc(topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length }))}</span>
-        <span class="see-all-arrow" aria-hidden="true"></span>
-      </button>
-      <ul class="topics" id="topic-list" ${topicsOpen ? '' : 'hidden'}>${topicRows(null)}</ul>
-    </section>`;
-  app.querySelector('[data-duel-friend]')?.addEventListener('click', () => {
-    state.duelFriend = { id: friend.id, name: friend.name };
-    go('#/duel/new');
-  });
-  app.querySelector('.see-all').addEventListener('click', (e) => {
-    topicsOpen = !topicsOpen;
-    const btn = e.currentTarget;
-    const list = app.querySelector('#topic-list');
-    list.hidden = !topicsOpen;
-    btn.setAttribute('aria-expanded', String(topicsOpen));
-    btn.firstElementChild.textContent = topicsOpen ? t('home.seeFewer') : t('home.seeAll', { n: CATEGORIES.length });
-    if (topicsOpen) list.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
-  });
-}
-
-/** The returning player's header: their avatar in its cover, the greeting and the level bar. */
+/** The player's header: their avatar in its cover, the greeting and the level bar. */
 function playerHero(firstName, streak) {
   return `
     <div class="player-hero">
@@ -1025,21 +979,25 @@ function playerHero(firstName, streak) {
     </div>`;
 }
 
-function drawHome(firstName, stats, unlocked) {
+function drawHome(firstName, stats) {
   const streak = stats?.dayStreak || 0;
-  keepCovers(orderTopics(stats).slice(0, TOPIC_PREVIEW));
+  const friend = state.newFriend; // added from an invite link before playing: offered as a duel
+  keepCovers([...orderTopics(stats).slice(0, TOPIC_PREVIEW), { id: 'daily' }, { id: 'duel' }]);
   app.innerHTML = `
     <section class="screen home has-tabbar">
       ${homeTopbar({ withAvatar: false })}
-      ${unlocked ? `<p class="unlocked">${esc(t('home.unlocked'))}</p>` : ''}
       ${playerHero(firstName, streak)}
       ${duelAlerts()}
       ${playCta(t('home.quickPlay'), t('quick.desc', { n: MODES[DEFAULT_MODE].questionsPerRound }))}
       ${questCard()}
       <div class="home-rows">
+        ${friend ? homeRow({
+          data: 'data-duel-friend', icon: ICONS.duel,
+          title: t('home.duelFriend', { name: `<bdi>${esc(friend.name)}</bdi>` }), sub: esc(t('duel.cardDesc')),
+        }) : ''}
         ${dailyRow(state.daily)}
         ${levelingRow()}
-        ${homeRow({ href: '#/duel/new', icon: ICONS.duel, title: esc(t('duel.cardTitle')), sub: esc(t('duel.cardDesc')) })}
+        ${homeRow({ href: '#/duel/new', icon: ICONS.duel, photo: 'duel', title: esc(t('duel.cardTitle')), sub: esc(t('duel.cardDesc')) })}
       </div>
       <h2 class="section-title">${esc(t('home.topics'))}</h2>
       <ul class="topics ${topicsOpen ? '' : 'is-folded'}" id="topic-list">${topicRows(stats)}</ul>
@@ -1049,6 +1007,10 @@ function drawHome(firstName, stats, unlocked) {
       </button>
     </section>
     ${tabbar('home')}`;
+  app.querySelector('[data-duel-friend]')?.addEventListener('click', () => {
+    state.duelFriend = { id: friend.id, name: friend.name };
+    go('#/duel/new');
+  });
   app.querySelector('.see-all').addEventListener('click', (e) => {
     topicsOpen = !topicsOpen;
     const btn = e.currentTarget;
@@ -1066,13 +1028,10 @@ async function showHome() {
   const firstName = esc(state.user.name.split(' ')[0]);
   // Once per visit, though the screen is drawn twice; a language change redraws without counting.
   if (!rerendering) {
-    lastUnlocked = state.justUnlocked;
-    state.justUnlocked = false;
     track('home_viewed', { variant: isNew() ? 'first' : 'returning' });
   }
   const draw = (stats) => {
-    if (isNew()) drawNewHome(firstName);
-    else drawHome(firstName, stats, lastUnlocked);
+    drawHome(firstName, stats);
     app.querySelector('[data-lang-open]').addEventListener('click', (e) => openLangSheet(e.currentTarget));
   };
   const nav = navId;

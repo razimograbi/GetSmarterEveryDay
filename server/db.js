@@ -1642,8 +1642,8 @@ export function finishQuestTry(db, { userId, questId, mode, graded, total }) {
     const before = db.prepare('SELECT attempts, completed_at FROM quest_results WHERE user_id = ? AND quest_id = ?').get(userId, questId);
     const completed = solved === total && before.completed_at === null;
     const firstTry = completed && before.attempts === 0;
-    const consolation = before.completed_at === null ? questConsolation(solved) : 0;
-    const prize = completed ? questPrize(total, firstTry) : { xp: consolation, coins: consolation };
+    const consolation = before.completed_at === null ? questConsolation(solved) : { xp: 0, coins: 0 };
+    const prize = completed ? questPrize(total, firstTry) : consolation;
     const round = insertRound(db, userId, { mode, category: 'quest', graded, complete: true, prize });
     const now = Date.now();
     db.prepare(`
