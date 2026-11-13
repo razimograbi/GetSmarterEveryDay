@@ -1,15 +1,15 @@
-# Smarts
+| 10 World Tour | Flags | 30 | 260 XP, 65 coins | 520 XP, 130 coins || 9 Sound Check | Instruments | 10 | 100 XP, 25 coins | 200 XP, 50 coins || 8 Famous Faces | Famous people | 15 | 140 XP, 35 coins | 280 XP, 70 coins || 7 Capital Cities | Capitals | 12 | 116 XP, 29 coins | 232 XP, 58 coins || 6 Wonders of the World | Landmarks | 11 | 108 XP, 27 coins | 216 XP, 54 coins || 5 Brand Spotter | Company logos | 10 | 100 XP, 25 coins | 200 XP, 50 coins || 4 Tasty Bites | World food | 8 | 84 XP, 21 coins | 168 XP, 42 coins || 3 Lock and Load | Guns | 7 | 76 XP, 19 coins | 152 XP, 38 coins || 2 Animal Kingdom | Animals | 7 | 76 XP, 19 coins | 152 XP, 38 coins || 1 First Flags | Flags | 5 | 60 XP, 15 coins | 120 XP, 30 coins |# Smarts
 
 A picture quiz built for phones (it works on laptops too). Sign in with Google, play
 10-question rounds against a 15-second clock, and track what you've mastered.
 
-**2,155 questions in 29 topics:** flags (100), capitals (100), seas & oceans (25),
-road signs (100: 20 European, 80 Israeli), animals (100), cars (100), programming languages (20), landmarks (100),
-dog breeds (100), world food (100), countries (100), chemical elements (40),
+**1,992 questions in 29 topics:** flags (100), capitals (50), seas & oceans (5),
+road signs (100: 20 European, 80 Israeli), animals (100), cars (99), programming languages (20), landmarks (99),
+dog breeds (30), world food (93), countries (100), chemical elements (40),
 musical instruments (100), paintings (100), human body (100), famous people (100),
-beauty products (100), professions (50),
+beauty products (69), professions (50),
 company logos (100, symbol-only logos that don't spell the name), football clubs (40),
-football players (40), currencies (20), guns (30, well-known ones only), history (100),
+football players (40), currencies (20), guns (48, well-known ones only), history (99),
 interesting questions (100) and not what you think (100, where the obvious answer is
 wrong), which mix photo and text-only questions, and three book topics with text-only questions:
 *Sapiens* by Yuval Noah Harari (30), *Atomic Habits* by James Clear (30) and
@@ -190,6 +190,21 @@ the game then loads them from your own server: faster, works offline, and doesn'
 depend on Wikipedia allowing hotlinking. It's safe to stop and re-run; finished files
 are skipped (`-- --force` re-downloads everything). If a picture keeps failing, the
 script tells you which Wikipedia title to fix in `shared/questions.js`.
+
+When questions are removed from the bank, their pictures stay on disk. Clear them out with:
+
+```bash
+npm run prune-images -- --dry-run
+```
+
+```bash
+npm run prune-images
+```
+
+It deletes the photos, flags and country outlines in `public/img/` that no question uses any
+more (keeping any that a Leveling stage uses as its picture), takes them out of
+`public/img/manifest.json`, and prints what it removed and how much space it freed. The first
+command only lists them. Run it on the server after deploying a smaller bank.
 
 Pictures that haven't been downloaded are still fetched live as a fallback. If a picture
 fails to load mid-game, the player can skip that question and it isn't counted.
@@ -557,9 +572,10 @@ Quick rounds. Players reach them from the dark card under the Quick round button
   are shown is the one of the question that ended it: nothing about the rest of the level is sent.
   A question can't be skipped; if its picture doesn't load, the player loads it again before the
   clock has started.
-- **What a try pays** (`QUEST` in `shared/config.js`): finishing pays 20 XP + 8 a question and
-  20 coins + 6 a question, far more than a Quick round. A try that ends early pays half an XP and
-  half a coin for each question solved, rounded down, so always less than the number solved.
+- **What a try pays** (`QUEST` in `shared/config.js`): finishing pays 20 XP + 8 a question, far more
+  XP than a Quick round, but only 5 coins + 2 a question, about what a Quick round pays, so levels
+  don't flood the shop. A try that ends early pays half an XP and a quarter of a coin for each
+  question solved, rounded down, so always less than the number solved.
 - **First try.** Finishing a level on the very first try doubles the prize, and is remembered
   (`quest_results.first_try`): the level then shows a trophy instead of a tick. A level also names
   up to three friends who finished it on their first try. Starting a try and leaving before the

@@ -14,7 +14,7 @@ import {
   listStages, stageForAdmin, createStage, updateStage, moveStage, deleteStage, addStageQuestion, updateStageQuestion, moveStageQuestion, deleteStageQuestion,
   stagePath, stageRound, openStagePlay, finishStageTry,
   questResults, friendsFirstTry, openQuestPlay, finishQuestTry,
-  createDuel, getDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, openRematch, recentQuestionIds, roundAnswers,
+  createDuel, getDuel, finishDuelSide, markDuelResultSeen, listDuels, openDuelCount, openRematch, recentQuestionIds, roundAnswers, setDuelQuestions,
   savePushSubscription, deletePushSubscription,
 } from './db.js';
 import {
@@ -26,8 +26,9 @@ import {
   MODES, DEFAULT_MODE, CATEGORIES, CATEGORY_BY_ID, REPORT_REASONS, REPORT_NOTE_MAX, EVENTS, DAILY, DUEL, QUEST, STAGE_PICTURE_HOSTS, pointsFor, secondsFor, localDate, dailyNumber, questPrize,
 } from '../shared/config.js';
 import { legalPage, shareMeta } from './pages.js';
-import { hasEnoughQuestions, pickQuestions } from './pick.js';
+import { hasEnoughQuestions, pickQuestions, pickReplacement } from './pick.js';
 import { BROWSER_BANK, contentFor } from './bank.js';
+import { grade } from './grade.js';
 import { createPlays } from './play.js';
 import { QUESTS, QUEST_BY_ID, questQuestions } from './quests.js';
 import { createMatches } from './match.js';
@@ -85,7 +86,12 @@ if (PRODUCTION && !process.env.VAPID_SUBJECT) console.warn('  VAPID_SUBJECT is n
 const reminders = createReminders({ db, keys: loadVapidKeys(join(DATA_DIR, 'vapid.json')), subject: VAPID_SUBJECT });
 reminders.start();
 
-const plays = createPlays(db, { onFinish: finishFixedRound, endsOnMiss: (play) => play.kind === 'quest' }); // a level ends at its first wrong answer
+const plays = createPlays(db, {
+  onFinish: finishFixedRound,
+  endsOnMiss: (play) => play.kind === 'quest', // a level ends at its first wrong answer
+  replacementFor, // for a question taken out of the bank while a round that has it is open
+  onMend: (play) => { if (play.kind === 'duel') setDuelQuestions(db, play.ref, play.questionIds); }, // both players get the same swap
+});
 setInterval(() => plays.endStale(), 60_000).unref();
 
 // Live duels (server/match.js). Questions are picked when one starts, when both players are known.
@@ -339,6 +345,13 @@ const routes = {
     if (category !== 'mixed' && category !== 'review' && !CATEGORY_BY_ID[category]) return json(res, 400, { error: `Unknown category "${category}".` });
     if (!Array.isArray(answers) || !answers.length) return json(res, 400, { error: 'A round needs between 1 and 50 answers.' });
     const graded = grade(answers, { modeCfg });
+    if (!graded.length) {
+      // Every question of the round has left the bank: there's nothing to save, and nothing to send again.
+      const profile = getProfile(db, user.id);
+      return json(res, 200, {
+        roundId: null, score: 0, correct: 0, total: 0, xpGained: 0, xp: profile?.xp ?? 0, coinsGained: 0, coins: profile ? ownProfile(db, profile).coins : 0, graded: [],
+      });
+    }
     const result = saveRound(db, user.id, { mode, category, graded, complete: partial !== true });
     if (partial !== true) {
       logEvent(db, user.id, 'round_finished', { mode, category, correct: result.correct, total: result.total, score: result.score });
@@ -452,7 +465,10 @@ const routes = {
     // The questions stay secret until the player has finished their try.
     if (result?.finished) {
       result.answers = roundAnswers(db, result.roundId);
-      Object.assign(out, { questionIds, questions: contentFor(questionIds) });
+      // A player who finished before a question was swapped (it left the bank) sees what they played.
+      const daily = new Set(questionIds);
+      const shown = result.answers.some((a) => !daily.has(a.id)) ? result.answers.map((a) => a.id) : questionIds;
+      Object.assign(out, { questionIds: shown, questions: contentFor(shown) });
     }
     json(res, 200, out);
   },
@@ -700,8 +716,8 @@ const paramRoutes = [
     if (!level) return json(res, 404, { error: 'That level does not exist.' });
     if (level.status === 'locked') return json(res, 403, { error: 'Finish the level before this one first.' });
     if (level.status === 'done') return json(res, 409, { error: 'You have already finished this level.', code: 'done' });
-    let play = openQuestPlay(db, id, user.id);
-    if (!play) {
+    let play = plays.mend(openQuestPlay(db, id, user.id));
+    if (!play || play.finishedAt) {
       const questionIds = questQuestions(QUEST_BY_ID.get(id));
       if (!questionIds.length) return json(res, 409, { error: 'This level is not available right now.', code: 'unavailable' });
       play = plays.begin({ kind: 'quest', ref: `${id}:${randomUUID()}`, userId: user.id, questionIds });
@@ -713,7 +729,7 @@ const paramRoutes = [
   ['POST', new RegExp(`^/api/quests/${ID_PATH}/finish$`), (req, res, url, rawId) => {
     const user = currentUser(req);
     if (!user) return json(res, 401, { error: 'Sign in to play.' });
-    const play = openQuestPlay(db, Number(rawId), user.id);
+    const play = plays.mend(openQuestPlay(db, Number(rawId), user.id));
     if (!play || !plays.finish(play)) return json(res, 409, { error: 'This try has already ended.' });
     json(res, 200, { ok: true });
   }, 'stages'],
@@ -781,32 +797,6 @@ const badRequest = (message) => Object.assign(new Error(message), { status: 400 
 // Time zones run from UTC-12 to UTC+14; anything else is nonsense.
 const tzParam = (url) => Math.max(-840, Math.min(720, Math.round(Number(url.searchParams.get('tz')) || 0)));
 
-/**
- * Grades a Quick or topic round, from shared/questions.js. These only count towards the player's
- * own progress; Daily and duel answers are graded one at a time in server/play.js.
- */
-function grade(answers, { modeCfg = MODES[DEFAULT_MODE] } = {}) {
-  if (!Array.isArray(answers) || answers.length > 50 || !answers.length) throw badRequest('A round needs between 1 and 50 answers.');
-  const graded = [];
-  const seen = new Set();
-  for (const a of answers) {
-    const q = QUESTION_BY_ID.get(a?.id);
-    if (!q) throw badRequest(`Unknown question "${a?.id}".`);
-    if (seen.has(q.id)) throw badRequest(`Question "${q.id}" appears twice in one round.`);
-    seen.add(q.id);
-    const seconds = secondsFor(q, modeCfg); // some topics (the books) allow more time
-    const limitMs = seconds * 1000;
-    const rawMs = Number(a.ms);
-    const validMs = Number.isFinite(rawMs) && rawMs >= 0;
-    const ms = validMs ? Math.min(limitMs, Math.round(rawMs)) : limitMs;
-    const choice = typeof a.choice === 'string' ? a.choice.slice(0, 200) : null;
-    const inTime = validMs && rawMs <= limitMs + 1000; // small allowance for render jitter
-    const correct = inTime && choice === q.answer;
-    graded.push({ id: q.id, cat: q.cat, choice, correct, ms, points: pointsFor(correct, ms, seconds) });
-  }
-  return graded;
-}
-
 /** Saves a Daily or duel round like any other (it counts in stats). Returns its score and time. */
 function saveFixedRound(userId, category, graded, skippedMs, xp) {
   const time = graded.reduce((sum, a) => sum + a.ms, 0) + skippedMs;
@@ -854,7 +844,7 @@ function questPath(userId) {
 /** A try at a level has ended on the server: saves it with its prize. */
 function finishQuest(play, graded) {
   const questId = Number(play.ref.split(':')[0]);
-  const r = finishQuestTry(db, { userId: play.userId, questId, mode: DEFAULT_MODE, graded, total: play.questionIds.length });
+  const r = finishQuestTry(db, { userId: play.userId, questId, mode: DEFAULT_MODE, graded, total: plays.counted(play) });
   if (r.round) logEvent(db, play.userId, 'round_finished', { mode: DEFAULT_MODE, category: 'quest', level: questId, correct: r.solved, total: r.total, score: r.round.score, completed: r.completed, firstTry: r.firstTry });
 }
 
@@ -864,7 +854,7 @@ function finishFixedRound(play, graded, skippedMs, { xp }) {
   if (play.kind === 'quest') return finishQuest(play, graded);
   const saved = saveFixedRound(play.userId, play.kind, graded, skippedMs, xp);
   if (play.kind === 'daily') {
-    finishDaily(db, play.ref, play.userId, { ...saved, total: play.questionIds.length });
+    finishDaily(db, play.ref, play.userId, { ...saved, total: plays.counted(play) });
     // Friends who already played and scored less hear about it (if they asked to).
     const me = getProfile(db, play.userId);
     for (const f of friendsBeaten(db, play.ref, play.userId, saved.score)) {
@@ -887,7 +877,25 @@ function dailyDate(value) {
   return date;
 }
 
-const dailyFor = (date) => getDaily(db, date, dailyNumber(date), (recent) => pickQuestions({ count: DAILY.questions, seed: `daily:${date}`, avoid: recent }));
+const dailyFor = (date) => getDaily(db, date, dailyNumber(date),
+  (recent) => pickQuestions({ count: DAILY.questions, seed: `daily:${date}`, avoid: recent }),
+  (ids, slot, recent) => pickReplacement({ ids, slot, seed: `daily:${date}:${slot}`, avoid: recent }));
+
+/**
+ * A question to play in place of one taken out of the bank while a round that has it was open:
+ * in a Daily, the one everyone else now gets; otherwise one of the same topic and difficulty,
+ * the same for both players of a duel.
+ */
+function replacementFor(play, idx) {
+  if (play.kind === 'daily') {
+    const id = dailyFor(play.ref).questionIds[idx];
+    if (id && !play.questionIds.includes(id)) return id;
+  }
+  const topic = play.kind === 'duel' ? getDuel(db, play.ref)?.category
+    : play.kind === 'quest' ? QUEST_BY_ID.get(Number(play.ref.split(':')[0]))?.topic
+      : 'mixed';
+  return pickReplacement({ ids: play.questionIds, slot: idx, category: CATEGORY_BY_ID[topic] ? topic : 'mixed', seed: `${play.kind}:${play.ref}:${idx}` });
+}
 
 /** Questions any of these players met lately, so a new duel can stay away from them. */
 const seenByPlayers = (...userIds) => new Set(userIds.filter(Boolean).flatMap((id) => recentQuestionIds(db, id)));
@@ -926,8 +934,8 @@ function duelView(d, viewerId, { brief = false } = {}) {
   };
   if (brief) return view;
   if (d.finishedAt && role && d[role].score !== null) {
-    view.questionIds = d.questionIds;
-    view.questions = contentFor(d.questionIds);
+    view.questionIds = d.questionIds.filter((id) => QUESTION_BY_ID.has(id)); // not the ones taken out of the bank since
+    view.questions = contentFor(view.questionIds);
     view.answers = { challenger: roundAnswers(db, d.challenger.roundId), opponent: roundAnswers(db, d.opponent.roundId) };
   }
   return view;

@@ -4,7 +4,7 @@
 // Phones keep these for good and never ask the server again (see public/sw.js), so after changing
 // a photo raise COVERS_VERSION, or players will go on seeing the old one. Then run
 // `npm run fetch-covers -- --force` and `npm run fetch-credits`.
-export const COVERS_VERSION = 4;
+export const COVERS_VERSION = 5;
 
 export const COVERS = {
   flags: 'File:United Nations Flags - cropped.jpg',
@@ -36,6 +36,9 @@ export const COVERS = {
   sapiens: 'File:Lascaux painting.jpg',
   habits: 'File:Girls jog along Morro Strand State Beach.jpg',
   sayno: 'File:Qatar - Japan, AFC Asian Cup 2019 38.jpg',
+  // Not topics: the photos on the home screen's Daily and duel rows.
+  daily: 'File:Sunrise in Pieniny, Poland 02.jpg',
+  duel: 'File:Red boxing glove.jpg',
 };
 
 /** Where a topic's photo is served from. The version in the address is what makes phones fetch a new one. */

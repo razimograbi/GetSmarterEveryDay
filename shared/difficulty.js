@@ -21,25 +21,20 @@ export const DIFFICULTY = {
     flag-gh:5 flag-sn:7 flag-ml:7 flag-gn:8 flag-cm:7 flag-ma:2 flag-dz:4 flag-cy:3 flag-mt:6
     flag-ge:6 flag-am:6 flag-kp:2 flag-kh:4 flag-mn:6 flag-cr:6`,
   capitals: `
-    capital-au:6 capital-ca:4 capital-br:5 capital-tr:4 capital-ch:7 capital-nz:5 capital-ma:6 capital-ng:7
-    capital-vn:4 capital-pk:6 capital-kz:7 capital-mm:9 capital-ec:6 capital-co:4 capital-ar:2 capital-eg:1
-    capital-ke:4 capital-tz:8 capital-ci:9 capital-in:2 capital-cn:1 capital-jp:0 capital-kr:2 capital-de:1
-    capital-pt:2 capital-no:3 capital-is:4 capital-mn:6 capital-ph:3 capital-ae:4
+    capital-ca:4 capital-tr:4
+    capital-ar:2 capital-eg:1
+    capital-in:2 capital-cn:1 capital-jp:0 capital-kr:2 capital-de:1
+    capital-pt:2 capital-no:3
     capital-fr:0 capital-gb:0 capital-it:0 capital-es:0 capital-ru:0 capital-us:1 capital-gr:1
-    capital-at:2 capital-be:2 capital-nl:2 capital-se:2 capital-dk:2 capital-fi:3 capital-ie:1
-    capital-pl:2 capital-cz:2 capital-hu:2 capital-ro:3 capital-bg:3 capital-hr:3 capital-rs:3
+    capital-at:2 capital-be:2 capital-nl:2 capital-se:2 capital-dk:2 capital-ie:1
+    capital-pl:2 capital-cz:2 capital-hu:2
     capital-ua:1 capital-sa:2 capital-iq:1 capital-ir:1 capital-sy:1 capital-lb:1 capital-jo:1
     capital-kw:2 capital-qa:2 capital-af:2 capital-th:0 capital-id:2 capital-my:2 capital-np:2
     capital-kp:1 capital-mx:0 capital-cu:1 capital-pe:1 capital-cl:1 capital-ve:2 capital-tn:1
-    capital-dz:1 capital-ly:2 capital-cy:3 capital-kh:3 capital-bd:3 capital-gh:3 capital-et:3
-    capital-sd:3 capital-uy:3 capital-om:4 capital-ye:4 capital-lv:4 capital-lt:4 capital-ee:4
-    capital-sk:4 capital-ba:4 capital-ge:4 capital-am:4 capital-az:4 capital-si:5 capital-al:5
-    capital-uz:5 capital-rw:5 capital-bo:8 capital-kg:7 capital-tj:7 capital-tm:8 capital-bt:8`,
+    capital-dz:1 capital-ly:2`,
   seas: `
-    sea-mediterranean:2 sea-black:4 sea-caspian:4 sea-red:3 sea-persian-gulf:4 sea-baltic:5 sea-north:5
-    sea-caribbean:4 sea-gulf-of-mexico:4 sea-south-china:5 sea-japan:6 sea-arabian:6 sea-bengal:6 sea-coral:8
-    sea-tasman:8 sea-adriatic:5 sea-aegean:6 sea-tyrrhenian:8 sea-bering:7 sea-okhotsk:9 sea-hudson:6
-    sea-barents:9 sea-dead:3 sea-pacific:2 sea-indian:3`,
+    sea-mediterranean:2 sea-red:3
+    sea-dead:3 sea-pacific:2 sea-indian:3`,
   signs: `
     sign-stop:0 sign-give-way:1 sign-no-entry:2 sign-no-vehicles:6 sign-no-parking:3 sign-no-stopping:4
     sign-no-u-turn:1 sign-no-left-turn:1 sign-speed-50:0 sign-end-speed:4 sign-min-speed:6 sign-roundabout:2
@@ -86,7 +81,7 @@ export const DIFFICULTY = {
     bugatti-chiron:2 aston-martin-db5:1 rolls-royce-phantom:0 bentley-continental-gt:2 lotus-elise:3
     subaru-impreza:2 mitsubishi-lancer-evolution:2 nissan-leaf:2 toyota-supra:1 honda-nsx:3
     mazda-rx-7:3 trabant:2 lada-riva:3 reliant-robin:3 hindustan-ambassador:5 austin-fx4:2
-    chrysler-pt-cruiser:2 tucker-48:7 pontiac-firebird:2 dodge-charger:1 volvo-240:4 saab-900:5
+    chrysler-pt-cruiser:2 pontiac-firebird:2 dodge-charger:1 volvo-240:4 saab-900:5
     hummer-h2:1`,
   code: `
     python:4 javascript:4 rust:8 go:7 c:6 ruby:7 sql:4 haskell:9 php:6 swift:7 kotlin:8 java:5 csharp:6
@@ -106,34 +101,27 @@ export const DIFFICULTY = {
     victoria-falls:4 table-mountain:5 moscow-kremlin:4 saint-basil-s-cathedral:0 winter-palace:7
     charles-bridge:5 prague-astronomical-clock:5 atomium:5 the-little-mermaid:2 matterhorn:2
     mount-fuji:0 tokyo-tower:1 himeji-castle:6 kinkaku-ji:6 fushimi-inari-taisha:5
-    temple-of-heaven:7 terracotta-army:1 petronas-towers:2 marina-bay-sands:1 taipei-101:5
+    temple-of-heaven:7 terracotta-army:1 marina-bay-sands:1 taipei-101:5
     borobudur:6 bagan:8 golden-temple:4 gateway-of-india:5 red-fort:6 hawa-mahal:7
     shwedagon-pagoda:7 wat-arun:6 meteora:7 edinburgh-castle:5 windsor-castle:5 bran-castle:7
     giant-s-causeway:6 guggenheim-museum-bilbao:6 park-guell:5 brooklyn-bridge:1 chrysler-building:5
     lincoln-memorial:4 hoover-dam:5`,
   dogs: `
-    labrador:3 golden:3 german-shepherd:2 french-bulldog:3 bulldog:3 beagle:3 poodle:2 rottweiler:4
-    dachshund:2 yorkshire:4 boxer:5 husky:2 malamute:7 great-dane:5 dobermann:4 shih-tzu:5 pug:1
-    chihuahua:1 border-collie:5 aussie:6 corgi:3 shiba:5 akita:6 samoyed:5 dalmatian:0 pomeranian:4
-    bernese:5 st-bernard:3 newfoundland:7 bull-terrier:6 greyhound:5 whippet:7 borzoi:8 afghan:6
-    weimaraner:7 vizsla:8 basset:4 bloodhound:6 cocker:5 cavalier:7
+    labrador:3 golden:3 german-shepherd:2 french-bulldog:3 bulldog:3 beagle:3 poodle:2
+    dachshund:2 husky:2 pug:1
+    chihuahua:1 dalmatian:0
+    st-bernard:3
     maltese:2 jack-russell-terrier:1 american-pit-bull-terrier:1 english-mastiff:2 rough-collie:1
-    chow-chow:1 shar-pei:1 pekingese:2 boston-terrier:2 cane-corso:3 belgian-malinois:3
+    chow-chow:1 shar-pei:1 pekingese:2 boston-terrier:2
     miniature-schnauzer:2 bichon-frise:2 west-highland-white-terrier:2 scottish-terrier:2
-    goldendoodle:2 labradoodle:3 old-english-sheepdog:2 irish-setter:3 papillon:3
-    staffordshire-bull-terrier:3 havanese:3 english-springer-spaniel:3 shetland-sheepdog:2
-    lhasa-apso:3 irish-wolfhound:3 tibetan-mastiff:3 miniature-pinscher:3 italian-greyhound:3
-    airedale-terrier:3 canaan-dog:2 saluki:3 anatolian-shepherd:3 great-pyrenees:3
-    rhodesian-ridgeback:3 german-shorthaired-pointer:3 portuguese-water-dog:3 cardigan-welsh-corgi:4
-    basenji:4 komondor:5 puli:6 leonberger:5 neapolitan-mastiff:5 bullmastiff:4 chinese-crested:5
-    xoloitzcuintle:6 dogo-argentino:5 keeshond:5 bedlington-terrier:7 brussels-griffon:6
-    affenpinscher:7 japanese-chin:6 brittany:6 kuvasz:7 schipperke:8 boerboel:7 finnish-spitz:8
-    scottish-deerhound:7 nova-scotia-duck-tolling-retriever:8 bergamasco-shepherd:9`,
+    goldendoodle:2 old-english-sheepdog:2
+    shetland-sheepdog:2
+    canaan-dog:2`,
   food: `
     sushi:0 paella:3 pho:5 ramen:3 tacos:1 croissant:0 pretzel:1 falafel:1 hummus:1 shakshouka:2 biryani:5
     pad-thai:4 peking-duck:4 bibimbap:6 kimchi:5 moussaka:6 goulash:6 pierogi:6 borscht:5 poutine:6
-    fish-chips:1 ceviche:7 feijoada:8 tiramisu:3 baklava:2 churros:3 lasagne:2 risotto:4 ratatouille:5
-    fondue:3 schnitzel:2 couscous:3 tagine:5 jollof:8 injera:7 laksa:8 samosa:3 takoyaki:7 arepa:8
+    fish-chips:1 tiramisu:3 baklava:2 churros:3 lasagne:2 risotto:4 ratatouille:5
+    fondue:3 schnitzel:2 couscous:3 tagine:5 samosa:3
     pastel-de-nata:6
     pizza:0 hamburger:0 hot-dog:0 spaghetti:0 french-fries:0 pancakes:0 waffles:0 doughnut:0 bagel:0
     omelette:0 steak:0 caesar-salad:1 greek-salad:1 burrito:0 nachos:0 guacamole:0 dumplings:1
@@ -254,20 +242,20 @@ export const DIFFICULTY = {
     lipstick:0 mascara:2 eyeliner:3 eye-shadow:3 face-powder:4 eyelash-curler:4
     makeup-brushes:2 hair-dryer:0 bobby-pin:3 lip-gloss:3 eyebrow-pencil:4 eyelash-extensions:4
     makeup-sponge:4 tweezers:2 nail-file:3 hair-straightener:2 curling-iron:3
-    perfume:0 cotton-swab:1 safety-razor:3 shaving-brush:3 loofah:4
+    perfume:0 loofah:4
     bath-bombs:4 epilator:6 foundation:5 henna:4 artificial-nails:4
-    cotton-pads:3 pumice-stone:5 electric-shaver:2 cuticle-nippers:7 blush:5
-    bronzer:7 concealer:6 lip-liner:6 powder-puff:5 powder-compact:5 kabuki-brush:8 makeup-bag:2
+    cotton-pads:3 pumice-stone:5 blush:5
+    bronzer:7 concealer:6 lip-liner:6 powder-puff:5 powder-compact:5 makeup-bag:2
     liquid-eyeliner:5
-    lip-balm:0 sunscreen:0 shampoo:0 hair-conditioner:1 hair-gel:1 hair-spray:1 hair-dye:1
-    deodorant:0 soap:0 shower-gel:0 body-lotion:1 moisturizer:1 cold-cream:4 aftershave:2
-    shaving-cream:0 straight-razor:1 false-eyelashes:0 highlighter:2 face-mask:0 gua-sha:4
-    bath-salts:1 bubble-bath:0 essential-oil:2 atomizer:3 kohl:3 wax-strips:2 gel-nails:3
-    cuticle-pusher:5 manicure-set:2 tanning-bed:1 lip-plumper:5 beard-oil:3 beard-trimmer:2
-    castor-oil:5 rosewater:4 argan-oil:4 shea-butter:3 mouthwash:1 petroleum-jelly:3 pomade:4
-    dry-shampoo:3 thanaka:7 bindi:2 microblading:5 hand-cream:1 aleppo-soap:5 coconut-oil:2
-    shower-cap:0 toothbrush:0 toothpaste:0 dental-floss:0 wig:0 aloe-vera:1 hand-sanitizer:0
-    temporary-tattoo:2 nail-art:1 glitter:1 sindoor:6 pedicure:1 nail-scissors:1`,
+    lip-balm:0 shampoo:0 hair-conditioner:1 hair-gel:1 hair-spray:1 hair-dye:1
+    deodorant:0 soap:0 body-lotion:1
+    straight-razor:1 false-eyelashes:0 face-mask:0 gua-sha:4
+    bath-salts:1 essential-oil:2 kohl:3 gel-nails:3
+    tanning-bed:1
+    castor-oil:5 rosewater:4 argan-oil:4 shea-butter:3 mouthwash:1
+    microblading:5 hand-cream:1
+    shower-cap:0 toothpaste:0 dental-floss:0 wig:0 hand-sanitizer:0
+    nail-art:1 glitter:1 sindoor:6 pedicure:1 nail-scissors:1`,
   jobs: `
     firefighter:0 surgeon:1 astronaut:0 barber:1 dentist:1 beekeeper:1 lifeguard:2 welder:2 baker:1
     jockey:3 farrier:7 glassblower:4 sommelier:5 luthier:8 chimney-sweep:4 stonemason:5 watchmaker:4
@@ -308,13 +296,16 @@ export const DIFFICULTY = {
     thb:6 sar:4 cny:4`,
   guns: `
     ak-47:1 m16:2 uzi:1 desert-eagle:2 glock:2 tommy-gun:2 rpg-7:2 minigun:2 musket:2 gatling:2
-    bazooka:1 flare-gun:3 revolver:0 water-gun:0 taser:1 cannon:0 double-barrel:2 m4:3 m1911:3 mp5:3
-    p90:3 barrett:3 luger:3 peacemaker:3 shotgun:2 m1-garand:3 mp40:3 tavor:3 paintball:2 sniper-rifle:1`,
+    bazooka:1 flare-gun:3 revolver:0 taser:1 double-barrel:2 m4:3 m1911:3 mp5:3
+    p90:3 barrett:3 luger:3 peacemaker:3 shotgun:2 m1-garand:3 mp40:3 tavor:3 paintball:2 sniper-rifle:1
+    winchester:3 flintlock-pistol:2 blunderbuss:3 m79:2 sawed-off:2 derringer:3 walther-ppk:3 m60:3
+    hand-cannon:3 colt-python:3 beretta-92:4 spas-12:5 steyr-aug:5 galil:5 dragunov:5 mosin-nagant:6
+    kar98k:5 ppsh-41:5 mac-10:4 m249:5`,
   history: `
     balfour:6 partition:5 israel-independence:2 nakba:3 six-day:3 yom-kippur:4 camp-david:3 intifada:6
     oslo:4 syria-war:5 assad:2 palmyra:6 sykes-picot:5 lebanon-war:7 taif:7 beirut-blast:4 hariri:5
     franz-ferdinand:4 wwi-end:4 versailles:4 somme:6 gallipoli:5 lusitania:6 wwii-start:3 pearl-harbor:4
-    d-day:2 nagasaki:2 stalingrad:5 churchill:1 holocaust:2 yalta:5 enigma:4 bastille:3 salt-march:3
+    d-day:2 nagasaki:2 stalingrad:5 churchill:1 yalta:5 enigma:4 bastille:3 salt-march:3
     moon:1 cuba:3 berlin-wall:4 mandela:2 chernobyl:4 arab-spring:4
     wwi-start:0 princip:4 trenches:0 us-enters-wwi:3 ypres-gas:3 first-tanks:6 verdun:4
     brest-litovsk:5 kaiser:4 red-baron:3 ottoman-end:2 lawrence:3 poppy:1 christmas-truce:2

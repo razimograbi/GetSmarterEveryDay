@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-import { closePlay, createPlay, findPlay, getPlay, openPlayQuestion, recordPlayAnswer, stalePlays } from './db.js';
+import { closePlay, createPlay, findPlay, getPlay, openPlayQuestion, recordPlayAnswer, replacePlayQuestions, stalePlays } from './db.js';
 import { questionContent, sortedOptions } from './bank.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { serverNow } from './clock.js';
@@ -22,15 +22,63 @@ const DOWNLOADED = new Set(['wiki', 'flag', 'country', 'image', 'map']);
 
 const conflict = (message, extra = {}) => Object.assign(new Error(message), { status: 409, ...extra });
 
+/** Stands in for a question answered in a round and taken out of the bank since. */
+const removedQuestion = (a) => ({ id: a.id, cat: a.cat ?? null, prompt: '', visual: { type: 'text' }, options: [], answer: '', removed: true });
+
 /**
  * `endsOnMiss(play)` says whether a round is over at its first wrong answer (the Levels). Such a
  * round never counts a question the player didn't reach, and its questions can't be skipped.
+ *
+ * A question can be taken out of the bank while a round that has it is open (it was saved before
+ * a deploy). `replacementFor(play, idx)` names one to play in its place, and `onMend(play)` hears
+ * that a round's questions changed. The browser only knows a round's questions as numbered slots,
+ * so the swap goes unnoticed. With no replacement, the question is skipped at no cost.
  */
-export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
+export function createPlays(db, { onFinish, endsOnMiss = () => false, replacementFor = () => null, onMend = () => {} }) {
   // A Leveling round carries its own copy of its questions (they're written on the admin
   // dashboard and can change or go away while someone is playing). The others use the bank.
   const questionOf = (play, id) => play.content?.[id] ?? QUESTION_BY_ID.get(id);
   const questionAt = (play, idx) => questionOf(play, play.questionIds[idx]);
+  const exists = (play, idx) => !!questionAt(play, idx);
+
+  /**
+   * Swaps the questions not answered yet that are no longer in the bank, then skips the current
+   * one if it still is (it scores nothing, costs no time and isn't counted). Returns the play.
+   */
+  function mend(play) {
+    if (!play || play.finishedAt) return play;
+    let swapped = false;
+    for (let idx = play.idx; idx < play.questionIds.length; idx++) {
+      if (exists(play, idx)) continue;
+      const id = replacementFor(play, idx);
+      if (id && QUESTION_BY_ID.has(id) && !play.questionIds.includes(id)) {
+        play.questionIds[idx] = id;
+        swapped = true;
+      }
+    }
+    if (swapped) {
+      replacePlayQuestions(db, play.id, play.questionIds);
+      onMend(play);
+    }
+    let skippedAny = false;
+    while (play.idx < play.questionIds.length && !exists(play, play.idx)) {
+      play.answers.push({ id: play.questionIds[play.idx], cat: null, skipped: true, removed: true, correct: false, points: 0 });
+      play.idx += 1;
+      play.openedAt = null;
+      skippedAny = true;
+    }
+    if (skippedAny) {
+      recordPlayAnswer(db, play.id, play.idx, play.answers);
+      if (play.idx >= play.questionIds.length) finish(play);
+    }
+    return play;
+  }
+
+  /** How many questions a round counts: not the ones that left the bank before they were played. */
+  const counted = (play) =>
+    play.questionIds.length
+    - play.answers.filter((a) => a.removed).length
+    - play.questionIds.slice(play.answers.length).filter((id) => !questionOf(play, id)).length;
 
   /** A question's picture as the player's browser may see it: no Wikipedia title, flag code or sign name. */
   function visualFor(play, idx) {
@@ -51,7 +99,7 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
   function previews(play) {
     const list = [];
     for (let idx = play.idx; idx < Math.min(play.questionIds.length, play.idx + PLAY.lookahead + 1); idx++) {
-      if (DOWNLOADED.has(questionAt(play, idx).visual.type)) list.push({ idx, visual: visualFor(play, idx) });
+      if (exists(play, idx) && DOWNLOADED.has(questionAt(play, idx).visual.type)) list.push({ idx, visual: visualFor(play, idx) });
     }
     return list;
   }
@@ -75,7 +123,7 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
 
   /** Starts `userId`'s one go at this round, or returns the one already started. */
   function begin({ kind, ref, side = null, userId, questionIds, content = null }) {
-    return findPlay(db, kind, ref, userId) ?? createPlay(db, { kind, ref, side, userId, questionIds, content });
+    return mend(findPlay(db, kind, ref, userId)) ?? createPlay(db, { kind, ref, side, userId, questionIds, content });
   }
 
   /**
@@ -93,11 +141,14 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
     const reached = endsOnMiss(play) ? play.answers.length + open : playedOnly ? play.answers.length : play.questionIds.length;
     for (const id of play.questionIds.slice(play.answers.length, reached)) {
       const q = questionOf(play, id);
+      if (!q) continue; // no longer in the bank: not counted
       graded.push({ id, cat: q.cat, choice: null, correct: false, ms: secondsFor(q) * 1000, points: 0 });
     }
     // A question skipped because its picture failed scores nothing and is left out of the answers,
-    // but costs its full time: skipping the hard ones must not win ties.
-    const skippedMs = skipped.reduce((sum, a) => sum + secondsFor(questionOf(play, a.id)) * 1000, 0);
+    // but costs its full time: skipping the hard ones must not win ties. One skipped because it
+    // left the bank costs nothing.
+    const skippedMs = skipped.filter((a) => !a.removed)
+      .reduce((sum, a) => sum + secondsFor(questionOf(play, a.id) ?? { cat: a.cat }) * 1000, 0);
     onFinish(play, graded, skippedMs, { xp });
     return true;
   }
@@ -126,7 +177,7 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
   function outcome(play, idx, a) {
     const q = questionOf(play, a.id);
     return {
-      idx, correct: a.correct, points: a.points, ms: a.ms, answer: q.answer, question: questionContent(q),
+      idx, correct: a.correct, points: a.points, ms: a.ms, answer: q?.answer ?? '', question: q ? questionContent(q) : removedQuestion(a),
       finished: !!play.finishedAt || play.idx >= play.questionIds.length, previews: previews(play),
     };
   }
@@ -156,7 +207,7 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
     else if (!correct && endsOnMiss(play)) {
       finish(play);
       play.finishedAt ??= Date.now(); // so the reply says the round is over
-    }
+    } else mend(play); // the next question may have left the bank
     return outcome(play, idx, a);
   }
 
@@ -176,11 +227,12 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
     play.openedAt = null;
     recordPlayAnswer(db, play.id, play.idx, play.answers);
     if (play.idx >= play.questionIds.length) finish(play);
+    else mend(play);
     return skipped(play, idx);
   }
 
   function skipped(play, idx) {
-    const q = questionAt(play, idx);
+    const q = questionAt(play, idx) ?? removedQuestion(play.answers[idx] ?? { id: play.questionIds[idx] });
     return { idx, question: { id: q.id, cat: q.cat, prompt: q.prompt, visual: q.visual }, finished: !!play.finishedAt || play.idx >= play.questionIds.length, previews: previews(play) };
   }
 
@@ -204,7 +256,8 @@ export function createPlays(db, { onFinish, endsOnMiss = () => false }) {
   }
 
   return {
-    get: (id) => getPlay(db, id), find: (kind, ref, userId) => findPlay(db, kind, ref, userId), begin, view, previews, peek, downloads, open, answer, skip, finish, abandon, pictureFile, endStale,
+    get: (id) => mend(getPlay(db, id)), find: (kind, ref, userId) => mend(findPlay(db, kind, ref, userId)), mend, counted,
+    begin, view, previews, peek, downloads, open, answer, skip, finish, abandon, pictureFile, endStale,
     result: (play, idx) => outcome(play, idx, play.answers[idx]),
   };
 }

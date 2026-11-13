@@ -78,16 +78,16 @@ export default {
   'Mike Tyson': 'مايك تايسون', 'Joe Frazier': 'جو فريزر', 'George Foreman': 'جورج فورمان', 'Sugar Ray Leonard': 'شوغر راي ليونارد',
 
   // Beauty products
-  'What is this beauty product called?': 'ما اسم مستحضر التجميل هذا؟',
+  'What is this beauty product called?': 'ما اسم منتج التجميل هذا؟',
   Lipstick: 'أحمر شفاه', 'Lip gloss': 'ملمّع شفاه', 'Lip liner': 'محدد شفاه', 'Lip balm': 'مرطب شفاه', Blush: 'أحمر خدود',
   Mascara: 'ماسكارا', Eyeliner: 'آيلاينر', Concealer: 'كونسيلر', 'Eyebrow pencil': 'قلم حواجب', 'Eye shadow': 'ظلال عيون',
   'Eyebrow gel': 'جل الحواجب', 'False eyelashes': 'رموش صناعية', 'Nail polish': 'طلاء أظافر', 'Nail file': 'مبرد أظافر',
-  'Hand cream': 'كريم اليدين', 'Cuticle oil': 'زيت الجلد المحيط بالأظافر', Henna: 'حناء', Bronzer: 'برونزر', 'Face powder': 'بودرة الوجه',
+  'Hand cream': 'كريم اليدين', 'Cuticle oil': 'زيت الأظافر', Henna: 'حناء', Bronzer: 'برونزر', 'Face powder': 'بودرة الوجه',
   Highlighter: 'هايلايتر', Foundation: 'كريم أساس', 'Dry shampoo': 'شامبو جاف', 'Setting spray': 'بخاخ تثبيت المكياج',
-  'Eyelash curler': 'أداة تجعيد الرموش', 'Hair crimper': 'مموّج الشعر', 'Nail clipper': 'قصّافة أظافر', Tweezers: 'ملقط',
+  'Eyelash curler': 'مكبس الرموش', 'Hair crimper': 'مموّج الشعر', 'Nail clipper': 'قصّافة أظافر', Tweezers: 'ملقط',
   'Eyelash comb': 'مشط الرموش', 'Makeup brushes': 'فرش المكياج', 'Paint brushes': 'فرش الرسم', Hairbrushes: 'فرش الشعر',
   'Nail brushes': 'فرش الأظافر', 'Shaving brushes': 'فرش الحلاقة', 'Hair dryer': 'مجفف الشعر', 'Hair straightener': 'مكواة فرد الشعر',
-  'Curling iron': 'مكواة تجعيد الشعر', Diffuser: 'ناشر الهواء', 'Hair steamer': 'جهاز بخار الشعر', 'Bobby pin': 'دبوس شعر',
+  'Curling iron': 'مكواة تجعيد الشعر', Diffuser: 'ديفيوزر الشعر', 'Hair steamer': 'جهاز بخار الشعر', 'Bobby pin': 'دبوس شعر',
   'Paper clip': 'مشبك ورق', 'Safety pin': 'دبوس أمان', 'Hair claw': 'مشبك شعر', 'Hair tie': 'ربطة شعر',
 
   // Professions

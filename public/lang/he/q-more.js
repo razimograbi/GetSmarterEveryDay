@@ -4,7 +4,7 @@ export default {
   'Artificial nails': 'ציפורניים מלאכותיות', 'Bath bomb': 'פצצת אמבט', 'Bath bombs': 'פצצות אמבט', 'Bobby pins': 'סיכות ראש',
   'Body glitter': 'נצנצים לגוף', 'Body oil': 'שמן גוף', 'Clothes brush': 'מברשת בגדים', Comb: 'מסרק',
   'Cotton pad': 'פד כותנה', 'Cotton pads': 'פדי כותנה', 'Cotton swab': 'מקלון צמר גפן', 'Cotton swabs': 'מקלוני צמר גפן',
-  'Cuticle nippers': 'מקצץ עור לציפורניים', 'Cuticle pusher': 'דוחף עור לציפורניים', 'Electric shaver': 'מכונת גילוח',
+  'Cuticle nippers': 'קוצץ קוטיקולה', 'Cuticle pusher': 'דוחף קוטיקולה', 'Electric shaver': 'מכונת גילוח',
   Epilator: 'מכשיר אפילציה', 'Eyebrow threading': 'עיצוב גבות בחוט', 'Eyebrow tinting': 'צביעת גבות',
   'Eyelash extensions': 'הארכת ריסים', 'Face roller': 'רולר לפנים', 'Face serum': 'סרום לפנים', 'Face toner': 'טונר לפנים',
   'Facial cleansing brush': 'מברשת לניקוי פנים', 'Hair claw clip': 'תפס שיער', 'Hair claw clips': 'תפסי שיער',
