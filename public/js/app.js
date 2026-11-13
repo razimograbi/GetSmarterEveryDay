@@ -1998,6 +1998,13 @@ async function startRound(cat, fixed = null) {
   // The screen is up; the questions of the round follow in one request.
   loadQuestions(round.questions).then(() => {
     if (!alive) return;
+    if (round.questions.some((q) => !q.options)) {
+      // The server no longer has some of them: this page's list of questions is out of date.
+      round.saved = true; // nothing was played
+      forgetOpenRound();
+      location.reload();
+      return;
+    }
     round.questions.slice(0, 3).forEach(preload);
     showQuestion();
   }, (err) => {
@@ -2089,7 +2096,7 @@ async function finishLeftRound() {
   const cfg = MODES[r.mode] || MODES[DEFAULT_MODE];
   const done = new Set([...(r.answers || []).map((a) => a.id), ...(r.skipped || [])]);
   const answers = [
-    ...(r.answers || []),
+    ...(r.answers || []).filter((a) => QUESTION_BY_ID.has(a.id)), // not questions taken out of the bank since
     ...r.ids.filter((id) => !done.has(id) && QUESTION_BY_ID.has(id)).map((id) => ({ id, choice: null, ms: secondsFor(QUESTION_BY_ID.get(id), cfg) * 1000 })),
   ];
   if (!answers.length) return;

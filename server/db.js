@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  AUTO_DELAY, BACK_BUTTON, BOARD, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, COINS, questConsolation, questPrize, levelFor, roundCoins, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
+  AUTO_DELAY, BACK_BUTTON, BOARD, CATEGORY_BY_ID, LANGUAGES, MAX_LEVEL, PROFILE, STAGE, STAGE_PICTURE_HOSTS, XP, inQuickRounds, COINS, questConsolation, questPrize, levelFor, roundCoins, xpForLevel, pointsFor, secondsFor, stageCleared, xpForRound,
 } from '../shared/config.js';
 import { QUESTION_BY_ID } from '../shared/questions.js';
 import { UNLOCKS, itemKey, parseAvatar, randomAvatar, unlockLevel, unlockPrice } from '../shared/avatars.js';
@@ -897,12 +897,20 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
       SELECT category,
              COUNT(*) AS answered,
              SUM(correct) AS correct,
-             COUNT(DISTINCT question_id) AS seen,
-             COUNT(DISTINCT CASE WHEN correct = 1 THEN question_id END) AS gotRight,
              COALESCE(AVG(CASE WHEN correct = 1 THEN ms END), 0) AS avgMs
       FROM answers WHERE user_id = ? GROUP BY category
     `)
     .all(userId);
+  // Questions seen and got right, per topic. One taken out of the bank no longer counts (the
+  // Leveling stages' own questions were never in the bank, and still count).
+  const counts = (id, category) => QUESTION_BY_ID.has(id) || !CATEGORY_BY_ID[category];
+  const seenByTopic = {};
+  const rightByTopic = {};
+  for (const r of db.prepare('SELECT category, question_id AS id, MAX(correct) AS everRight FROM answers WHERE user_id = ? GROUP BY category, question_id').all(userId)) {
+    if (!counts(r.id, r.category)) continue;
+    seenByTopic[r.category] = (seenByTopic[r.category] || 0) + 1;
+    if (r.everRight) rightByTopic[r.category] = (rightByTopic[r.category] || 0) + 1;
+  }
 
   const roundAgg = db
     .prepare(`
@@ -951,14 +959,16 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
   const thisWeek = week(today - 6, today + 1);
   const lastWeek = week(today - 13, today - 6);
 
-  // The questions you get wrong most often.
+  // The questions you get wrong most often, of those still in the bank.
   const missed = db
     .prepare(`
       SELECT question_id AS id, SUM(1 - correct) AS wrong, SUM(correct) AS right, MAX(created_at) AS last
       FROM answers WHERE user_id = ? AND category != 'stage'
       GROUP BY question_id HAVING wrong > 0
-      ORDER BY wrong DESC, last DESC LIMIT 12`)
-    .all(userId);
+      ORDER BY wrong DESC, last DESC`)
+    .all(userId)
+    .filter((m) => QUESTION_BY_ID.has(m.id))
+    .slice(0, 12);
 
   // What's known, what's mastered and which mistakes Quick rounds should bring back.
   const history = db
@@ -968,7 +978,9 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
       WHERE a.user_id = ? ORDER BY a.id`)
     .all(userId);
   const playsInQuick = (id) => QUESTION_BY_ID.has(id) && inQuickRounds(QUESTION_BY_ID.get(id));
-  const { knownIds, masteredIds, dueMistakes } = reviewState(history, (at) => Math.floor((at + shift) / dayMs), playsInQuick);
+  const review = reviewState(history, (at) => Math.floor((at + shift) / dayMs), playsInQuick);
+  const inBank = (ids) => ids.filter((id) => QUESTION_BY_ID.has(id)); // answers to removed questions stay in the history only
+  const [knownIds, masteredIds, dueMistakes] = [inBank(review.knownIds), inBank(review.masteredIds), inBank(review.dueMistakes)];
   const topicOf = new Map(history.map((a) => [a.id, a.topic]));
   const masteredByTopic = {};
   for (const id of masteredIds) masteredByTopic[topicOf.get(id)] = (masteredByTopic[topicOf.get(id)] || 0) + 1;
@@ -977,9 +989,10 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
   const lastRoundIds = db
     .prepare('SELECT question_id AS id FROM answers WHERE round_id = (SELECT MAX(id) FROM rounds WHERE user_id = ?)')
     .all(userId)
-    .map((r) => r.id);
+    .map((r) => r.id)
+    .filter((id) => QUESTION_BY_ID.has(id));
 
-  const seenIds = db.prepare('SELECT DISTINCT question_id AS id FROM answers WHERE user_id = ?').all(userId).map((r) => r.id);
+  const seenIds = inBank(db.prepare('SELECT DISTINCT question_id AS id FROM answers WHERE user_id = ?').all(userId).map((r) => r.id));
 
   return {
     answered: totals.answered,
@@ -999,7 +1012,7 @@ export function getStats(db, userId, { tzOffsetMin = 0 } = {}) {
     missed,
     bestStreak: best,
     currentStreak: run,
-    byCategory: byCategory.map((c) => ({ ...c, mastered: masteredByTopic[c.category] || 0 })),
+    byCategory: byCategory.map((c) => ({ ...c, seen: seenByTopic[c.category] || 0, gotRight: rightByTopic[c.category] || 0, mastered: masteredByTopic[c.category] || 0 })),
     recent,
     days,
     seenIds,
@@ -1135,8 +1148,12 @@ export function listFriends(db, userId, day) {
 
 // ── Daily Challenge ────────────────────────────────────────────
 
-/** The Daily for `day` ({ day, number, questionIds }), picking its questions with `pick(recentIds)` the first time. */
-export function getDaily(db, day, number, pick) {
+/**
+ * The Daily for `day` ({ day, number, questionIds }), picking its questions with `pick(recentIds)` the first time.
+ * A question taken out of the bank after the Daily was picked is swapped for `replace(ids, slot, recentIds)`
+ * (the same for everyone, and saved), or left out if that gives nothing.
+ */
+export function getDaily(db, day, number, pick, replace = null) {
   let row = db.prepare('SELECT day, number, question_ids FROM daily_challenges WHERE day = ?').get(day);
   if (!row) {
     // Questions used in the last 90 Dailies aren't picked again.
@@ -1146,8 +1163,20 @@ export function getDaily(db, day, number, pick) {
       .run(day, number, JSON.stringify(pick(recent)), Date.now());
     row = db.prepare('SELECT day, number, question_ids FROM daily_challenges WHERE day = ?').get(day);
   }
-  // A question taken out of the bank after this Daily was picked can't be played any more.
-  return { day: row.day, number: row.number, questionIds: JSON.parse(row.question_ids).filter((id) => QUESTION_BY_ID.has(id)) };
+  let ids = JSON.parse(row.question_ids);
+  if (ids.some((id) => !QUESTION_BY_ID.has(id))) {
+    const recent = new Set(db.prepare('SELECT question_ids FROM daily_challenges WHERE day != ? ORDER BY day DESC LIMIT 90').all(day)
+      .flatMap((r) => JSON.parse(r.question_ids)));
+    const next = [...ids];
+    for (let slot = 0; slot < next.length; slot++) {
+      if (QUESTION_BY_ID.has(next[slot])) continue;
+      const id = replace?.(next, slot, recent);
+      if (id && QUESTION_BY_ID.has(id) && !next.includes(id)) next[slot] = id;
+    }
+    ids = next.filter((id) => QUESTION_BY_ID.has(id));
+    db.prepare('UPDATE daily_challenges SET question_ids = ? WHERE day = ?').run(JSON.stringify(ids), day);
+  }
+  return { day: row.day, number: row.number, questionIds: ids };
 }
 
 const toDailyResult = (r) => r && ({
@@ -1304,10 +1333,11 @@ export function listDuels(db, userId, limit = 30) {
 export const openDuelCount = (db, userId) =>
   db.prepare('SELECT COUNT(*) AS n FROM duels WHERE challenger_id = ? AND finished_at IS NULL').get(userId).n;
 
-/** A round's answers in the order they were given: { id, choice, correct, ms }. */
+/** A round's answers in the order they were given: { id, choice, correct, ms }. Questions no longer in the bank are left out. */
 export function roundAnswers(db, roundId) {
   if (!roundId) return [];
   return db.prepare('SELECT question_id AS id, choice, correct, ms FROM answers WHERE round_id = ? ORDER BY id').all(roundId)
+    .filter((a) => QUESTION_BY_ID.has(a.id))
     .map((a) => ({ ...a, correct: a.correct === 1 }));
 }
 
@@ -1335,6 +1365,11 @@ export function createPlay(db, { kind, ref, side, userId, questionIds, content =
 /** Starts the question's clock. Only the first opening counts. */
 export function openPlayQuestion(db, id, idx, now) {
   db.prepare('UPDATE plays SET opened_at = ?, updated_at = ? WHERE id = ? AND idx = ? AND opened_at IS NULL AND finished_at IS NULL').run(now, Date.now(), id, idx);
+}
+
+/** A round's questions after some were swapped for ones still in the bank. */
+export function replacePlayQuestions(db, id, questionIds) {
+  db.prepare('UPDATE plays SET question_ids = ? WHERE id = ? AND finished_at IS NULL').run(JSON.stringify(questionIds), id);
 }
 
 export function recordPlayAnswer(db, id, idx, answers) {

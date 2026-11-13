@@ -1,7 +1,7 @@
 // Picks the questions for a Daily Challenge or a duel: a spread from easy to hard, one per
 // topic in a mix, never two about the same country, played easiest first.
 
-import { QUESTIONS } from '../shared/questions.js';
+import { QUESTIONS, QUESTION_BY_ID } from '../shared/questions.js';
 import { inQuickRounds } from '../shared/config.js';
 import { pictureKeepsSecret } from './pictures.js';
 
@@ -60,4 +60,25 @@ export function pickQuestions({ count, category = 'mixed', seed = String(Math.ra
     if (q.about) about.add(q.about.toLowerCase());
   }
   return picked.sort((a, b) => a.difficulty - b.difficulty).map((q) => q.id);
+}
+
+/**
+ * A question to take the place of one that was taken out of the bank after a round was picked:
+ * `ids` is the round as it stands and `slot` the place to fill. It's of the slot's difficulty and
+ * not about anything the round already asks about. The same arguments always give the same id.
+ * Falls back to a mixed question if the topic has none left, and returns null if nothing fits.
+ */
+export function pickReplacement({ ids, slot, category = 'mixed', seed, avoid = new Set() }) {
+  const random = seeded(seed);
+  const band = bandFor(slot, ids.length);
+  const taken = new Set(ids);
+  const about = new Set(ids.map((id) => QUESTION_BY_ID.get(id)?.about?.toLowerCase()).filter(Boolean));
+  const fits = (q) => !taken.has(q.id) && !(q.about && about.has(q.about.toLowerCase()));
+  let pool = QUESTIONS.filter((q) => inPool(category)(q) && fits(q));
+  if (!pool.length && category !== 'mixed') pool = QUESTIONS.filter((q) => inPool('mixed')(q) && fits(q));
+  if (!pool.length) return null;
+  const cost = (q) => (avoid.has(q.id) ? 100 : 0) + (q.difficulty < band[0] || q.difficulty > band[1] ? 10 : 0);
+  const lowest = Math.min(...pool.map(cost));
+  const best = pool.filter((q) => cost(q) === lowest);
+  return best[Math.floor(random() * best.length)].id;
 }
