@@ -7,8 +7,8 @@
 // Looks at public/img/q/ (photos), public/img/flags/ and public/img/countries/. A file that a
 // Leveling stage on the dashboard uses as its picture (/img/...) is kept too.
 
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { accessSync, constants, readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { QUESTIONS } from '../shared/questions.js';
 
@@ -96,14 +96,41 @@ if (!doomed.length && !manifestRemoved) {
   process.exit(0);
 }
 
-for (const d of doomed) console.log(`  ${DRY ? 'would delete' : 'deleted'} ${d.address} (${Math.round(d.size / 1024)} KB)`);
+// Deleting needs the account that owns the pictures (on a server, the one the app runs as).
+// Check before touching anything, so a permission problem never leaves half the job done.
+if (!DRY) {
+  const dirs = new Set([dirname(MANIFEST), ...doomed.map((d) => dirname(d.file))]);
+  const blocked = [...dirs].filter((dir) => { try { accessSync(dir, constants.W_OK); return false; } catch { return true; } });
+  if (blocked.length) {
+    console.error(`Can't delete in ${blocked.join(', ')}: this account may not change those files.`);
+    console.error('Run it as the account that owns them, for example: sudo -u smarts npm run prune-images');
+    console.error('Nothing was deleted.');
+    process.exit(1);
+  }
+}
+
+const failed = [];
+for (const d of doomed) {
+  if (!DRY) {
+    try {
+      rmSync(d.file);
+    } catch (err) {
+      failed.push(d.address);
+      console.error(`  could not delete ${d.address}: ${err.code || err.message}`);
+      continue;
+    }
+  }
+  console.log(`  ${DRY ? 'would delete' : 'deleted'} ${d.address} (${Math.round(d.size / 1024)} KB)`);
+}
 for (const [id] of photoEntries) if (!doomedAddresses.has(manifest.photos[id].src)) console.log(`  ${DRY ? 'would drop' : 'dropped'} manifest entry ${id} (no file)`);
 
 if (!DRY) {
-  for (const d of doomed) rmSync(d.file);
+  // A file that couldn't be deleted keeps its manifest entry, so the two stay in step.
+  const stays = new Set(failed);
+  for (const [id, p] of Object.entries(manifest.photos)) if (stays.has(p.src)) keptPhotos[id] = p;
   manifest.photos = keptPhotos;
-  manifest.flags = keptFlags;
-  manifest.countries = keptCountries;
+  manifest.flags = manifest.flags.filter((code) => keptFlags.includes(code) || stays.has(`/img/flags/${code}.png`));
+  manifest.countries = manifest.countries.filter((iso) => keptCountries.includes(iso) || stays.has(`/img/countries/${iso}.svg`));
   writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2));
 }
 
@@ -111,3 +138,8 @@ const verb = DRY ? 'Would remove' : 'Removed';
 console.log(`\n${verb} ${doomed.length} file${doomed.length === 1 ? '' : 's'} (${mb(freed)}) and ${manifestRemoved} manifest entr${manifestRemoved === 1 ? 'y' : 'ies'}.`);
 if (stagePictures) console.log(`Kept ${stagePictures} picture${stagePictures === 1 ? '' : 's'} used by Leveling stages.`);
 if (DRY) console.log('Dry run: nothing was changed. Run without --dry-run to delete.');
+if (failed.length) {
+  console.error(`
+${failed.length} file${failed.length === 1 ? '' : 's'} could not be deleted (see above). Run it again as the account that owns them.`);
+  process.exitCode = 1;
+}
