@@ -135,7 +135,8 @@ if (!DRY) {
 }
 
 const verb = DRY ? 'Would remove' : 'Removed';
-console.log(`\n${verb} ${doomed.length} file${doomed.length === 1 ? '' : 's'} (${mb(freed)}) and ${manifestRemoved} manifest entr${manifestRemoved === 1 ? 'y' : 'ies'}.`);
+const done = doomed.length - failed.length;
+console.log(`\n${verb} ${done} file${done === 1 ? '' : 's'} (${mb(freed)}) and ${manifestRemoved} manifest entr${manifestRemoved === 1 ? 'y' : 'ies'}.`);
 if (stagePictures) console.log(`Kept ${stagePictures} picture${stagePictures === 1 ? '' : 's'} used by Leveling stages.`);
 if (DRY) console.log('Dry run: nothing was changed. Run without --dry-run to delete.');
 if (failed.length) {
