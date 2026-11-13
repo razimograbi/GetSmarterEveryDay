@@ -191,6 +191,21 @@ depend on Wikipedia allowing hotlinking. It's safe to stop and re-run; finished 
 are skipped (`-- --force` re-downloads everything). If a picture keeps failing, the
 script tells you which Wikipedia title to fix in `shared/questions.js`.
 
+When questions are removed from the bank, their pictures stay on disk. Clear them out with:
+
+```bash
+npm run prune-images -- --dry-run
+```
+
+```bash
+npm run prune-images
+```
+
+It deletes the photos, flags and country outlines in `public/img/` that no question uses any
+more (keeping any that a Leveling stage uses as its picture), takes them out of
+`public/img/manifest.json`, and prints what it removed and how much space it freed. The first
+command only lists them. Run it on the server after deploying a smaller bank.
+
 Pictures that haven't been downloaded are still fetched live as a fallback. If a picture
 fails to load mid-game, the player can skip that question and it isn't counted.
 Satellite map tiles are always loaded live from Esri.
