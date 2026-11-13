@@ -64,11 +64,11 @@ test('the levels are written correctly: real questions of their topic, none in t
   assert.ok(QUESTS.every((l) => l.questions.length >= 5 && l.questions.length <= 30));
 });
 
-test('the first levels use only the easiest questions and end on a medium one', () => {
+test('the first levels use only the easiest questions and end on medium ones', () => {
   for (const level of QUESTS.slice(0, 2)) {
     const ratings = level.questions.map((id) => QUESTION_BY_ID.get(id).difficulty);
-    assert.ok(ratings.slice(0, -1).every((d) => d <= 1), `level ${level.id}: ${ratings}`);
-    assert.ok(ratings.at(-1) >= 4 && ratings.at(-1) <= 6, `level ${level.id} ends on ${ratings.at(-1)}`);
+    const easy = ratings.findIndex((d) => d > 1);
+    assert.ok(easy > 0 && ratings.slice(easy).every((d) => d >= 4 && d <= 6), `level ${level.id}: ${ratings}`);
   }
 });
 
