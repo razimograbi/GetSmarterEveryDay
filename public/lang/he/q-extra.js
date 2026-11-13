@@ -1484,7 +1484,7 @@ export default {
   "Aloe vera": "אלוורה",
   "Hand sanitizer": "ג'ל חיטוי לידיים",
   "Temporary tattoo": "קעקוע זמני",
-  "Nail art": "ציור על ציפורניים",
+  "Nail art": "עיצוב ציפורניים",
   "Glitter": "נצנצים",
   "Sindoor": "סינדור",
   "Pedicure": "פדיקור",

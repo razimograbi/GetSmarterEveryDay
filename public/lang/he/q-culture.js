@@ -79,14 +79,14 @@ export default {
 
   // Beauty products
   'What is this beauty product called?': 'איך נקרא מוצר היופי הזה?',
-  Lipstick: 'שפתון', 'Lip gloss': 'גלוס', 'Lip liner': 'עיפרון שפתיים', 'Lip balm': 'שפתון לחות', Blush: 'סומק', Mascara: 'מסקרה',
+  Lipstick: 'שפתון', 'Lip gloss': 'גלוס', 'Lip liner': 'עיפרון שפתיים', 'Lip balm': 'באלם לשפתיים', Blush: 'סומק', Mascara: 'מסקרה',
   Eyeliner: 'אייליינר', Concealer: 'קונסילר', 'Eyebrow pencil': 'עיפרון גבות', 'Eye shadow': 'צללית', 'Eyebrow gel': "ג'ל גבות",
   'False eyelashes': 'ריסים מלאכותיים', 'Nail polish': 'לק', 'Nail file': 'פצירה', 'Hand cream': 'קרם ידיים', 'Cuticle oil': 'שמן לציפורניים',
   Henna: 'חינה', Bronzer: 'ברונזר', 'Face powder': 'פודרה', Highlighter: 'היילייטר', Foundation: 'מייקאפ', 'Dry shampoo': 'שמפו יבש',
   'Setting spray': 'ספריי מקבע', 'Eyelash curler': 'מסלסל ריסים', 'Hair crimper': 'מכשיר לגלים', 'Nail clipper': 'גוזז ציפורניים',
   Tweezers: 'פינצטה', 'Eyelash comb': 'מסרק ריסים', 'Makeup brushes': 'מברשות איפור', 'Paint brushes': 'מכחולי צבע',
   Hairbrushes: 'מברשות שיער', 'Nail brushes': 'מברשות ציפורניים', 'Shaving brushes': 'מברשות גילוח', 'Hair dryer': 'מייבש שיער',
-  'Hair straightener': 'מחליק שיער', 'Curling iron': 'מסלסל שיער', Diffuser: 'מפזר', 'Hair steamer': 'מכשיר אדים לשיער',
+  'Hair straightener': 'מחליק שיער', 'Curling iron': 'מסלסל שיער', Diffuser: 'דיפיוזר', 'Hair steamer': 'מכשיר אדים לשיער',
   'Bobby pin': 'סיכת ראש', 'Paper clip': 'מהדק', 'Safety pin': 'סיכת ביטחון', 'Hair claw': 'קליפס לשיער', 'Hair tie': 'גומייה לשיער',
 
   // Professions

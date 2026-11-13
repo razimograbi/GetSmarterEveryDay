@@ -242,20 +242,20 @@ export const DIFFICULTY = {
     lipstick:0 mascara:2 eyeliner:3 eye-shadow:3 face-powder:4 eyelash-curler:4
     makeup-brushes:2 hair-dryer:0 bobby-pin:3 lip-gloss:3 eyebrow-pencil:4 eyelash-extensions:4
     makeup-sponge:4 tweezers:2 nail-file:3 hair-straightener:2 curling-iron:3
-    perfume:0 cotton-swab:1 safety-razor:3 shaving-brush:3 loofah:4
+    perfume:0 loofah:4
     bath-bombs:4 epilator:6 foundation:5 henna:4 artificial-nails:4
-    cotton-pads:3 pumice-stone:5 electric-shaver:2 cuticle-nippers:7 blush:5
-    bronzer:7 concealer:6 lip-liner:6 powder-puff:5 powder-compact:5 kabuki-brush:8 makeup-bag:2
+    cotton-pads:3 pumice-stone:5 blush:5
+    bronzer:7 concealer:6 lip-liner:6 powder-puff:5 powder-compact:5 makeup-bag:2
     liquid-eyeliner:5
-    lip-balm:0 sunscreen:0 shampoo:0 hair-conditioner:1 hair-gel:1 hair-spray:1 hair-dye:1
-    deodorant:0 soap:0 shower-gel:0 body-lotion:1 moisturizer:1 cold-cream:4 aftershave:2
-    shaving-cream:0 straight-razor:1 false-eyelashes:0 highlighter:2 face-mask:0 gua-sha:4
-    bath-salts:1 bubble-bath:0 essential-oil:2 atomizer:3 kohl:3 wax-strips:2 gel-nails:3
-    cuticle-pusher:5 manicure-set:2 tanning-bed:1 lip-plumper:5 beard-oil:3 beard-trimmer:2
-    castor-oil:5 rosewater:4 argan-oil:4 shea-butter:3 mouthwash:1 petroleum-jelly:3 pomade:4
-    dry-shampoo:3 thanaka:7 bindi:2 microblading:5 hand-cream:1 aleppo-soap:5 coconut-oil:2
-    shower-cap:0 toothbrush:0 toothpaste:0 dental-floss:0 wig:0 aloe-vera:1 hand-sanitizer:0
-    temporary-tattoo:2 nail-art:1 glitter:1 sindoor:6 pedicure:1 nail-scissors:1`,
+    lip-balm:0 shampoo:0 hair-conditioner:1 hair-gel:1 hair-spray:1 hair-dye:1
+    deodorant:0 soap:0 body-lotion:1
+    straight-razor:1 false-eyelashes:0 face-mask:0 gua-sha:4
+    bath-salts:1 essential-oil:2 kohl:3 gel-nails:3
+    tanning-bed:1
+    castor-oil:5 rosewater:4 argan-oil:4 shea-butter:3 mouthwash:1
+    microblading:5 hand-cream:1
+    shower-cap:0 toothpaste:0 dental-floss:0 wig:0 hand-sanitizer:0
+    nail-art:1 glitter:1 sindoor:6 pedicure:1 nail-scissors:1`,
   jobs: `
     firefighter:0 surgeon:1 astronaut:0 barber:1 dentist:1 beekeeper:1 lifeguard:2 welder:2 baker:1
     jockey:3 farrier:7 glassblower:4 sommelier:5 luthier:8 chimney-sweep:4 stonemason:5 watchmaker:4
