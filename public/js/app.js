@@ -63,6 +63,7 @@ async function boot() {
     state.user = me.user;
     state.profile = me.profile;
     state.played = me.played || 0;
+    state.guestRound = !!me.guestRound;
     liveDuel = me.liveDuel;
     adoptSettings(me.settings);
     await adoptLanguage(me.settings);
@@ -96,11 +97,14 @@ function takeSharedLink() {
   if ((m = /^\/duel\/([A-Z2-9]{8})\/?$/.exec(path))) hash = `#/duel/${m[1]}`;
   else if ((m = /^\/f\/([A-Za-z2-9]{6})\/?$/.exec(path))) hash = `#/add/${m[1].toUpperCase()}`;
   else if (/^\/daily\/?$/.test(path)) hash = '#/daily';
+  // A link from a video: /play opens a Quick round, /play/flags a topic, even before signing in.
+  else if ((m = /^\/play(?:\/([a-z-]+))?\/?$/.exec(path))) hash = `#/play/${m[1] && CATEGORY_BY_ID[m[1]] ? m[1] : 'mixed'}`;
   if (hash) history.replaceState(null, '', `/${hash}`);
 }
 
 /** A server error as a message in the current language. */
 function errMsg(err) {
+  if (err.code === 'guestUsed' || err.code === 'guestLimit' || err.code === 'guestBusy') return t(`err.${err.code}`);
   if (err.status === 429) return t('err.rateLimited', { s: err.retryAfter || 60 });
   if (err.status === 503) return t('app.full');
   if (err.status === 401) return t('err.signedOut');
@@ -317,10 +321,18 @@ async function route() {
   document.querySelector('.lang-sheet')?.parentElement.remove();
   document.querySelector('.levelup-sheet')?.parentElement.remove();
   if (!rerendering) window.scrollTo(0, 0);
-  if (!state.user) return showSignIn();
+  const [, page, arg, sub] = (location.hash || '#/').split('/');
+  if (!state.user) {
+    // A visitor may play one Quick or topic round before signing in, and see how it went.
+    if (page === 'play' && (arg === 'mixed' || CATEGORY_BY_ID[arg])) {
+      if (state.guestRound) return startRound(arg);
+      state.signinNote = t('err.guestUsed'); // this browser has had its free round
+    }
+    if (page === 'results' && state.lastRound?.guest) return showResults();
+    return showSignIn();
+  }
   showLevelUp();
 
-  const [, page, arg, sub] = (location.hash || '#/').split('/');
   if (page === 'play' && (arg === 'daily' || arg === 'stage' || arg === 'quest')) {
     const fixed = state.fixedRound;
     state.fixedRound = null;
@@ -365,7 +377,10 @@ function learn(questions) {
 /** Gets the words, options and answers of these Quick or topic questions, unless they're already here. */
 async function loadQuestions(list) {
   const ids = list.filter((q) => !q.options).map((q) => q.id);
-  if (ids.length) learn((await api('/api/questions', { method: 'POST', body: { ids } })).questions);
+  if (!ids.length) return;
+  // A visitor's one round without signing in has its own route, which lets each browser play it once.
+  learn((await api(state.user ? '/api/questions' : '/api/guest/questions', { method: 'POST', body: { ids } })).questions);
+  if (!state.user) state.guestRound = false;
 }
 
 async function loadStats(force = false) {
@@ -539,6 +554,11 @@ function showSignIn() {
         <p class="lede">${esc(t('signin.lede', { count: QUESTIONS.length, topics: CATEGORIES.length, secs: MODES[DEFAULT_MODE].secondsPerQuestion }))}</p>
       </div>
       <div class="signin-actions">
+        ${state.guestRound ? `
+          <div class="guest-try">
+            <a class="btn btn-marigold btn-block" href="#/play/mixed">${esc(t('signin.guestPlay'))}</a>
+            <p>${esc(t('signin.guestNote'))}</p>
+          </div>` : ''}
         ${googleClientId && inApp ? inAppCard(inApp) : ''}
         ${googleClientId && !inApp ? `
           <div class="signin-card">
@@ -573,6 +593,10 @@ function showSignIn() {
 
   if (googleClientId && !inApp) mountGoogleButton(googleClientId, showError);
   showLinkBanner();
+  if (state.signinNote) {
+    showError(state.signinNote); // e.g. the free round was already played
+    state.signinNote = null;
+  }
 
   // In an in-app browser: copy the link for a real browser, or try Google's sign-in here anyway.
   app.querySelector('[data-copy-link]')?.addEventListener('click', async () => {
@@ -662,6 +686,8 @@ async function signedIn({ user, settings, profile = null, played = 0, locale = n
   state.user = user;
   state.profile = profile;
   state.played = played;
+  state.guestRound = false;
+  if (state.lastRound?.guest) state.lastRound = null; // the free round isn't saved, so it isn't shown again
   adoptSettings(settings);
   await adoptLanguage(settings, locale);
   await finishLeftRound();
@@ -1177,11 +1203,12 @@ async function startRound(cat, fixed = null) {
   // Review plays exactly what you've missed, so it always uses fresh stats. Other rounds use the
   // ones already loaded (lastPlayedIds covers a round whose save is still on its way).
   const needFresh = !fixed && cat === 'review';
-  if (!fixed && (!stats || needFresh)) stats = await loadStats(needFresh).catch(() => stats);
+  const guest = !fixed && !state.user; // a visitor's one round before signing in: no stats, nothing saved
+  if (!fixed && !guest && (!stats || needFresh)) stats = await loadStats(needFresh).catch(() => stats);
   if (nav !== navId) return; // the player went somewhere else while stats loaded
 
   const round = {
-    cat, mode, cfg, fixed,
+    cat, mode, cfg, fixed, guest,
     // In a Daily or duel, each question is a blank slot until the server opens it.
     questions: fixed ? Array.from({ length: fixed.play.total }, (_, slot) => ({ id: `play:${fixed.play.id}:${slot}`, slot })) : pickQuestions(cat, cfg.questionsPerRound, stats),
     comingBack: new Set(cat === 'mixed' ? stats?.dueMistakes : []), // past mistakes a Quick round may bring back
@@ -1796,6 +1823,12 @@ async function startRound(cat, fixed = null) {
     round.saved = true;
     forgetOpenRound();
     rememberPlayed();
+    if (round.guest) {
+      // Not signed in: the results are shown, and nothing is sent anywhere.
+      state.lastRound = { ...record, guest: true };
+      leave('#/results');
+      return;
+    }
     if (round.fixed || record.payload.length) countFinished(); // a round of only skips isn't saved
     if (round.fixed) {
       const saving = round.ended ? roundEnded() : endFixed(round.fixed); // started first, so the next screen can wait for it
@@ -1810,6 +1843,10 @@ async function startRound(cat, fixed = null) {
   /** The page is closing mid-round: finish it with what's left counted wrong, in a beacon that outlives the page. */
   function finishOnClose() {
     if (round.saved) return;
+    if (round.guest) {
+      round.saved = true; // a visitor's round: nothing to send
+      return;
+    }
     if (round.fixed) {
       round.saved = true;
       forgetOpenRound();
@@ -1970,6 +2007,12 @@ async function startRound(cat, fixed = null) {
     if (!alive) return;
     round.saved = true; // nothing was played
     forgetOpenRound();
+    if (guest) {
+      // The free round is used up (or this network has had too many): the sign-in screen says so.
+      if (err.code) state.guestRound = false;
+      state.signinNote = errMsg(err);
+      return leave('#/');
+    }
     window.alert(errMsg(err));
     leave('#/');
   });
@@ -1979,11 +2022,14 @@ async function startRound(cat, fixed = null) {
 
 const openRoundKey = () => `smarts:${state.user.id}:openRound`;
 
+// A visitor's round without signing in is never kept: nothing of it is saved.
 function storeOpenRound(r) {
+  if (!state.user) return;
   try { localStorage.setItem(openRoundKey(), JSON.stringify(r)); } catch { /* storage blocked: closing still sends a beacon */ }
 }
 
 function forgetOpenRound() {
+  if (!state.user) return;
   try { localStorage.removeItem(openRoundKey()); } catch { /* storage blocked */ }
 }
 
@@ -2152,11 +2198,13 @@ function showResults() {
   // In a Quick or Review round each row says which topic it was from; in a topic round they all are.
   const mixed = !topic;
   // The player's first finished round just unlocked the Daily and duels (see countFinished).
-  const firstRound = state.played === 1 && state.justUnlocked;
+  const firstRound = !r.guest && state.played === 1 && state.justUnlocked;
+  const { googleClientId } = state.config;
+  const inApp = r.guest && googleClientId ? inAppBrowser() : null;
 
   app.innerHTML = `
     <section class="screen results">
-      ${topbar()}
+      ${r.guest ? `<header class="topbar">${topbarStart()}</header>` : topbar()}
 
       <div class="score-hero">
         <p class="eyebrow on-cobalt">${esc(title)}</p>
@@ -2177,16 +2225,26 @@ function showResults() {
             ${coinsEarned(r.saved.coinsGained)}
             ${levelBar()}
           </div>` : ''}
-        <p class="save-state ${r.error ? 'is-error' : ''}">
+        ${r.guest ? '' : `<p class="save-state ${r.error ? 'is-error' : ''}">
           ${esc(r.error ? t('res.notSaved', { error: r.error }) : r.saved ? t('res.saved') : counted.length ? t('res.saving') : '')}
-        </p>
+        </p>`}
         ${r.error ? `<button class="btn btn-ghost" data-retry>${esc(t('res.retry'))}</button>` : ''}
       </div>
 
+      ${r.guest ? `
+      <div class="results-actions guest-signin">
+        ${inApp ? inAppCard(inApp) : `
+          <div class="signin-card">
+            <h2>${esc(t('guest.title'))}</h2>
+            <p>${esc(t('guest.why'))}</p>
+            ${googleClientId ? '<div id="google-btn" class="google-btn"></div>' : `<a class="btn btn-paper btn-block" href="#/">${esc(t('signin.continue'))}</a>`}
+          </div>`}
+        <p class="error-text" id="signin-error" hidden></p>
+      </div>` : `
       <div class="results-actions">
         <a class="btn btn-marigold btn-block" href="#/play/${r.cat}" data-again>${esc(topic ? t('res.againTopic', { topic: catName(topic) }) : t('res.again'))}</a>
         <a class="btn btn-ghost btn-block" href="#/">${esc(t('res.back'))}</a>
-      </div>
+      </div>`}
 
       ${firstRound ? `
         <div class="panel unlocked-card">
@@ -2198,7 +2256,7 @@ function showResults() {
         </div>` : ''}
 
       <h2 class="section-title" id="answers-title">${esc(t('res.yourAnswers'))}</h2>
-      <ol class="review" aria-labelledby="answers-title">${r.results.map((x, i) => answerRow(x, { mixed, reportIndex: i })).join('')}</ol>
+      <ol class="review" aria-labelledby="answers-title">${r.results.map((x, i) => answerRow(x, { mixed, reportIndex: r.guest ? null : i })).join('')}</ol>
     </section>`;
 
   bindThumbs();
@@ -2216,6 +2274,25 @@ function showResults() {
       if (await openReportSheet(q)) markReported(btn, q);
     });
   });
+
+  if (r.guest) {
+    // The free round is over: from here on, only signing in carries on.
+    const showError = (msg) => {
+      const el = document.getElementById('signin-error');
+      el.textContent = msg;
+      el.hidden = false;
+    };
+    if (googleClientId && !inApp) mountGoogleButton(googleClientId, showError);
+    app.querySelector('[data-copy-link]')?.addEventListener('click', async () => {
+      app.querySelector('[data-copy-status]').textContent = t((await copyText(sharedLink())) ? 'inapp.copied' : 'share.failed');
+    });
+    app.querySelector('[data-try-here]')?.addEventListener('click', (e) => {
+      e.currentTarget.remove();
+      app.querySelector('#google-btn').hidden = false;
+      mountGoogleButton(googleClientId, showError);
+    });
+    return;
+  }
 
   // "Play again" goes to the same hash; force a fresh round.
   app.querySelector('[data-again]').addEventListener('click', (e) => {

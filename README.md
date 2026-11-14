@@ -60,6 +60,19 @@ sign-in there. Dev sign-in matches accounts by name, so it's for testing only: w
 example a tunnel such as `cloudflared` or `ngrok`) and add that URL to the authorized
 origins.
 
+### One free round before signing in
+
+Visitors who haven't signed in can play **one** Quick round (10 questions) first, so a link
+from a video opens straight into a game:
+
+- `/play` opens a Quick round of mixed topics, `/play/flags` (or any topic id) a topic round.
+  The sign-in screen also has a **Play a round first** button.
+- Nothing of that round is saved: no account, answers, XP or stats. The results screen asks
+  the player to sign in with Google to keep playing.
+- Each browser gets one round, marked by an HTTP-only `smarts_guest` cookie. Clearing cookies
+  starts over, so each IP address may also start only 10 guest rounds an hour (room for
+  phones sharing one address on mobile data). See `GUEST` in `server/guest.js`.
+
 ## How it works
 
 ```

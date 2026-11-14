@@ -255,6 +255,11 @@ a.logo { text-decoration: none; }
 
 .signin-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; margin-bottom: auto; padding-bottom: 8px; }
 
+/* One round before signing in: the first thing a visitor from a video can do. */
+.guest-try { display: grid; gap: 8px; }
+.guest-try p { margin: 0; font-size: 15px; text-align: center; color: var(--on-cobalt-2); }
+.guest-signin { display: grid; gap: 12px; }
+
 /* The one thing to do on this screen: a paper card that says so, with Google's button in it. */
 .signin-card {
   display: grid;

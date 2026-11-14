@@ -33,6 +33,7 @@ import { createPlays } from './play.js';
 import { QUESTS, QUEST_BY_ID, questQuestions } from './quests.js';
 import { createMatches } from './match.js';
 import { loadVapidKeys, createReminders } from './push.js';
+import { createGuestRounds, guestCookie, GUEST_COOKIE } from './guest.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 try { process.loadEnvFile(join(ROOT, '.env')); } catch { /* no .env file */ }
@@ -154,6 +155,11 @@ async function body(req, limit = 64 * 1024) {
 }
 
 const sessionToken = (req) => parseCookies(req.headers.cookie)[SESSION_COOKIE];
+const guestToken = (req) => parseCookies(req.headers.cookie)[GUEST_COOKIE];
+
+// One Quick round for visitors who haven't signed in (server/guest.js).
+const guests = createGuestRounds();
+setInterval(() => guests.sweep(Date.now()), 5 * 60_000).unref();
 
 function currentUser(req) {
   return sessionUser(db, sessionToken(req));
@@ -219,6 +225,7 @@ const routes = {
       user: publicUser(user), settings: user ? getSettings(db, user.id) : null, profile: user ? ownProfile(db, ensureProfile(db, user)) : null,
       played: user ? finishedRounds(db, user.id) : 0, // rounds finished: 0 shows the new-player home
       liveDuel: user ? matches.liveFor(user.id) : null, // a duel going on right now, to get back to
+      guestRound: !user && guests.available(guestToken(req)), // a visitor may still play one round without signing in
     });
   },
 
@@ -367,6 +374,21 @@ const routes = {
     const { ids } = await body(req);
     if (!Array.isArray(ids) || !ids.length || ids.length > QUESTIONS_PER_REQUEST) return json(res, 400, { error: `Ask for 1 to ${QUESTIONS_PER_REQUEST} questions.` });
     json(res, 200, { questions: contentFor(ids) });
+  },
+
+  // The questions of a visitor's one round without signing in: like the route above, but only
+  // once per browser and a few times an hour per address. Nothing of the round is saved.
+  'POST /api/guest/questions': async (req, res) => {
+    if (currentUser(req)) return json(res, 409, { error: 'You are signed in already.' });
+    const { ids } = await body(req, 4096);
+    const known = Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && QUESTION_BY_ID.has(id)) : [];
+    if (!known.length) return json(res, 400, { error: 'Ask for at least one question.' });
+    const served = guests.serve(guestToken(req), clientIp(req, TRUST_PROXY), known);
+    if (!served.ok) {
+      const headers = served.retryAfter ? { 'Retry-After': String(served.retryAfter) } : {};
+      return json(res, served.status, { error: served.error, code: served.code }, headers);
+    }
+    json(res, 200, { questions: contentFor(served.ids) }, served.fresh ? { 'Set-Cookie': guestCookie(served.token, { secure: SECURE_COOKIES }) } : {});
   },
 
   // Events the browser reports (see EVENTS in shared/config.js). Signed-out visitors aren't counted.
@@ -1010,6 +1032,7 @@ const ROUTE_LIMITS = {
   'POST /api/rounds': 'rounds',
   'POST /api/shop/buy': 'rounds',
   'POST /api/questions': 'questions',
+  'POST /api/guest/questions': 'questions',
   'GET /api/account/export': 'export',
   'POST /api/reports': 'reports',
   'POST /api/events': 'events',
